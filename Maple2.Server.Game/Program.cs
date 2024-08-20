@@ -15,6 +15,7 @@ using Maple2.Server.Core.Network;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game;
 using Maple2.Server.Game.Commands;
+using Maple2.Server.Game.DebugGraphics;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Service;
 using Maple2.Server.Game.Session;
@@ -70,6 +71,8 @@ builder.Services.Configure<HostOptions>(options => options.ShutdownTimeout = Tim
 builder.Logging.ClearProviders();
 builder.Logging.AddSerilog(dispose: true);
 
+IGraphicsContext debugGraphicsContext = new HeadlessGraphicsContext();
+
 builder.Services.AddGrpc();
 builder.Services.RegisterModule<WorldClientModule>();
 builder.Services.AddSingleton<GameServer>(provider => new GameServer(
@@ -78,6 +81,7 @@ builder.Services.AddSingleton<GameServer>(provider => new GameServer(
     provider.GetRequiredService<IComponentContext>(),
     provider.GetRequiredService<GameStorage>(),
     provider.GetRequiredService<ServerTableMetadataStorage>(),
+    debugGraphicsContext,
     response.GamePort,
     response.GameChannel
 ));
@@ -107,6 +111,7 @@ builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {
         .SingleInstance();
     autofac.RegisterType<WorldMapGraphStorage>()
         .SingleInstance();
+    autofac.RegisterInstance(debugGraphicsContext);
 
     // Database
     autofac.RegisterModule<GameDbModule>();
