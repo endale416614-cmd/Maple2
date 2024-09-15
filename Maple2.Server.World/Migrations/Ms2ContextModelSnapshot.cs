@@ -1177,6 +1177,9 @@ namespace Maple2.Server.World.Migrations
                     b.Property<int>("ShopItemId")
                         .HasColumnType("int");
 
+                    b.Property<int>("ShopId")
+                        .HasColumnType("int");
+
                     b.Property<long>("OwnerId")
                         .HasColumnType("bigint");
 
@@ -1184,146 +1187,12 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
-                    b.Property<int>("ShopId")
-                        .HasColumnType("int");
-
                     b.Property<int>("StockPurchased")
                         .HasColumnType("int");
 
-                    b.HasKey("ShopItemId", "OwnerId");
-
-                    b.HasIndex("ShopId");
+                    b.HasKey("ShopItemId", "ShopId", "OwnerId");
 
                     b.ToTable("character-shop-item-data", (string)null);
-                });
-
-            modelBuilder.Entity("Maple2.Database.Model.Shop.Shop", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    b.Property<int>("CategoryId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("DisableBuyback")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("DisplayNew")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("HideStats")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("HideUnuseable")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<bool>("OpenWallet")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<bool>("RandomizeOrder")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("RestockData")
-                        .HasColumnType("json");
-
-                    b.Property<DateTime>("RestockTime")
-                        .HasColumnType("datetime(6)");
-
-                    b.Property<byte>("Skin")
-                        .HasColumnType("tinyint unsigned");
-
-                    b.HasKey("Id");
-
-                    b.ToTable("shop", (string)null);
-                });
-
-            modelBuilder.Entity("Maple2.Database.Model.Shop.ShopItem", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    b.Property<bool>("AutoPreviewEquip")
-                        .HasColumnType("tinyint(1)");
-
-                    b.Property<string>("Category")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("CurrencyItemId")
-                        .HasColumnType("int");
-
-                    b.Property<byte>("CurrencyType")
-                        .HasColumnType("tinyint unsigned");
-
-                    b.Property<string>("IconCode")
-                        .IsRequired()
-                        .HasColumnType("longtext");
-
-                    b.Property<int>("ItemId")
-                        .HasColumnType("int");
-
-                    b.Property<byte>("Label")
-                        .HasColumnType("tinyint unsigned");
-
-                    b.Property<int>("Price")
-                        .HasColumnType("int");
-
-                    b.Property<short>("Quantity")
-                        .HasColumnType("smallint");
-
-                    b.Property<byte>("Rarity")
-                        .HasColumnType("tinyint unsigned");
-
-                    b.Property<int>("RequireAchievementId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RequireAchievementRank")
-                        .HasColumnType("int");
-
-                    b.Property<byte>("RequireChampionshipGrade")
-                        .HasColumnType("tinyint unsigned");
-
-                    b.Property<short>("RequireChampionshipJoinCount")
-                        .HasColumnType("smallint");
-
-                    b.Property<int>("RequireFameGrade")
-                        .HasColumnType("int");
-
-                    b.Property<short>("RequireGuildMerchantLevel")
-                        .HasColumnType("smallint");
-
-                    b.Property<byte>("RequireGuildMerchantType")
-                        .HasColumnType("tinyint unsigned");
-
-                    b.Property<int>("RequireGuildTrophy")
-                        .HasColumnType("int");
-
-                    b.Property<short>("RequireQuestAllianceId")
-                        .HasColumnType("smallint");
-
-                    b.Property<string>("RestrictedBuyData")
-                        .HasColumnType("json");
-
-                    b.Property<int>("SalePrice")
-                        .HasColumnType("int");
-
-                    b.Property<int>("ShopId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("StockCount")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("ShopId");
-
-                    b.ToTable("shop-item", (string)null);
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.SkillTab", b =>
@@ -1824,39 +1693,6 @@ namespace Maple2.Server.World.Migrations
             modelBuilder.Entity("Maple2.Database.Model.Shop.BeautyShopEntry", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Shop.BeautyShop", null)
-                        .WithMany()
-                        .HasForeignKey("ShopId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Maple2.Database.Model.Shop.CharacterShopData", b =>
-                {
-                    b.HasOne("Maple2.Database.Model.Shop.Shop", null)
-                        .WithMany()
-                        .HasForeignKey("ShopId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Maple2.Database.Model.Shop.CharacterShopItemData", b =>
-                {
-                    b.HasOne("Maple2.Database.Model.Shop.Shop", null)
-                        .WithMany()
-                        .HasForeignKey("ShopId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("Maple2.Database.Model.Shop.ShopItem", null)
-                        .WithMany()
-                        .HasForeignKey("ShopItemId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Maple2.Database.Model.Shop.ShopItem", b =>
-                {
-                    b.HasOne("Maple2.Database.Model.Shop.Shop", null)
                         .WithMany()
                         .HasForeignKey("ShopId")
                         .OnDelete(DeleteBehavior.Cascade)
