@@ -676,6 +676,10 @@ namespace Maple2.Server.World.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("datetime(6)");
 
+                    b.Property<string>("Layouts")
+                        .IsRequired()
+                        .HasColumnType("json");
+
                     b.Property<byte>("Lighting")
                         .HasColumnType("tinyint unsigned");
 
