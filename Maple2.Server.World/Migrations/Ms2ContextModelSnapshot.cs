@@ -661,6 +661,10 @@ namespace Maple2.Server.World.Migrations
                     b.Property<byte>("Background")
                         .HasColumnType("tinyint unsigned");
 
+                    b.Property<string>("Blueprints")
+                        .IsRequired()
+                        .HasColumnType("json");
+
                     b.Property<byte>("Camera")
                         .HasColumnType("tinyint unsigned");
 
@@ -697,6 +701,76 @@ namespace Maple2.Server.World.Migrations
                     b.HasKey("AccountId");
 
                     b.ToTable("home", (string)null);
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.HomeLayout", b =>
+                {
+                    b.Property<long>("Uid")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<byte>("Area")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Background")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Camera")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<byte>("Height")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<int>("Id")
+                        .HasColumnType("int");
+
+                    b.Property<byte>("Lighting")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<DateTimeOffset>("Timestamp")
+                        .HasColumnType("datetime(6)");
+
+                    b.HasKey("Uid");
+
+                    b.ToTable("home-layout", (string)null);
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.HomeLayoutCube", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("HomeLayoutId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("ItemId")
+                        .HasColumnType("int");
+
+                    b.Property<float>("Rotation")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Template")
+                        .HasColumnType("json");
+
+                    b.Property<sbyte>("X")
+                        .HasColumnType("tinyint");
+
+                    b.Property<sbyte>("Y")
+                        .HasColumnType("tinyint");
+
+                    b.Property<sbyte>("Z")
+                        .HasColumnType("tinyint");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("HomeLayoutId");
+
+                    b.ToTable("home-layout-cube", (string)null);
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.Item", b =>
@@ -1498,6 +1572,15 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.HomeLayoutCube", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.HomeLayout", null)
+                        .WithMany("Cubes")
+                        .HasForeignKey("HomeLayoutId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.ItemStorage", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Account", null)
@@ -1580,6 +1663,11 @@ namespace Maple2.Server.World.Migrations
             modelBuilder.Entity("Maple2.Database.Model.Guild", b =>
                 {
                     b.Navigation("Members");
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.HomeLayout", b =>
+                {
+                    b.Navigation("Cubes");
                 });
 
             modelBuilder.Entity("Maple2.Database.Model.UgcMap", b =>
