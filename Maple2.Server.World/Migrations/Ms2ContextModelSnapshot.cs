@@ -1333,6 +1333,10 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("AccountId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("Blueprint")
+                        .IsRequired()
+                        .HasColumnType("json");
+
                     b.Property<long>("CharacterId")
                         .HasColumnType("bigint");
 
