@@ -56,6 +56,11 @@ namespace Maple2.Server.World.Migrations
                     b.Property<bool>("Online")
                         .HasColumnType("tinyint(1)");
 
+                    b.Property<string>("Password")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
                     b.Property<string>("PremiumRewardsClaimed")
                         .IsRequired()
                         .HasColumnType("json");
