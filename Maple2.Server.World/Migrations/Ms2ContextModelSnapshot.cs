@@ -935,6 +935,10 @@ namespace Maple2.Server.World.Migrations
                     b.Property<byte>("Type")
                         .HasColumnType("tinyint unsigned");
 
+                    b.Property<string>("WeddingInvite")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
                     b.HasKey("ReceiverId", "Id");
 
                     b.ToTable("mail", (string)null);
@@ -1504,6 +1508,46 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("ugcresource", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.WeddingHall", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CeremonyTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<DateTime>("CreationTime")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("GuestList")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<long>("MarriageId")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("OwnerId")
+                        .HasColumnType("bigint");
+
+                    b.Property<int>("PackageHallId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("PackageId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("Public")
+                        .HasColumnType("tinyint(1)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MarriageId")
+                        .IsUnique();
+
+                    b.ToTable("wedding-hall", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Buddy", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Character", "BuddyCharacter")
@@ -1755,6 +1799,15 @@ namespace Maple2.Server.World.Migrations
                     b.HasOne("Maple2.Database.Model.UgcMap", null)
                         .WithMany("Cubes")
                         .HasForeignKey("UgcMapId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Maple2.Database.Model.WeddingHall", b =>
+                {
+                    b.HasOne("Maple2.Database.Model.Marriage", null)
+                        .WithOne()
+                        .HasForeignKey("Maple2.Database.Model.WeddingHall", "MarriageId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
