@@ -1728,15 +1728,6 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired();
                 });
 
-            modelBuilder.Entity("Maple2.Database.Model.Mail", b =>
-                {
-                    b.HasOne("Maple2.Database.Model.Character", null)
-                        .WithMany()
-                        .HasForeignKey("ReceiverId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
             modelBuilder.Entity("Maple2.Database.Model.Marriage", b =>
                 {
                     b.HasOne("Maple2.Database.Model.Character", null)
