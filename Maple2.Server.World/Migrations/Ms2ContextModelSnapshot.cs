@@ -676,10 +676,23 @@ namespace Maple2.Server.World.Migrations
                     b.Property<int>("CurrentArchitectScore")
                         .HasColumnType("int");
 
+                    b.Property<long>("DecorationExp")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("DecorationLevel")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("DecorationRewardTimestamp")
+                        .HasColumnType("bigint");
+
                     b.Property<byte>("Height")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("tinyint unsigned")
                         .HasDefaultValue((byte)3);
+
+                    b.Property<string>("InteriorRewardsClaimed")
+                        .IsRequired()
+                        .HasColumnType("json");
 
                     b.Property<DateTime>("LastModified")
                         .ValueGeneratedOnAddOrUpdate()
