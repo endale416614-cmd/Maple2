@@ -763,9 +763,6 @@ namespace Maple2.Server.World.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
 
-                    b.Property<string>("CubePortalSettings")
-                        .HasColumnType("json");
-
                     b.Property<long>("HomeLayoutId")
                         .HasColumnType("bigint");
 
@@ -1399,9 +1396,6 @@ namespace Maple2.Server.World.Migrations
                     b.Property<long>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("bigint");
-
-                    b.Property<string>("CubePortalSettings")
-                        .HasColumnType("json");
 
                     b.Property<int>("HousingCategory")
                         .HasColumnType("int");
