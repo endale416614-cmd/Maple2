@@ -299,6 +299,9 @@ namespace Maple2.Server.World.Migrations
                         .IsRequired()
                         .HasColumnType("json");
 
+                    b.Property<short>("ReturnChannel")
+                        .HasColumnType("smallint");
+
                     b.Property<int>("ReturnMapId")
                         .HasColumnType("int");
 
