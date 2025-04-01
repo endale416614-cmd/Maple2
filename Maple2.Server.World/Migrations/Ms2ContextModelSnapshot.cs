@@ -1153,6 +1153,45 @@ namespace Maple2.Server.World.Migrations
                     b.ToTable("pet-config", (string)null);
                 });
 
+            modelBuilder.Entity("Maple2.Database.Model.PlayerReport", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    b.Property<byte>("Category")
+                        .HasColumnType("tinyint unsigned");
+
+                    b.Property<long>("CharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTime>("CreateTime")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("PlayerName")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.Property<string>("ReportInfo")
+                        .IsRequired()
+                        .HasColumnType("json");
+
+                    b.Property<long>("ReporterCharacterId")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("ReporterName")
+                        .IsRequired()
+                        .HasColumnType("longtext");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("player-reports", (string)null);
+                });
+
             modelBuilder.Entity("Maple2.Database.Model.Quest", b =>
                 {
                     b.Property<long>("OwnerId")
