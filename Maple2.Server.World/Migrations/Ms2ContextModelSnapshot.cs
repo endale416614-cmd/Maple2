@@ -359,9 +359,6 @@ namespace Maple2.Server.World.Migrations
                         .ValueGeneratedOnAddOrUpdate()
                         .HasColumnType("datetime(6)");
 
-                    b.Property<string>("SkillCooldowns")
-                        .HasColumnType("json");
-
                     b.Property<string>("SkillMacros")
                         .HasColumnType("json");
 
