@@ -1,5 +1,4 @@
 ﻿using System.Collections.Concurrent;
-using System.Reflection;
 using Maple2.Server.Game.Manager.Field;
 
 namespace Maple2.Server.Game.Model.Widget;
@@ -11,13 +10,9 @@ public class GuideWidget : Widget {
     }
 
     public override bool Check(string name, string arg) {
-        return Conditions.GetValueOrDefault(name) == 1;
+        return int.TryParse(arg, out int value) && Conditions.GetValueOrDefault(name) == value;
     }
 
     public override void Action(string function, int numericArg, string stringArg) {
-        MethodInfo? method = GetType().GetMethod(function, BindingFlags.NonPublic | BindingFlags.Instance);
-        if (method != null) {
-            method.Invoke(this, [stringArg, numericArg]);
-        }
     }
 }
