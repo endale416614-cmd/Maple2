@@ -1,13 +1,21 @@
 ﻿using System;
 using System.Threading;
 using Maple2.Tools.Scheduler;
+using Serilog;
 
 namespace Maple2.Server.Tests.Tools;
 
 public class EventQueueTests {
+    private readonly Serilog.Core.Logger logger = new LoggerConfiguration().CreateLogger();
+
+    [OneTimeTearDown]
+    public void OneTimeTearDown() {
+        logger.Dispose();
+    }
+
     [Test]
     public void Schedule_ImmediateTask_Executes() {
-        var queue = new EventQueue();
+        var queue = new EventQueue(logger);
         queue.Start();
         bool called = false;
         queue.Schedule(() => called = true);
@@ -17,7 +25,7 @@ public class EventQueueTests {
 
     [Test]
     public void Schedule_DelayedTask_ExecutesAfterDelay() {
-        var queue = new EventQueue();
+        var queue = new EventQueue(logger);
         queue.Start();
         bool called = false;
         queue.Schedule(() => called = true, TimeSpan.FromMilliseconds(50));
@@ -30,7 +38,7 @@ public class EventQueueTests {
 
     [Test]
     public void ScheduleRepeated_ExecutesMultipleTimes() {
-        var queue = new EventQueue();
+        var queue = new EventQueue(logger);
         queue.Start();
         int count = 0;
         queue.ScheduleRepeated(() => count++, TimeSpan.FromMilliseconds(30));
@@ -43,7 +51,7 @@ public class EventQueueTests {
 
     [Test]
     public void ScheduleRepeated_StrictMode_ExecutesAtFixedIntervals() {
-        var queue = new EventQueue();
+        var queue = new EventQueue(logger);
         queue.Start();
         int count = 0;
         queue.ScheduleRepeated(() => count++, TimeSpan.FromMilliseconds(20), strict: true);
@@ -56,7 +64,7 @@ public class EventQueueTests {
 
     [Test]
     public void ScheduleRepeated_SkipFirst_SkipsInitialExecution() {
-        var queue = new EventQueue();
+        var queue = new EventQueue(logger);
         queue.Start();
         int count = 0;
         queue.ScheduleRepeated(() => count++, TimeSpan.FromMilliseconds(20), skipFirst: true);

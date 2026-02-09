@@ -43,7 +43,7 @@ public class WorldServer {
         this.playerInfoLookup = playerInfoLookup;
         this.login = login;
         this.itemMetadata = itemMetadata;
-        scheduler = new EventQueue();
+        scheduler = new EventQueue(logger);
         scheduler.Start();
         memoryStringBoards = [];
 

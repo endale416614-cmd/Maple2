@@ -93,7 +93,7 @@ public partial class FieldManager : IField {
         Entities = entities;
         TriggerObjects = new TriggerCollection(entities);
 
-        Scheduler = new EventQueue();
+        Scheduler = new EventQueue(logger);
         FieldActor = new FieldActor(this, NextLocalId(), metadata, npcMetadata); // pulls from argument because member NpcMetadata is null here
         cancel = new CancellationTokenSource();
         thread = new Thread(UpdateLoop);
