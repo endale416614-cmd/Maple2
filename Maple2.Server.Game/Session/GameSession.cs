@@ -114,7 +114,7 @@ public sealed partial class GameSession : Core.Network.Session {
         this.server = server;
         State = SessionState.ChangeMap;
         CommandHandler = context.Resolve<CommandRouter>(new NamedParameter("session", this));
-        Scheduler = new EventQueue();
+        Scheduler = new EventQueue(Logger);
         Scheduler.ScheduleRepeated(() => Send(TimeSyncPacket.Request()), TimeSpan.FromSeconds(1));
 
         OnLoop += Scheduler.InvokeAll;
