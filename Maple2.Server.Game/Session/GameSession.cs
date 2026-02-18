@@ -643,6 +643,31 @@ public sealed partial class GameSession : Core.Network.Session {
         // Home
         Player.Value.Home.DecorationRewardTimestamp = 0;
         Send(CubePacket.DesignRankReward(Player.Value.Home));
+        // Meso Market
+        Player.Value.Account.MesoMarketListed = 0;
+        Send(MesoMarketPacket.Quota(Player.Value.Account.MesoMarketListed, Player.Value.Account.MesoMarketPurchased));
+        // Shop restock
+        Shop.DailyReset();
+        // Dungeon daily clears
+        Dungeon.ResetDailyClears();
+    }
+
+    public void WeeklyReset() {
+        // Prestige Rewards
+        Player.Value.Account.PrestigeRewardsClaimed.Clear();
+        Send(PrestigePacket.Load(Player.Value.Account));
+        // Dungeon enter limits
+        Dungeon.UpdateDungeonEnterLimit();
+        // Dungeon weekly clears
+        Dungeon.ResetWeeklyClears();
+        // Shop restock
+        Shop.WeeklyReset();
+    }
+
+    public void MonthlyReset() {
+        // Meso Market
+        Player.Value.Account.MesoMarketPurchased = 0;
+        Send(MesoMarketPacket.Quota(Player.Value.Account.MesoMarketListed, Player.Value.Account.MesoMarketPurchased));
     }
 
     public void MigrateToPlanner(PlotMode plotMode) {

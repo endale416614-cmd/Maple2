@@ -53,6 +53,8 @@ public class WorldServer {
         db.DeleteUnownedItems();
 
         StartDailyReset();
+        StartWeeklyReset();
+        StartMonthlyReset();
         StartWorldEvents();
         ScheduleGameEvents();
         FieldPlotExpiryCheck();
@@ -170,6 +172,75 @@ public class WorldServer {
         foreach ((int channelId, ChannelClient channelClient) in channelClients) {
             channelClient.GameReset(new GameResetRequest {
                 Daily = new GameResetRequest.Types.Daily(),
+            });
+        }
+    }
+    #endregion
+
+    #region Weekly Reset
+    private void StartWeeklyReset() {
+        using GameStorage.Request db = gameStorage.Context();
+        DateTime lastReset = db.GetLastWeeklyReset();
+
+        DateTime now = DateTime.Now;
+        int daysSinceReset = ((int) now.DayOfWeek - (int) Constant.ResetDay + 7) % 7;
+        DateTime lastResetMidnight = now.Date.AddDays(-daysSinceReset);
+
+        if (lastReset < lastResetMidnight) {
+            db.WeeklyReset();
+        }
+
+        DateTime nextReset = now.NextDayOfWeek(Constant.ResetDay).Date;
+        TimeSpan timeUntilReset = nextReset - now;
+        scheduler.Schedule(ScheduleWeeklyReset, timeUntilReset);
+    }
+
+    private void ScheduleWeeklyReset() {
+        WeeklyReset();
+        scheduler.ScheduleRepeated(WeeklyReset, TimeSpan.FromDays(7), strict: true);
+    }
+
+    private void WeeklyReset() {
+        using GameStorage.Request db = gameStorage.Context();
+        db.WeeklyReset();
+        foreach ((int channelId, ChannelClient channelClient) in channelClients) {
+            channelClient.GameReset(new GameResetRequest {
+                Weekly = new GameResetRequest.Types.Weekly(),
+            });
+        }
+    }
+    #endregion
+
+    #region Monthly Reset
+    private void StartMonthlyReset() {
+        using GameStorage.Request db = gameStorage.Context();
+        DateTime lastReset = db.GetLastMonthlyReset();
+
+        DateTime now = DateTime.Now;
+        DateTime firstOfMonth = new DateTime(now.Year, now.Month, 1);
+
+        if (lastReset < firstOfMonth) {
+            db.MonthlyReset();
+        }
+
+        DateTime nextMonth = firstOfMonth.AddMonths(1);
+        TimeSpan timeUntilReset = nextMonth - now;
+        scheduler.Schedule(ScheduleMonthlyReset, timeUntilReset);
+    }
+
+    private void ScheduleMonthlyReset() {
+        MonthlyReset();
+        DateTime now = DateTime.Now;
+        DateTime nextMonth = new DateTime(now.Year, now.Month, 1).AddMonths(1);
+        scheduler.Schedule(ScheduleMonthlyReset, nextMonth - now);
+    }
+
+    private void MonthlyReset() {
+        using GameStorage.Request db = gameStorage.Context();
+        db.MonthlyReset();
+        foreach ((int channelId, ChannelClient channelClient) in channelClients) {
+            channelClient.GameReset(new GameResetRequest {
+                Monthly = new GameResetRequest.Types.Monthly(),
             });
         }
     }
