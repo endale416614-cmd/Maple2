@@ -12,13 +12,15 @@ const LOCALE_MAP = {
 
 function printHelp() {
     console.error([
-        'Usage: parse-msb.js <file.msb> [options]',
+        'Usage:',
+        '  parse-msb.js <file.msb> [options]     Query a single sniff file',
+        '  parse-msb.js <folder>   [options]     Search across all MSB files in folder',
         '',
         'Options:',
         '  --summary, -s              Opcode frequency table (no hex output)',
         '  --opcode, -o <op>          Filter by opcode (hex: 0x0020, name: Skill). Repeatable.',
         '  --direction, -d <IN|OUT>   Filter by direction (IN=server, OUT=client)',
-        '  --limit, -l <n>            Max packets to output (default: 20, 0=unlimited)',
+        '  --limit, -l <n>            Max packets to output per file (default: 20, 0=unlimited)',
         '  --index, -i <n>            Get single packet by absolute index',
         '  --range, -r <n-m>          Get packets by index range (e.g. 100-200)',
         '  --search-hex <"XX XX XX">  Find packets whose payload contains byte pattern',
@@ -33,6 +35,8 @@ function printHelp() {
         '  parse-msb.js capture.msb --search-hex "E8 03 00 00" --direction IN',
         '  parse-msb.js capture.msb --index 42',
         '  parse-msb.js capture.msb --range 100-150 --no-hex',
+        '  parse-msb.js ./sniffs/ --opcode Pvp --direction OUT --locale kms2',
+        '  parse-msb.js ./sniffs/ --search-hex "F6 F3 5E 01" --direction IN',
     ].join('\n'));
 }
 
@@ -200,6 +204,50 @@ function applyFilters(allPackets, args, opcodeFilter, searchPattern) {
     return indexed;
 }
 
+function getAllMsbFiles(dirPath) {
+    const results = [];
+    for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
+        const fullPath = path.join(dirPath, entry.name);
+        if (entry.isDirectory()) {
+            results.push(...getAllMsbFiles(fullPath));
+        } else if (entry.name.endsWith('.msb')) {
+            results.push(fullPath);
+        }
+    }
+    return results;
+}
+
+function queryFile(msbPath, args, searchPattern) {
+    try {
+        const reader = new MsbReader(msbPath);
+        const locale = resolveLocale(args.locale, reader.metadata?.Locale ?? 0);
+        const opcodeFilter = resolveOpcodeFilter(args.opcodes, locale);
+        const allPackets = reader.readPackets();
+
+        const metadata = {
+            version: reader.version,
+            build: reader.metadata?.Build || 0,
+            locale: LOCALE_MAP[locale] ?? `Unknown (${locale})`,
+            serverVersion: getServerVersion(locale),
+            localEndpoint: `${reader.metadata?.LocalEndpoint}:${reader.metadata?.LocalPort}`,
+            remoteEndpoint: `${reader.metadata?.RemoteEndpoint}:${reader.metadata?.RemotePort}`,
+            totalPackets: allPackets.length,
+        };
+
+        const filtered = applyFilters(allPackets, args, opcodeFilter, searchPattern);
+        const totalMatched = filtered.length;
+        const output = args.limit > 0 ? filtered.slice(0, args.limit) : filtered;
+
+        return {
+            metadata,
+            totalMatched,
+            packets: output.map(({ packet, index }) => formatPacket(packet, index, locale, args)),
+        };
+    } catch {
+        return null;
+    }
+}
+
 async function main() {
     const argv = process.argv.slice(2);
     if (argv.length === 0) {
@@ -210,21 +258,49 @@ async function main() {
     const args = parseArgs(argv);
 
     if (!args.file) {
-        console.error('Error: No MSB file specified.');
+        console.error('Error: No MSB file or folder specified.');
         printHelp();
         process.exit(1);
     }
 
-    const msbPath = path.resolve(args.file);
-    if (!fs.existsSync(msbPath)) {
-        console.error(`Error: File not found: ${msbPath}`);
+    const inputPath = path.resolve(args.file);
+    if (!fs.existsSync(inputPath)) {
+        console.error(`Error: Path not found: ${inputPath}`);
         process.exit(1);
     }
 
     const searchPattern = args.searchHex ? parseSearchHex(args.searchHex) : null;
+    const isFolder = fs.statSync(inputPath).isDirectory();
 
+    if (isFolder) {
+        const msbFiles = getAllMsbFiles(inputPath);
+
+        if (msbFiles.length === 0) {
+            console.error(`Error: No MSB files found in: ${inputPath}`);
+            process.exit(1);
+        }
+
+        const fileResults = [];
+        for (const msbPath of msbFiles) {
+            const result = queryFile(msbPath, args, searchPattern);
+            if (result && result.totalMatched > 0) {
+                fileResults.push({ filePath: msbPath, ...result });
+            }
+        }
+
+        console.log(JSON.stringify({
+            folderPath: inputPath,
+            totalFiles: msbFiles.length,
+            filesWithMatches: fileResults.length,
+            totalMatched: fileResults.reduce((sum, f) => sum + f.totalMatched, 0),
+            files: fileResults,
+        }, null, 2));
+        return;
+    }
+
+    // Single file mode
     try {
-        const reader = new MsbReader(msbPath);
+        const reader = new MsbReader(inputPath);
         const locale = resolveLocale(args.locale, reader.metadata?.Locale ?? 0);
 
         // Opcode filter is resolved after reading locale so name lookups use the right table
