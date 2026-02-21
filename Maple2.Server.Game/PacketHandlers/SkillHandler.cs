@@ -11,6 +11,7 @@ using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -209,8 +210,10 @@ public class SkillHandler : FieldPacketHandler {
 
         byte count = packet.ReadByte();
         if (count > record.Attack.TargetCount) {
-            Logger.Error("Attack too many targets {Count} for {Record}", count, record);
-            // Adjust count
+            // Skills with BounceCount send all bounce targets in one packet but TargetCount is per-bounce.
+            // This may indicate an unimplemented bounce mechanic rather than a true exploit.
+            Logger.Warning("SkillId={SkillId} AttackPoint={AttackPoint} sent {Count} targets but TargetCount={TargetCount} — clamping. BounceCount={BounceCount}",
+                record.SkillId, attackPoint, count, record.Attack.TargetCount, record.Attack.Arrow.BounceCount);
             count = (byte) record.Attack.TargetCount;
         }
 
@@ -223,7 +226,9 @@ public class SkillHandler : FieldPacketHandler {
             session.Send(NoticePacket.Message($"Skill.Attack.Damage: {skillUid}; AttackPoint: {attackPoint}"));
         }
 
-        for (byte i = 0; i < count; i++) {
+        // Although the client feeds us this information and is right, we cannot rely on it and must validate it
+        // we should keep it just to ensure what the server gathers as proper targets is the same as the client
+        /*for (byte i = 0; i < count; i++) {
             int targetId = packet.ReadInt();
             if (record.Targets.ContainsKey(targetId)) {
                 continue;
@@ -252,6 +257,11 @@ public class SkillHandler : FieldPacketHandler {
                     Logger.Debug("Unhandled Target-SkillEntity:{Entity}", record.Attack.Range.ApplyTarget);
                     continue;
             }
+        }*/
+
+        IEnumerable<IActor> targets = session.Field.GetTargets(record);
+        foreach (IActor target in targets) {
+            record.Targets.TryAdd(target.ObjectId, target);
         }
         session.Player.TargetAttack(record);
     }
