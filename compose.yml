@@ -1,13 +1,22 @@
 services:
+  # One-shot DB migration + metadata ingestion. Runs manually, not with the stack.
+  #   docker compose --profile ingest run --rm file-ingest
   file-ingest:
-    container_name: maple2-file-ingest
+    profiles: ["ingest"]
     image: mcr.microsoft.com/dotnet/sdk:8.0
+    container_name: maple2-file-ingest
     working_dir: /app/Maple2.File.Ingest
-    entrypoint: ["dotnet", "run"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        export PATH="$PATH:/root/.dotnet/tools"
+        dotnet tool update --global dotnet-ef --version 7.0.20 2>/dev/null || dotnet tool install --global dotnet-ef --version 7.0.20
+        dotnet restore /app/Maple2.Server.World/Maple2.Server.World.csproj
+        dotnet run
     depends_on:
-      - mysql
-    links:
-      - mysql
+      mysql:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -15,7 +24,7 @@ services:
       MS2_DATA_FOLDER: /ClientData
     volumes:
       - .:/app
-      - ${MS2_DOCKER_DATA_FOLDER}:/ClientData
+      - ${MS2_DOCKER_DATA_FOLDER:-./Data}:/ClientData
       - dotnet_tools:/root/.dotnet/tools
 
   login:
@@ -24,21 +33,25 @@ services:
       dockerfile: ./Maple2.Server.Login/Dockerfile
     container_name: maple2-login
     image: maple2/login
-    command: dotnet Maple2.Server.Login.dll
+    restart: unless-stopped
     depends_on:
       mysql:
-        condition: service_started
+        condition: service_healthy
       world:
-        condition: service_started
+        condition: service_healthy
     ports:
       - 20001:20001
-    links:
-      - world
     env_file:
       - .env
     environment:
       DB_IP: mysql
       GRPC_WORLD_IP: world
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/21000"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   world:
     build:
@@ -46,24 +59,35 @@ services:
       dockerfile: ./Maple2.Server.World/Dockerfile
     container_name: maple2-world
     image: maple2/world
-    command: dotnet Maple2.Server.World.dll
+    restart: unless-stopped
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     ports:
       - 21001:21001
     env_file:
       - .env
     environment:
       DB_IP: mysql
+      GRPC_LOGIN_IP: login
+    healthcheck:
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/21001"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
 
   game-ch1:
     build:
       context: .
       dockerfile: ./Maple2.Server.Game/Dockerfile
     image: maple2/game
+    restart: unless-stopped
     depends_on:
-      - mysql
-      - world
+      mysql:
+        condition: service_healthy
+      world:
+        condition: service_healthy
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
       - 20003:20003
@@ -80,9 +104,12 @@ services:
       context: .
       dockerfile: ./Maple2.Server.Game/Dockerfile
     image: maple2/game
+    restart: unless-stopped
     depends_on:
-      - mysql
-      - world
+      mysql:
+        condition: service_healthy
+      world:
+        condition: service_healthy
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
       - 20004:20004
@@ -100,9 +127,12 @@ services:
       context: .
       dockerfile: ./Maple2.Server.Game/Dockerfile
     image: maple2/game
+    restart: unless-stopped
     depends_on:
-      - mysql
-      - world
+      mysql:
+        condition: service_healthy
+      world:
+        condition: service_healthy
     # Ports are dynamically assigned from world server, sadly we can't dynamically expose them here. So we have to hardcode them.
     ports:
       - 20002:20002
@@ -121,12 +151,12 @@ services:
       dockerfile: ./Maple2.Server.Web/Dockerfile
     container_name: maple2-web
     image: maple2/web
+    restart: unless-stopped
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     ports:
-      - 80:80
-      - 443:443
-      - 4000:4000
+      - "${WEB_PORT:-4000}:${WEB_PORT:-4000}"
     env_file:
       - .env
     environment:
@@ -139,11 +169,18 @@ services:
     env_file:
       - .env
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-maplestory}
+      MYSQL_ROOT_HOST: "%"
     volumes:
       - mysql:/var/lib/mysql
     ports:
       - 3306:3306
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$${MYSQL_ROOT_PASSWORD} --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
 
 volumes:
   dotnet_tools:
