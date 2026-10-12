@@ -80,9 +80,15 @@ public partial class GameStorage {
             return mails;
         }
 
+        private long NextSqliteMailId() {
+            // Same numbering as the MySQL schema (mail ids start at 100000).
+            return Math.Max(100000, (Context.Mail.Max(existing => (long?) existing.Id) ?? 0) + 1);
+        }
+
         public Mail? CreateMail(Mail mail) {
             Model.Mail model = mail;
-            model.Id = 0;
+            // SQLite cannot auto-number a column inside a composite key (ReceiverId, Id): assign the next id here.
+            model.Id = Maple2.Database.Context.DbProvider.IsSqlite ? NextSqliteMailId() : 0;
             if (mail.Items.Count == 0) {
                 Context.Mail.Add(model);
                 return SaveChanges() ? model : null;

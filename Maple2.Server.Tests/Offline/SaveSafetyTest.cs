@@ -56,6 +56,20 @@ public class SaveSafetyTest {
     }
 
     [Test]
+    public void CreateMail_OnSqlite_AssignsDistinctIds() {
+        // SQLite cannot auto-number Id inside the (ReceiverId, Id) key; mail used to fail with "NOT NULL constraint failed: mail.Id".
+        Assume.That(DbProvider.IsSqlite, "runs with DB_PROVIDER=sqlite");
+        long first, second;
+        using (GameStorage.Request db = NewRequest()) {
+            first = db.CreateMail(new Mail { ReceiverId = accountId, Meso = 10 })?.Id ?? 0;
+            second = db.CreateMail(new Mail { ReceiverId = accountId, Meso = 20 })?.Id ?? 0;
+        }
+
+        Assert.That(first, Is.GreaterThanOrEqualTo(100000));
+        Assert.That(second, Is.GreaterThan(first));
+    }
+
+    [Test]
     public void Dispose_WithoutCommit_AfterException_RollsBack() {
         try {
             using GameStorage.Request db = NewRequest();
