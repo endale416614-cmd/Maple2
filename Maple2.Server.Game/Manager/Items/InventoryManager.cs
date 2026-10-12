@@ -278,7 +278,7 @@ public class InventoryManager {
                 }
                 session.ConditionUpdate(ConditionType.item_collect, codeLong: item.Id);
                 session.ConditionUpdate(ConditionType.item_add, counter: item.Amount, codeLong: item.Id);
-                session.ConditionUpdate(ConditionType.item_exist, counter: item.Amount, codeLong: item.Id);
+                session.ConditionUpdate(ConditionType.item_exist, counter: item.Amount, targetLong: session.Field?.MapId ?? session.Player.Value.Character.MapId, codeLong: item.Id);
             }
 
             return true;

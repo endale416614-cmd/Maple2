@@ -326,7 +326,7 @@ public sealed class ShopManager {
             cost = multiplierCost.Cost;
             currencyType = multiplierCost.CurrencyType;
         }
-        if (!Pay(new ShopCost { Amount = cost, Type = currencyType }, activeShop.RestockData.Price)) {
+        if (!Pay(new ShopCost { Amount = cost, Type = currencyType }, cost)) {
             session.Send(ShopPacket.Error(ShopError.s_err_lack_shopitem)); // not neccessarily the right error.
             return;
         }
@@ -555,6 +555,36 @@ public sealed class ShopManager {
         session.Send(ShopPacket.LoadBuyBackItem(buyBackItems[entryId]));
     }
 
+    /// <summary>
+    /// Charges <paramref name="price"/> (the full price for the purchased quantity) in a token-like currency.
+    /// The balance check and the deduction use the same amount.
+    /// </summary>
+    public static bool TryPayToken(ShopCurrencyType shopCurrency, int price, Func<CurrencyType, long> getBalance, Action<CurrencyType, long> setBalance) {
+        CurrencyType currencyType = shopCurrency switch {
+            ShopCurrencyType.ValorToken => CurrencyType.ValorToken,
+            ShopCurrencyType.Treva => CurrencyType.Treva,
+            ShopCurrencyType.Rue => CurrencyType.Rue,
+            ShopCurrencyType.HaviFruit => CurrencyType.HaviFruit,
+            ShopCurrencyType.StarPoint => CurrencyType.StarPoint,
+            ShopCurrencyType.MenteeToken => CurrencyType.MenteeToken,
+            ShopCurrencyType.MentorToken => CurrencyType.MentorToken,
+            ShopCurrencyType.MesoToken => CurrencyType.MesoToken,
+            ShopCurrencyType.ReverseCoin => CurrencyType.ReverseCoin,
+            _ => CurrencyType.None,
+        };
+        if (currencyType == CurrencyType.None || price < 0) {
+            return false;
+        }
+
+        long balance = getBalance(currencyType);
+        if (balance < price) {
+            return false;
+        }
+
+        setBalance(currencyType, balance - price);
+        return true;
+    }
+
     private bool Pay(ShopCost cost, int price) {
         switch (cost.Type) {
             case ShopCurrencyType.Meso:
@@ -591,24 +621,9 @@ public sealed class ShopManager {
                 }
                 break;
             default:
-                CurrencyType currencyType = cost.Type switch {
-                    ShopCurrencyType.ValorToken => CurrencyType.ValorToken,
-                    ShopCurrencyType.Treva => CurrencyType.Treva,
-                    ShopCurrencyType.Rue => CurrencyType.Rue,
-                    ShopCurrencyType.HaviFruit => CurrencyType.HaviFruit,
-                    ShopCurrencyType.StarPoint => CurrencyType.StarPoint,
-                    ShopCurrencyType.MenteeToken => CurrencyType.MenteeToken,
-                    ShopCurrencyType.MentorToken => CurrencyType.MentorToken,
-                    ShopCurrencyType.MesoToken => CurrencyType.MesoToken,
-                    ShopCurrencyType.ReverseCoin => CurrencyType.ReverseCoin,
-                    _ => CurrencyType.None,
-
-                };
-                if (currencyType == CurrencyType.None || session.Currency[currencyType] < price) {
+                if (!TryPayToken(cost.Type, price, type => session.Currency[type], (type, value) => session.Currency[type] = value)) {
                     return false;
                 }
-
-                session.Currency[currencyType] -= cost.Amount;
                 break;
         }
         return true;
