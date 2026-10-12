@@ -159,6 +159,10 @@ if (probeAll != null) {
                 continue;
             }
             string ids = string.Join(" ", properties.Select(pair => $"{pair.Name}={pair.Property.GetValue(entity)}"));
+            if (entity is Maple2.File.Flat.maplestory2library.ISpawnPointNPC npcSpawn) {
+                // ingest drops NPC spawns whose count is 0 or whose NPC ids are unknown: keep what the map lists
+                ids += $" NpcCount={npcSpawn.NpcCount} NpcList={string.Join(",", npcSpawn.NpcList.Select(pair => $"{pair.Key}:{pair.Value}"))}";
+            }
             lines.Add($"{map.xblock.ToLower()}\t{entity.EntityName}\t{type.Name}\t{ids}");
         }
     }
