@@ -121,6 +121,11 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         long startTick = session.Field.FieldTick;
+        if (record.Metadata.Property.State != ActorState.None && record.StateNextTick == 0) {
+            // Same first check delay as StateSkillHandler; with 0 the state skill was checked on the very next tick,
+            // before the client could report the new state, and cancelled straight away.
+            record.StateNextTick = startTick + (int) TimeSpan.FromSeconds(Math.Max(0.01f, record.Motion.MotionProperty.SequenceSpeed)).TotalMilliseconds;
+        }
         session.Player.InBattle = record.Metadata.State.InBattle;
         session.Player.ActiveSkills.Add(record);
         session.Field.Broadcast(SkillPacket.Use(record));

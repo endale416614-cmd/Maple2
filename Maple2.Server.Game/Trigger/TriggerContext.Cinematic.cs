@@ -12,33 +12,33 @@ public partial class TriggerContext {
     }
 
     public void RemoveCinematicTalk() {
-        DebugLog("[RemoveCinematicTalk]");
+        if (TraceEnabled) DebugLog("[RemoveCinematicTalk]");
         Broadcast(CinematicPacket.RemoveTalk());
     }
 
     public void CloseCinematic() {
-        DebugLog("[CloseCinematic]");
+        if (TraceEnabled) DebugLog("[CloseCinematic]");
         // guessing
         Broadcast(CinematicPacket.HideUi());
     }
 
     public void PlaySceneMovie(string fileName, int movieId, string skipType) {
-        DebugLog("[PlaySceneMovie] fileName:{FileName}, movieId:{MovieId}, skipType:{SkipType}", fileName, movieId, skipType);
+        if (TraceEnabled) DebugLog("[PlaySceneMovie] fileName:{FileName}, movieId:{MovieId}, skipType:{SkipType}", fileName, movieId, skipType);
         Broadcast(TriggerPacket.UiStartMovie(fileName, movieId));
     }
 
     public void SetCinematicIntro(string text) {
-        DebugLog("[SetCinematicIntro] text:{Text}", text);
+        if (TraceEnabled) DebugLog("[SetCinematicIntro] text:{Text}", text);
         Broadcast(CinematicPacket.Intro(text));
     }
 
     public void SetOnetimeEffect(int id, bool enabled, string path) {
-        DebugLog("[SetOnetimeEffect] id:{Id}, enabled:{Enabled}, path:{Path}", id, enabled, path);
+        if (TraceEnabled) DebugLog("[SetOnetimeEffect] id:{Id}, enabled:{Enabled}, path:{Path}", id, enabled, path);
         Broadcast(CinematicPacket.OneTimeEffect(id, enabled, path));
     }
 
     public void SetCinematicUi(int type, string script, bool arg3) {
-        DebugLog("[SetCinematicUI] type:{Type}, script:{Script}, arg3:{Arg3}", type, script, arg3);
+        if (TraceEnabled) DebugLog("[SetCinematicUI] type:{Type}, script:{Script}, arg3:{Arg3}", type, script, arg3);
         switch (type) {
             case 0:
                 Broadcast(CinematicPacket.ToggleUi(false));
@@ -70,23 +70,23 @@ public partial class TriggerContext {
     }
 
     public void SetSceneSkip(string state, string nextState) {
-        WarnLog("[SetSceneSkip] state:{State}, nextState:{NextState}", state, nextState);
+        if (TraceEnabled) WarnLog("[SetSceneSkip] state:{State}, nextState:{NextState}", state, nextState);
         skipState = owner.GetState(state);
         Broadcast(CinematicPacket.SetSkipScene(nextState));
     }
 
     public void SetSkip(string state) {
-        WarnLog("[SetSkip] state:{State}", nameof(state));
+        if (TraceEnabled) WarnLog("[SetSkip] state:{State}", nameof(state));
         skipState = owner.GetState(state);
         Broadcast(CinematicPacket.SetSkipState(""));
     }
 
     public void AddBalloonTalk(int spawnId, string msg, int duration, int delayTick, int npcId) {
-        DebugLog("[AddBalloonTalk] spawnId:{SpawnId}, msg:{Message}, duration:{Duration}, delayTick:{Delay}, npcId:{NpcId}", spawnId, msg, duration, delayTick, npcId);
+        if (TraceEnabled) DebugLog("[AddBalloonTalk] spawnId:{SpawnId}, msg:{Message}, duration:{Duration}, delayTick:{Delay}, npcId:{NpcId}", spawnId, msg, duration, delayTick, npcId);
         if (spawnId == 0) {
             FieldPlayer? fieldPlayer = Field.Players.Values.FirstOrDefault();
             if (fieldPlayer == null) {
-                ErrorLog("[AddBalloonTalk] No players found in field");
+                if (TraceEnabled) ErrorLog("[AddBalloonTalk] No players found in field");
                 return;
             }
 
@@ -96,7 +96,7 @@ public partial class TriggerContext {
 
         FieldNpc? fieldNpc = Field.Npcs.Values.FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         if (fieldNpc == null) {
-            ErrorLog("[AddBalloonTalk] No NPC with spawnId:{SpawnId} found in field", spawnId);
+            if (TraceEnabled) ErrorLog("[AddBalloonTalk] No NPC with spawnId:{SpawnId} found in field", spawnId);
             return;
         }
 
@@ -104,7 +104,7 @@ public partial class TriggerContext {
     }
 
     public void RemoveBalloonTalk(int spawnId) {
-        DebugLog("[RemoveBalloonTalk] spawnId:{SpawnId}", spawnId);
+        if (TraceEnabled) DebugLog("[RemoveBalloonTalk] spawnId:{SpawnId}", spawnId);
         foreach (FieldNpc npc in Field.Npcs.Values) {
             if (spawnId == 0 || npc.SpawnPointId == spawnId) {
                 Broadcast(CinematicPacket.RemoveBalloonTalk(npc.ObjectId));

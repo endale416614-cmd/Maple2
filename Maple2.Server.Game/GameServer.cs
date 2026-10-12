@@ -45,7 +45,9 @@ public class GameServer : Server<GameSession> {
         bannerCache = db.GetBanners().ToImmutableList();
 
         premiumMarketCache = new ConcurrentDictionary<int, PremiumMarketItem>();
-        foreach ((int id, MeretMarketItemMetadata marketItemMetadata) in serverTableMetadataStorage.MeretMarketTable.Entries) {
+        // Parents first: the data lists bulk-quantity children before their parent entry.
+        foreach ((int id, MeretMarketItemMetadata marketItemMetadata) in serverTableMetadataStorage.MeretMarketTable.Entries
+                     .OrderBy(entry => entry.Value.ParentId != 0)) {
             if (marketItemMetadata.ParentId != 0) {
                 if (premiumMarketCache.TryGetValue(marketItemMetadata.ParentId, out PremiumMarketItem? parentItem) &&
                     itemMetadataStorage.TryGet(parentItem.Metadata.ItemId, out ItemMetadata? subItemMetadata)) {

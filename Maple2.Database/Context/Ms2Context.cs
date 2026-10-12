@@ -96,5 +96,13 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
 
         modelBuilder.Entity<DungeonRecord>(Maple2.Database.Model.DungeonRecord.Configure);
         modelBuilder.Entity<Ban>(Maple2.Database.Model.Ban.Configure);
+
+        if (this.IsSqlite()) {
+            SqliteSupport.ApplyConventions(modelBuilder);
+        }
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) {
+        SqliteSupport.Configure(optionsBuilder);
     }
 }

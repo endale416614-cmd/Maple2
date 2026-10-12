@@ -387,7 +387,7 @@ public class AiState {
     }
 
     private void ProcessNode(TargetNode node) {
-        actor.BattleState.TargetNode = node;
+        actor.BattleState.ApplyTargetNode(node);
     }
 
     private void ProcessNode(SayNode node) {

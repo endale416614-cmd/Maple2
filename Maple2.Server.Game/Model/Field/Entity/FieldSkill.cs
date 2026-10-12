@@ -238,7 +238,8 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
             if (FireCount <= 0) {
                 NextTick = long.MaxValue;
             } else {
-                NextTick += Interval;
+                // Keep the cadence, but after a pause (empty field) restart from now instead of firing every tick to catch up.
+                NextTick = Math.Max(NextTick + Interval, Field.FieldTick);
             }
         }
     }

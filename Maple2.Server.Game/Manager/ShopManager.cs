@@ -409,8 +409,8 @@ public sealed class ShopManager {
 
 
     public void Buy(int shopItemId, int quantity) {
-        if (activeShop == null) {
-            return;
+        if (activeShop == null || quantity <= 0) {
+            return; // a negative quantity would make the price negative and pay the buyer
         }
 
         if (!activeShop.Items.TryGetValue(shopItemId, out ShopItem? shopItem)) {
@@ -466,7 +466,12 @@ public sealed class ShopManager {
             return;
         }
 
-        int price = shopItem.Metadata.Cost.SaleAmount > 0 ? shopItem.Metadata.Cost.SaleAmount * quantity : shopItem.Metadata.Cost.Amount * quantity;
+        long totalPrice = (long) (shopItem.Metadata.Cost.SaleAmount > 0 ? shopItem.Metadata.Cost.SaleAmount : shopItem.Metadata.Cost.Amount) * quantity;
+        if (totalPrice < 0 || totalPrice > int.MaxValue) {
+            session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
+            return;
+        }
+        int price = (int) totalPrice;
         if (!Pay(shopItem.Metadata.Cost, price)) {
             return;
         }
@@ -574,7 +579,7 @@ public sealed class ShopManager {
                     return false;
                 }
 
-                session.Currency.Meret -= price;
+                session.Currency.GameMeret -= price;
                 break;
             case ShopCurrencyType.Item:
                 var ingredient = new ItemComponent(cost.ItemId, -1, price, ItemTag.None);

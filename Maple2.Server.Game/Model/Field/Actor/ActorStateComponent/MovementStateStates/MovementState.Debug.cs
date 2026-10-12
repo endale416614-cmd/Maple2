@@ -8,40 +8,16 @@ namespace Maple2.Server.Game.Model.ActorStateComponent;
 public partial class MovementState {
     private class DebugMarker {
         public bool Spawned;
-        public Item ItemData;
-        public FieldItem Item;
         public long NextUpdate = 0;
         public int ObjectId = 0;
-
-        public DebugMarker(FieldItem item, Item itemData) {
-            Item = item;
-            ItemData = itemData;
-        }
     }
     private DebugMarker debugNpc;
     private DebugMarker debugTarget;
     private DebugMarker debugAgent;
 
-    private DebugMarker InitDebugMarker(int itemId, int rarity) {
-        actor.Field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemData);
-
-        if (itemData is null) {
-            throw new InvalidDataException("bad item");
-        }
-
-        Item? item = actor.Field.ItemDrop.CreateItem(itemId, rarity);
-        if (item == null) {
-            throw new InvalidDataException("bad item");
-        }
-
-        FieldItem fieldItem = new FieldItem(actor.Field, 0, item) {
-            FixedPosition = true,
-            ReceiverId = -1,
-            Type = DropType.Player,
-        };
-
-        return new DebugMarker(fieldItem, item);
-    }
+    // The marker items are only shown by the commented-out debug drawing below; creating them (three rolled
+    // items per NPC spawn) was pure overhead.
+    private static DebugMarker InitDebugMarker(int itemId, int rarity) => new();
 
     private void UpdateDebugMarker(Vector3 position, DebugMarker marker, long tickCount) {
         if (tickCount < marker.NextUpdate) {

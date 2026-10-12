@@ -759,7 +759,10 @@ public class InventoryManager {
 
     public void Save(GameStorage.Request db) {
         lock (session.Item) {
-            db.SaveItems(0, delete.ToArray());
+            // Discarded items only need saving once; the list used to be re-saved on every map change.
+            if (delete.Count > 0 && db.SaveItems(0, delete.ToArray())) {
+                delete.Clear();
+            }
             foreach (ItemCollection tab in tabs.Values) {
                 db.SaveItems(session.CharacterId, tab.ToArray());
             }

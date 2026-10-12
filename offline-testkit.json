@@ -1,0 +1,47 @@
+{
+  // Offline edition play-testing kits. Only active with OFFLINE_TESTKIT=true (launcher.ini: TestKit=true).
+  // In game (admin account): /testkit           -> list kits
+  //                          /testkit knight70  -> give the kit
+  // Items listed here ignore level and job limits while the test kit is on (server + client mod offline-testkit).
+  "Kits": {
+    "knight70": {
+      "Description": "Level 70 Knight Fire Prism set, rarity 6, +15",
+      "Rarity": 6,
+      "Enchant": 15,
+      "RollMax": true,
+      "Items": [
+        11301338, // Fire Prism Circlet (Knight)
+        11401141, // Fire Prism Coat (Knight)
+        11501034, // Fire Prism Pants (Knight)
+        11601222, // Fire Prism Gloves (Knight)
+        11701318, // Fire Prism Boots (Knight)
+        13200308, // Fire Prism Longsword
+        14100278, // Fire Prism Shield
+        11800149, // Fire Prism Cape
+        11200105, // Fire Prism Earrings
+        11900127, // Fire Prism Necklace
+        12000116, // Fire Prism Ring
+        12100117  // Fire Prism Belt
+      ]
+    },
+    "striker70": {
+      "Description": "Level 70 Striker Fire Prism set, rarity 6, +15",
+      "Rarity": 6,
+      "Enchant": 15,
+      "RollMax": true,
+      "Items": [
+        11301347, // Fire Prism Circlet (Striker)
+        11401150, // Fire Prism Coat (Striker)
+        11501043, // Fire Prism Pants (Striker)
+        11601231, // Fire Prism Gloves (Striker)
+        11701327, // Fire Prism Boots (Striker)
+        15500225, // Fire Prism Knuckles (two-handed)
+        11800149, // Fire Prism Cape
+        11200105, // Fire Prism Earrings
+        11900127, // Fire Prism Necklace
+        12000116, // Fire Prism Ring
+        12100117  // Fire Prism Belt
+      ]
+    }
+  }
+}

@@ -10,25 +10,25 @@ namespace Maple2.Server.Game.Trigger;
 
 public partial class TriggerContext {
     public void AllocateBattlefieldPoints(int boxId, int points) {
-        DebugLog("[AllocateBattlefieldPoints] boxId:{BoxId}, points:{Points}", boxId, points);
+        if (TraceEnabled) DebugLog("[AllocateBattlefieldPoints] boxId:{BoxId}, points:{Points}", boxId, points);
     }
 
     public void Announce(int type, string content, bool arg3) {
-        DebugLog("[Announce] type:{Type}, content:{Content}", type, content);
+        if (TraceEnabled) DebugLog("[Announce] type:{Type}, content:{Content}", type, content);
     }
 
     public void ChangeBackground(string dds) {
-        DebugLog("[ChangeBackground] dds:{Dds}", dds);
+        if (TraceEnabled) DebugLog("[ChangeBackground] dds:{Dds}", dds);
         Field.SetBackground(dds);
     }
 
     public void EnableLocalCamera(bool enabled) {
-        DebugLog("[EnableLocalCamera] enabled:{Enabled}", enabled);
+        if (TraceEnabled) DebugLog("[EnableLocalCamera] enabled:{Enabled}", enabled);
         Field.AddFieldProperty(new FieldPropertyLocalCamera { Enabled = enabled });
     }
 
     public void LockMyPc(bool isLock) {
-        DebugLog("[LockMyPc] isLock:{IsLock}", isLock);
+        if (TraceEnabled) DebugLog("[LockMyPc] isLock:{IsLock}", isLock);
         if (isLock) {
             Field.AddFieldProperty(new FieldPropertyLockPlayer());
         } else {
@@ -37,12 +37,12 @@ public partial class TriggerContext {
     }
 
     public void SetAmbientLight(Vector3 primary, Vector3 secondary, Vector3 tertiary) {
-        DebugLog("[SetAmbientLight] color:{Color}", primary);
+        if (TraceEnabled) DebugLog("[SetAmbientLight] color:{Color}", primary);
         Field.AddFieldProperty(new FieldPropertyAmbientLight { Color = primary });
     }
 
     public void SetDirectionalLight(Vector3 diffuseColor, Vector3 specularColor) {
-        DebugLog("[SetDirectionalLight] diffuseColor:{DiffuseColor}, specularColor:{SpecularColor}", diffuseColor, specularColor);
+        if (TraceEnabled) DebugLog("[SetDirectionalLight] diffuseColor:{DiffuseColor}, specularColor:{SpecularColor}", diffuseColor, specularColor);
         Field.AddFieldProperty(new FieldPropertyDirectionalLight {
             DiffuseColor = diffuseColor,
             SpecularColor = specularColor,
@@ -50,22 +50,22 @@ public partial class TriggerContext {
     }
 
     public void SetGravity(float gravity) {
-        DebugLog("[SetGravity] gravity:{Gravity}", gravity);
+        if (TraceEnabled) DebugLog("[SetGravity] gravity:{Gravity}", gravity);
         Field.AddFieldProperty(new FieldPropertyGravity(gravity));
     }
 
     public void SetPhotoStudio(bool enabled) {
-        DebugLog("[SetPhotoStudio] enabled:{Enabled}", enabled);
+        if (TraceEnabled) DebugLog("[SetPhotoStudio] enabled:{Enabled}", enabled);
         Field.AddFieldProperty(new FieldPropertyPhotoStudio { Enabled = enabled });
     }
 
     public void UserTagSymbol(string symbol1, string symbol2) {
-        DebugLog("[UserTagSymbol] symbol1:{Symbol1}, symbol2:{Symbol2}", symbol1, symbol2);
+        if (TraceEnabled) DebugLog("[UserTagSymbol] symbol1:{Symbol1}, symbol2:{Symbol2}", symbol1, symbol2);
         Broadcast(FieldPropertyPacket.Add(new FieldPropertyUserTagSymbol { Symbol1 = symbol1, Symbol2 = symbol2 }));
     }
 
     public void VisibleMyPc(bool visible) {
-        DebugLog("[VisibleMyPc] visible:{Visible}", visible);
+        if (TraceEnabled) DebugLog("[VisibleMyPc] visible:{Visible}", visible);
         if (visible) {
             Field.RemoveFieldProperty(FieldProperty.HidePlayer);
         } else {
@@ -74,12 +74,12 @@ public partial class TriggerContext {
     }
 
     public void SetWeather(Weather weather) {
-        DebugLog("[SetWeather] weatherType:{Type}", weather);
+        if (TraceEnabled) DebugLog("[SetWeather] weatherType:{Type}", weather);
         Field.AddFieldProperty(new FieldPropertyWeather { WeatherType = (WeatherType) weather });
     }
 
     public void SightRange(bool enabled, int range, int rangeZ, int border) {
-        DebugLog("[SightRange] enabled:{Enabled}, range:{Range}, rangeZ:{RangeZ}, border:{Border}", enabled, range, rangeZ, border);
+        if (TraceEnabled) DebugLog("[SightRange] enabled:{Enabled}, range:{Range}, rangeZ:{RangeZ}, border:{Border}", enabled, range, rangeZ, border);
         var sightRange = (Field.GetFieldProperty(FieldProperty.SightRange) as FieldPropertySightRange)!;
         for (int i = 0; i < range; i++) {
             sightRange.Fades[i] = rangeZ;
@@ -104,17 +104,17 @@ public partial class TriggerContext {
     }
 
     public void SetLocalCamera(int cameraId, bool enabled) {
-        DebugLog("[SetLocalCamera] cameraId:{Id}, enabled:{Enabled}", cameraId, enabled);
+        if (TraceEnabled) DebugLog("[SetLocalCamera] cameraId:{Id}, enabled:{Enabled}", cameraId, enabled);
         Broadcast(CameraPacket.Local(cameraId, enabled));
     }
 
     public void ResetCamera(float interpolationTime) {
-        DebugLog("[CameraReset] interpolationTime:{Time}", interpolationTime);
+        if (TraceEnabled) DebugLog("[CameraReset] interpolationTime:{Time}", interpolationTime);
         Broadcast(CameraPacket.Interpolate(interpolationTime));
     }
 
     public void SelectCamera(int triggerId, bool enabled) {
-        DebugLog("[CameraSelect] triggerId:{Id}, enabled:{Enabled}", triggerId, enabled);
+        if (TraceEnabled) DebugLog("[CameraSelect] triggerId:{Id}, enabled:{Enabled}", triggerId, enabled);
         if (!Objects.Cameras.TryGetValue(triggerId, out TriggerObjectCamera? camera)) {
             return;
         }
@@ -124,7 +124,7 @@ public partial class TriggerContext {
     }
 
     public void SelectCameraPath(int[] pathIds, bool returnView) {
-        DebugLog("[CameraSelectPath] pathIds:{Ids}, returnView:{ReturnView}", string.Join(", ", pathIds), returnView);
+        if (TraceEnabled) DebugLog("[CameraSelectPath] pathIds:{Ids}, returnView:{ReturnView}", string.Join(", ", pathIds), returnView);
         Broadcast(TriggerPacket.CameraStart(pathIds, returnView));
     }
 
@@ -142,7 +142,7 @@ public partial class TriggerContext {
     }
 
     public void SetAgent(int[] triggerIds, bool visible) {
-        WarnLog("[SetAgent] triggerIds:{Ids}, visible:{Visible}", string.Join(", ", triggerIds), visible);
+        if (TraceEnabled) WarnLog("[SetAgent] triggerIds:{Ids}, visible:{Visible}", string.Join(", ", triggerIds), visible);
         foreach (int triggerId in triggerIds) {
             if (!Objects.Agents.TryGetValue(triggerId, out TriggerObjectAgent? agent)) {
                 continue;
@@ -154,7 +154,7 @@ public partial class TriggerContext {
     }
 
     public void SetBreakable(int[] triggerIds, bool enabled) {
-        DebugLog("[SetBreakable] triggerIds:{Ids}, enabled:{Enabled}", string.Join(", ", triggerIds), enabled);
+        if (TraceEnabled) DebugLog("[SetBreakable] triggerIds:{Ids}, enabled:{Enabled}", string.Join(", ", triggerIds), enabled);
         var updated = new List<FieldBreakable>(triggerIds.Length);
         foreach (int triggerId in triggerIds) {
             if (!Field.TryGetBreakable(triggerId, out FieldBreakable? breakable)) {
@@ -169,7 +169,7 @@ public partial class TriggerContext {
     }
 
     public void SetCube(int[] triggerIds, bool visible, int randomCount) {
-        DebugLog("[SetCube] triggerIds:{Ids}, visible:{Visible}, randomCount:{Count}", string.Join(", ", triggerIds), visible, randomCount);
+        if (TraceEnabled) DebugLog("[SetCube] triggerIds:{Ids}, visible:{Visible}, randomCount:{Count}", string.Join(", ", triggerIds), visible, randomCount);
         int count = triggerIds.Length;
         if (randomCount > 0 && randomCount < triggerIds.Length) {
             count = randomCount;
@@ -190,7 +190,7 @@ public partial class TriggerContext {
     }
 
     public void SetEffect(int[] triggerIds, bool visible, int startDelay, int interval) {
-        DebugLog("[SetEffect] triggerIds:{Ids}, visible:{Visible}, startDelay:{StartDelay}, interval:{Interval}", string.Join(", ", triggerIds), visible, startDelay, interval);
+        if (TraceEnabled) DebugLog("[SetEffect] triggerIds:{Ids}, visible:{Visible}, startDelay:{StartDelay}, interval:{Interval}", string.Join(", ", triggerIds), visible, startDelay, interval);
         foreach (int triggerId in triggerIds) {
             if (!Objects.Effects.TryGetValue(triggerId, out TriggerObjectEffect? effect)) {
                 continue;
@@ -206,7 +206,7 @@ public partial class TriggerContext {
 
     public void SetInteractObject(int[] interactIds, int stateValue, bool arg3, bool arg4) {
         var state = (InteractState) stateValue;
-        DebugLog("[SetInteractObject] interactIds:{Ids}, state:{State}, arg3:{Arg3}, arg4:{Arg4}", string.Join(", ", interactIds), state, arg3, arg4);
+        if (TraceEnabled) DebugLog("[SetInteractObject] interactIds:{Ids}, state:{State}, arg3:{Arg3}, arg4:{Arg4}", string.Join(", ", interactIds), state, arg3, arg4);
         foreach (FieldInteract interact in Field.EnumerateInteract()) {
             if (interactIds.Contains(interact.Value.Id)) {
                 interact.SetState(state);
@@ -237,7 +237,7 @@ public partial class TriggerContext {
 
     // examples: arg3=200, arg4=3
     public void SetMeshAnimation(int[] triggerIds, bool visible, int startDelay, int interval) {
-        DebugLog("[SetMeshAnimation] triggerIds:{Ids}, visible:{Visible}, startDelay:{StartDelay}, interval:{Interval}", string.Join(", ", triggerIds), visible, startDelay, interval);
+        if (TraceEnabled) DebugLog("[SetMeshAnimation] triggerIds:{Ids}, visible:{Visible}, startDelay:{StartDelay}, interval:{Interval}", string.Join(", ", triggerIds), visible, startDelay, interval);
         foreach (int triggerId in triggerIds) {
             if (!Objects.Meshes.TryGetValue(triggerId, out TriggerObjectMesh? mesh)) {
                 continue;
@@ -313,7 +313,7 @@ public partial class TriggerContext {
     }
 
     public void SetSkill(int[] triggerIds, bool enabled) {
-        DebugLog("[SetSkill] triggerIds:{Ids}, enabled:{Enabled}", string.Join(", ", triggerIds), enabled);
+        if (TraceEnabled) DebugLog("[SetSkill] triggerIds:{Ids}, enabled:{Enabled}", string.Join(", ", triggerIds), enabled);
         foreach (int triggerId in triggerIds) {
             if (enabled) {
                 Ms2TriggerSkill? skill = Field.Entities.Trigger.Skills.FirstOrDefault(x => x.TriggerId == triggerId);
@@ -329,7 +329,7 @@ public partial class TriggerContext {
     }
 
     public void SetSound(int triggerId, bool enabled) {
-        DebugLog("[SetSound] triggerId:{Id}, enabled:{Enabled}", triggerId, enabled);
+        if (TraceEnabled) DebugLog("[SetSound] triggerId:{Id}, enabled:{Enabled}", triggerId, enabled);
         if (!Objects.Sounds.TryGetValue(triggerId, out TriggerObjectSound? sound)) {
             return;
         }
@@ -339,7 +339,7 @@ public partial class TriggerContext {
     }
 
     public void SetVisibleBreakableObject(int[] triggerIds, bool visible) {
-        DebugLog("[SetVisibleBreakableObject] triggerIds:{Ids}, visible:{Visible}", string.Join(", ", triggerIds), visible);
+        if (TraceEnabled) DebugLog("[SetVisibleBreakableObject] triggerIds:{Ids}, visible:{Visible}", string.Join(", ", triggerIds), visible);
         var updated = new List<FieldBreakable>(triggerIds.Length);
         foreach (int triggerId in triggerIds) {
             if (!Field.TryGetBreakable(triggerId, out FieldBreakable? breakable)) {
@@ -374,7 +374,7 @@ public partial class TriggerContext {
     }
 
     public void RemoveBuff(int boxId, int buffId, bool ignorePlayer) {
-        DebugLog("[RemoveBuff] boxId:{Id}, buffId:{BuffId}, ignorePlayer:{ignorePlayer}", boxId, buffId, ignorePlayer);
+        if (TraceEnabled) DebugLog("[RemoveBuff] boxId:{Id}, buffId:{BuffId}, ignorePlayer:{ignorePlayer}", boxId, buffId, ignorePlayer);
         if (!ignorePlayer) {
             foreach (IActor player in PlayersInBox(boxId)) {
                 player.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
@@ -387,7 +387,7 @@ public partial class TriggerContext {
     }
 
     public void CreateItem(int[] spawnIds, int triggerId, int itemId, int arg5) {
-        DebugLog("[CreateItem] spawnIds:{Ids}, triggerId:{TriggerId}, itemId:{ItemId}, arg5:{Arg5}", string.Join(", ", spawnIds), triggerId, itemId, arg5);
+        if (TraceEnabled) DebugLog("[CreateItem] spawnIds:{Ids}, triggerId:{TriggerId}, itemId:{ItemId}, arg5:{Arg5}", string.Join(", ", spawnIds), triggerId, itemId, arg5);
 
         foreach (int spawnId in spawnIds) {
             ICollection<Item> items = new List<Item>();
@@ -407,7 +407,7 @@ public partial class TriggerContext {
             }
 
             if (spawn.GlobalDropBoxId > 0) {
-                items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel)).ToList();
+                items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel, Field.ItemDrop.AllDrops)).ToList();
             }
 
             foreach (Item item in items) {
@@ -418,7 +418,7 @@ public partial class TriggerContext {
     }
 
     public void SpawnItemRange(int[] rangeIds, int randomPickCount) {
-        DebugLog("[SpawnItemRange] rangeIds:{Ids}, randomPickCount:{Count}", string.Join(", ", rangeIds), randomPickCount);
+        if (TraceEnabled) DebugLog("[SpawnItemRange] rangeIds:{Ids}, randomPickCount:{Count}", string.Join(", ", rangeIds), randomPickCount);
         Random.Shared.Shuffle(rangeIds);
         int[] pickedIds = rangeIds.Take(randomPickCount).ToArray();
 
@@ -433,7 +433,7 @@ public partial class TriggerContext {
             }
 
             if (spawn.GlobalDropBoxId > 0) {
-                items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel)).ToList();
+                items = items.Concat(Field.ItemDrop.GetGlobalDropItems(spawn.GlobalDropBoxId, spawn.GlobalDropLevel, Field.ItemDrop.AllDrops)).ToList();
             }
 
             foreach (Item item in items) {
@@ -443,14 +443,14 @@ public partial class TriggerContext {
     }
 
     public void StartCombineSpawn(int[] groupIds, bool isStart) {
-        DebugLog("[StartCombineSpawn] groupIds:{Ids}, isStart:{IsStart}", string.Join(", ", groupIds), isStart);
+        if (TraceEnabled) DebugLog("[StartCombineSpawn] groupIds:{Ids}, isStart:{IsStart}", string.Join(", ", groupIds), isStart);
         if (!Field.ServerTableMetadata.CombineSpawnTable.Groups.TryGetValue(Field.MapId, out Dictionary<int, SpawnGroupMetadata>? groupDict)) {
-            ErrorLog("[StartCombineSpawn] No group metadata found for map {MapId}", Field.MapId);
+            if (TraceEnabled) ErrorLog("[StartCombineSpawn] No group metadata found for map {MapId}", Field.MapId);
             return;
         }
         foreach (int groupId in groupIds) {
             if (!groupDict.TryGetValue(groupId, out SpawnGroupMetadata? group)) {
-                ErrorLog("[StartCombineSpawn] No group metadata found for group {GroupId}", groupId);
+                if (TraceEnabled) ErrorLog("[StartCombineSpawn] No group metadata found for group {GroupId}", groupId);
                 continue;
             }
 
@@ -459,7 +459,7 @@ public partial class TriggerContext {
     }
 
     public void SetTimer(string timerId, int seconds, bool autoRemove, bool display, int vOffset, string type, string desc) {
-        DebugLog("[SetTimer] timerId:{Id}, seconds:{Seconds}", timerId, seconds);
+        if (TraceEnabled) DebugLog("[SetTimer] timerId:{Id}, seconds:{Seconds}", timerId, seconds);
         Field.Timers[timerId] = new TickTimer(seconds * 1000, autoRemove, vOffset, display, type);
         if (display) {
             Broadcast(TriggerPacket.TimerDialog(Field.Timers[timerId]));
@@ -467,7 +467,7 @@ public partial class TriggerContext {
     }
 
     public void ResetTimer(string timerId) {
-        DebugLog("[ResetTimer] timerId:{Id}", timerId);
+        if (TraceEnabled) DebugLog("[ResetTimer] timerId:{Id}", timerId);
         if (Field.Timers.TryGetValue(timerId, out TickTimer? timer)) {
             timer.Reset();
             if (timer.Display) {
@@ -477,17 +477,17 @@ public partial class TriggerContext {
     }
 
     public void RoomExpire() {
-        ErrorLog("[RoomExpire]");
+        if (TraceEnabled) ErrorLog("[RoomExpire]");
     }
 
     public void FieldWarEnd(bool isClear) {
-        ErrorLog("[FieldWarEnd] isClear:{IsClear}", isClear);
+        if (TraceEnabled) ErrorLog("[FieldWarEnd] isClear:{IsClear}", isClear);
     }
     #endregion
 
     #region Conditions
     public bool DetectLiftableObject(int[] boxIds, int itemId, bool negate) {
-        DebugLog("[DetectLiftableObject] boxIds:{Ids}, itemId:{ItemId}", string.Join(", ", boxIds), itemId);
+        if (TraceEnabled) DebugLog("[DetectLiftableObject] boxIds:{Ids}, itemId:{ItemId}", string.Join(", ", boxIds), itemId);
 
         if (itemId == 0) {
             return negate;
@@ -510,7 +510,7 @@ public partial class TriggerContext {
 
     public bool ObjectInteracted(int[] interactIds, int stateValue) {
         var state = (InteractState) stateValue;
-        DebugLog("[ObjectInteracted] interactIds:{Ids}, state:{State}", string.Join(", ", interactIds), state);
+        if (TraceEnabled) DebugLog("[ObjectInteracted] interactIds:{Ids}, state:{State}", string.Join(", ", interactIds), state);
         foreach (FieldInteract interact in Field.EnumerateInteract()) {
             if (interactIds.Contains(interact.Value.Id) && interact.State == state) {
                 return true;
@@ -521,12 +521,12 @@ public partial class TriggerContext {
     }
 
     public bool PvpZoneEnded(int boxId) {
-        ErrorLog("[PvpZoneEnded] boxId:{BoxId}", boxId);
+        if (TraceEnabled) ErrorLog("[PvpZoneEnded] boxId:{BoxId}", boxId);
         return false;
     }
 
     public bool TimeExpired(string timerId) {
-        DebugLog("[TimeExpired] timerId:{TimerId}", timerId);
+        if (TraceEnabled) DebugLog("[TimeExpired] timerId:{TimerId}", timerId);
         if (Field.Timers.TryGetValue(timerId, out TickTimer? timer)) {
             return timer.Expired();
         }

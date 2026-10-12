@@ -137,6 +137,17 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                     if (trigger != null) {
                         yield return trigger;
                     }
+                    // A trigger cube can also be an object weapon (e.g. the liftable bombs a trigger shows with
+                    // set_cube) or a liftable. Matching the trigger case first used to drop that second role.
+                    if (triggerObject is IMS2PhysXProp { IsObjectWeapon: true } triggerWeapon) {
+                        yield return new MapEntity(xblock, SecondaryGuid(entity.EntityId, "ObjectWeapon"), entity.EntityName) {
+                            Block = ToObjectWeapon(triggerWeapon),
+                        };
+                    } else if (triggerObject is IMS2Liftable triggerLiftable) {
+                        yield return new MapEntity(xblock, SecondaryGuid(entity.EntityId, "Liftable"), entity.EntityName) {
+                            Block = ToLiftable(triggerLiftable),
+                        };
+                    }
                     continue;
                 case IMS2RegionSkill skill:
                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
@@ -181,16 +192,9 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                     switch (mapProperties) {
                         case IMS2PhysXProp physXProp:
                             if (mapProperties.IsObjectWeapon) {
-                                int[] itemIds = physXProp.ObjectWeaponItemCode.Split(',').Select(int.Parse).ToArray();
-                                if (physXProp.ObjectWeaponSpawnNpcCode == 0) {
-                                    yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new ObjectWeapon(itemIds, (int) physXProp.ObjectWeaponRespawnTick, physXProp.ObjectWeaponActiveDistance, physXProp.Position, physXProp.Rotation),
-                                    };
-                                } else {
-                                    yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new ObjectWeapon(itemIds, (int) physXProp.ObjectWeaponRespawnTick, physXProp.ObjectWeaponActiveDistance, physXProp.Position, physXProp.Rotation, (int) physXProp.ObjectWeaponSpawnNpcCode, (int) physXProp.ObjectWeaponSpawnNpcCount, physXProp.ObjectWeaponSpawnNpcRate, (int) physXProp.ObjectWeaponSpawnNpcLifeTick),
-                                    };
-                                }
+                                yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
+                                    Block = ToObjectWeapon(physXProp),
+                                };
                                 continue;
                             }
 
@@ -202,7 +206,7 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                                     continue;
                                 case IMS2Liftable liftable:
                                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new Liftable((int) liftable.ItemID, liftable.ItemStackCount, liftable.ItemLifeTime, liftable.LiftableRegenCheckTime, liftable.LiftableFinishTime, liftable.MaskQuestID, liftable.MaskQuestState, liftable.EffectQuestID, liftable.EffectQuestState, liftable.IsReactEffect, liftable.Position, liftable.Rotation),
+                                        Block = ToLiftable(liftable),
                                     };
                                     continue;
                                 case IMS2TaxiStation taxiStation:
@@ -308,6 +312,26 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
 
         // Generic MS2TriggerObject
         return null;
+    }
+
+    private static ObjectWeapon ToObjectWeapon(IMS2PhysXProp prop) {
+        int[] itemIds = prop.ObjectWeaponItemCode.Split(',').Select(int.Parse).ToArray();
+        return prop.ObjectWeaponSpawnNpcCode == 0
+            ? new ObjectWeapon(itemIds, (int) prop.ObjectWeaponRespawnTick, prop.ObjectWeaponActiveDistance, prop.Position, prop.Rotation)
+            : new ObjectWeapon(itemIds, (int) prop.ObjectWeaponRespawnTick, prop.ObjectWeaponActiveDistance, prop.Position, prop.Rotation,
+                (int) prop.ObjectWeaponSpawnNpcCode, (int) prop.ObjectWeaponSpawnNpcCount, prop.ObjectWeaponSpawnNpcRate, (int) prop.ObjectWeaponSpawnNpcLifeTick);
+    }
+
+    private static Liftable ToLiftable(IMS2Liftable liftable) {
+        return new Liftable((int) liftable.ItemID, liftable.ItemStackCount, liftable.ItemLifeTime, liftable.LiftableRegenCheckTime,
+            liftable.LiftableFinishTime, liftable.MaskQuestID, liftable.MaskQuestState, liftable.EffectQuestID, liftable.EffectQuestState,
+            liftable.IsReactEffect, liftable.Position, liftable.Rotation);
+    }
+
+    /// <summary>Stable id for the second role of an entity (the table key is xblock + guid).</summary>
+    private static Guid SecondaryGuid(string entityId, string role) {
+        byte[] hash = System.Security.Cryptography.MD5.HashData(System.Text.Encoding.UTF8.GetBytes($"{entityId}:{role}"));
+        return new Guid(hash);
     }
 
     protected override IEnumerable<MapEntity> Map() {

@@ -1,5 +1,6 @@
 ﻿using System.Net;
 using System.Net.Sockets;
+using Maple2.Server.Core.Constants;
 using Autofac;
 using Maple2.Database.Storage;
 using Maple2.Model.Game.Event;
@@ -42,7 +43,7 @@ public abstract class Server<T> : BackgroundService, IHealthCheck where T : Sess
     protected abstract void AddSession(T session);
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken) {
-        var listener = new TcpListener(IPAddress.Any, Port);
+        var listener = new TcpListener(Target.BindIp, Port);
         listener.Start();
         state = ServerState.Running;
 

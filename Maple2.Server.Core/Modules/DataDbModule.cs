@@ -10,21 +10,7 @@ public class DataDbModule : Module {
     private readonly DbContextOptions options;
 
     public DataDbModule() {
-        string? server = Environment.GetEnvironmentVariable("DB_IP");
-        string? port = Environment.GetEnvironmentVariable("DB_PORT");
-        string? database = Environment.GetEnvironmentVariable("DATA_DB_NAME");
-        string? user = Environment.GetEnvironmentVariable("DB_USER");
-        string? password = Environment.GetEnvironmentVariable("DB_PASSWORD");
-
-        if (server == null || port == null || database == null || user == null || password == null) {
-            throw new ArgumentException("Database connection information was not set");
-        }
-
-        string dataDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
-
-        options = new DbContextOptionsBuilder()
-            .UseMySql(dataDbConnection, ServerVersion.AutoDetect(dataDbConnection))
-            .Options;
+        options = DbProvider.Options(DbProvider.DATA_DB);
     }
 
     protected override void Load(ContainerBuilder builder) {
@@ -32,7 +18,7 @@ public class DataDbModule : Module {
         var context = new MetadataContext(options);
 
         // check Ingest has been run
-        if (!context.Database.CanConnect()) {
+        if (!DbProvider.Exists(context, DbProvider.DATA_DB)) {
             throw new Exception("Metadata database not found, did you run Maple2.File.Ingest?");
         }
 

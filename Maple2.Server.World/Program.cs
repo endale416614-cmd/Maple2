@@ -2,6 +2,7 @@
 using System.Net;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Modules;
@@ -33,9 +34,14 @@ Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(configRoot)
     .CreateLogger();
 
+// World starts first; with the embedded database it creates the save file on first launch.
+if (DbProvider.IsSqlite) {
+    DbProvider.EnsureSqliteGameSchema();
+}
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(options => {
-    options.Listen(new IPEndPoint(IPAddress.Any, Target.GrpcWorldPort), listen => {
+    options.Listen(new IPEndPoint(Target.BindIp, Target.GrpcWorldPort), listen => {
         listen.Protocols = HttpProtocols.Http2;
     });
 });

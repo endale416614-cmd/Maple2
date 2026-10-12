@@ -52,6 +52,8 @@ public class RideHandler : FieldPacketHandler {
 
     private void HandleStart(GameSession session, IByteReader packet) {
         if (session.Field == null || !session.Field.Metadata.Limit.Ride || session.Ride.Ride != null) {
+            Logger.Information("[Ride] start refused: map {MapId} allows riding:{Allowed}, already riding:{Riding}",
+                session.Field?.MapId, session.Field?.Metadata.Limit.Ride, session.Ride.Ride != null);
             session.Send(NoticePacket.MessageBox(StringCode.s_action_cant_ride));
             return;
         }
@@ -65,20 +67,26 @@ public class RideHandler : FieldPacketHandler {
         //var ugc = packet.ReadClass<UgcItemLook>();
 
         if (type != RideOnType.Default) {
+            Logger.Warning("[Ride] start ignored: unsupported ride type {Type} for ride {RideId} item {ItemUid}", type, rideId, itemUid);
             return;
         }
 
         Item? item = session.Item.Inventory.Get(itemUid, InventoryType.Mount);
         if (item == null) {
+            Logger.Warning("[Ride] start refused: item {ItemUid} (ride {RideId}) not in the mount inventory", itemUid, rideId);
             session.Send(NoticePacket.MessageBox(StringCode.s_item_invalid_do_not_have));
             return;
         }
         if (item.IsExpired() || item.Metadata.Property.Ride != rideId) {
+            Logger.Warning("[Ride] start refused: item {ItemId} expired:{Expired} rides {ItemRide}, client asked {RideId}",
+                item.Id, item.IsExpired(), item.Metadata.Property.Ride, rideId);
             session.Send(NoticePacket.MessageBox(StringCode.s_item_invalid_function_item));
             return;
         }
 
-        session.Ride.Mount(item);
+        if (!session.Ride.Mount(item)) {
+            Logger.Warning("[Ride] start failed: item {ItemId} ride {RideId}", item.Id, rideId);
+        }
     }
 
     private void HandleStop(GameSession session, IByteReader packet) {

@@ -144,8 +144,9 @@ public partial class GameStorage {
         }
 
         public IEnumerable<WeddingHall> GetWeddingHalls() {
+            DateTime now = DateTime.Now;
             List<Model.WeddingHall> entries = Context.WeddingHall
-                .Where(hall => hall.CeremonyTime > DateTime.Now)
+                .Where(hall => hall.CeremonyTime > now)
                 .AsEnumerable()
                 .ToList();
 

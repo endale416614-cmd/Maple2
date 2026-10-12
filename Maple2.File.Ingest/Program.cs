@@ -24,14 +24,51 @@ Console.OutputEncoding = System.Text.Encoding.UTF8;
 
 bool runNavmesh = false;
 bool dropData = false;
+bool copyGameFromMySql = false;
+string? copyGameFromSqlite = null;
+string? rebuildDataFromSqlite = null;
+string? dumpXml = null;
+string? probeXBlock = null;
+string? exportedOverride = null;
+bool mapEntitiesOnly = false;
+bool listOnly = false;
+var dumpArchives = new List<string>();
 
-foreach (string arg in args) {
+for (int i = 0; i < args.Length; i++) {
+    string arg = args[i];
     switch (arg) {
         case "--run-navmesh":
             runNavmesh = true;
             break;
         case "--drop-data":
             dropData = true;
+            break;
+        case "--copy-game-from-mysql":
+            copyGameFromMySql = true;
+            break;
+        case "--copy-game-from-sqlite" when i + 1 < args.Length:
+            copyGameFromSqlite = args[++i];
+            break;
+        case "--rebuild-data-from-sqlite" when i + 1 < args.Length:
+            rebuildDataFromSqlite = args[++i];
+            break;
+        case "--dump-xml" when i + 1 < args.Length:
+            dumpXml = args[++i];
+            break;
+        case "--probe-xblock" when i + 1 < args.Length:
+            probeXBlock = args[++i].ToLower();
+            break;
+        case "--exported" when i + 1 < args.Length:
+            exportedOverride = args[++i];
+            break;
+        case "--map-entities-only":
+            mapEntitiesOnly = true;
+            break;
+        case "--list" :
+            listOnly = true;
+            break;
+        case "--archive" when i + 1 < args.Length:
+            dumpArchives.Add(args[++i]);
             break;
     }
 }
@@ -40,6 +77,19 @@ foreach (string arg in args) {
 CultureInfo.CurrentCulture = new CultureInfo("en-US");
 
 DotEnv.Load();
+
+if (copyGameFromMySql) {
+    GameDataCopier.CopyFromMySql();
+    return;
+}
+if (copyGameFromSqlite != null) {
+    GameDataCopier.CopyFromSqlite(copyGameFromSqlite);
+    return;
+}
+if (rebuildDataFromSqlite != null) {
+    GameDataCopier.RebuildDataFromSqlite(rebuildDataFromSqlite);
+    return;
+}
 
 string? languageEnv = Environment.GetEnvironmentVariable("LANGUAGE");
 if (languageEnv == null) {
@@ -69,16 +119,45 @@ if (!File.Exists(serverPath)) {
                                     "You can download this file from here: https://github.com/Zintixx/MapleStory2-XML/releases/latest");
 }
 
-string? server = Environment.GetEnvironmentVariable("DB_IP");
-string? port = Environment.GetEnvironmentVariable("DB_PORT");
-string? database = Environment.GetEnvironmentVariable("DATA_DB_NAME");
-string? user = Environment.GetEnvironmentVariable("DB_USER");
-string? password = Environment.GetEnvironmentVariable("DB_PASSWORD");
-
-if (server == null || port == null || database == null || user == null || password == null) {
-    throw new ArgumentException("Database connection information was not set");
+// Prints the original XML of matching files from Xml.m2d / Server.m2d (research aid, read-only).
+// --list prints only the names; --archive <path> (repeatable) reads other archives, e.g. the client's own Xml.m2d.
+if (dumpXml != null) {
+    foreach (string archive in dumpArchives.Count > 0 ? dumpArchives : [xmlPath, serverPath]) {
+        using var reader = new M2dReader(archive);
+        foreach (var entry in reader.Files.Where(file => file.Name.Contains(dumpXml, StringComparison.OrdinalIgnoreCase))) {
+            Console.WriteLine($"===== {Path.GetFileName(archive)}:{entry.Name}");
+            if (!listOnly) {
+                Console.WriteLine(reader.GetString(entry));
+            }
+        }
+    }
+    return;
 }
 
+// Lists every map entity of one xblock with its parser type and interfaces (research aid, read-only).
+if (probeXBlock != null) {
+    using var probeReader = new M2dReader(exportedOverride ?? exportedPath);
+    var probeParser = new XBlockParser(probeReader, new FlatTypeIndex(probeReader));
+    foreach (var map in probeParser.Parallel().Where(map => map.xblock.ToLower() == probeXBlock)) {
+        foreach (var entity in map.entities) {
+            string interfaces = string.Join(",", entity.GetType().GetInterfaces().Select(type => type.Name).Where(name => name.StartsWith("IMS2")).OrderBy(name => name));
+            string detail = entity switch {
+                Maple2.File.Flat.maplestory2library.IMS2Liftable liftable => $" ItemID={liftable.ItemID} Stack={liftable.ItemStackCount} Life={liftable.ItemLifeTime}",
+                _ => "",
+            };
+            if (entity is Maple2.File.Flat.maplestory2library.IMS2MapProperties { IsObjectWeapon: true } && entity is Maple2.File.Flat.maplestory2library.IMS2PhysXProp weapon) {
+                detail += $" ObjectWeapon={weapon.ObjectWeaponItemCode}";
+            }
+            Console.WriteLine($"{entity.EntityName} | {entity.GetType().Name} | {interfaces}{detail}");
+        }
+    }
+    return;
+}
+
+if (DbProvider.IsSqlite) {
+    Console.WriteLine("Creating embedded game database...");
+    DbProvider.EnsureSqliteGameSchema();
+} else {
 string worldServerDir = Path.Combine(Paths.SOLUTION_DIR, "Maple2.Server.World");
 
 bool isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
@@ -146,15 +225,34 @@ if (process.ExitCode != 0) {
 }
 
 Console.WriteLine("Game Migration complete!");
+}
+
+// Re-imports only the map-entity table (fast; --exported lets it read a copy while the game is running).
+if (mapEntitiesOnly) {
+    using var entityContext = new MetadataContext(DbProvider.Options(DbProvider.DATA_DB));
+    using var entityReader = new M2dReader(exportedOverride ?? exportedPath);
+    // Spawn points are kept only for known NPCs; a full ingest fills this from NpcMapper, here it comes from the database.
+    foreach (Maple2.Model.Metadata.NpcMetadata npc in entityContext.NpcMetadata.AsNoTracking()) {
+        NpcMapper.NpcMetadataById[npc.Id] = npc;
+    }
+    // Portals and other entities are filtered by feature/locale like in a full ingest.
+    using (var featureReader = new M2dReader(xmlPath)) {
+        Filter.Load(featureReader, locale, env);
+    }
+    if (NpcMapper.NpcMetadataById.Count == 0) {
+        Console.WriteLine("No NPC metadata in the database; refusing to re-import map entities (spawn points would be dropped).");
+        return;
+    }
+    UpdateDatabase(entityContext, new MapEntityMapper(entityContext, new XBlockParser(entityReader, new FlatTypeIndex(entityReader))));
+    Console.WriteLine("Map entities re-imported.");
+    return;
+}
 
 using var xmlReader = new M2dReader(xmlPath);
 using var exportedReader = new M2dReader(exportedPath);
 using var serverReader = new M2dReader(serverPath);
 
-string dataDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
-
-DbContextOptions options = new DbContextOptionsBuilder()
-    .UseMySql(dataDbConnection, ServerVersion.AutoDetect(dataDbConnection)).Options;
+DbContextOptions options = DbProvider.Options(DbProvider.DATA_DB);
 
 Console.WriteLine("Connecting to metadata database...");
 using var metadataContext = new MetadataContext(options);
@@ -168,7 +266,9 @@ if (dropData || schemaChanged) {
 }
 Console.WriteLine("Ensuring metadata database is created...");
 metadataContext.Database.EnsureCreated();
-metadataContext.Database.ExecuteSqlRaw(@"SET GLOBAL max_allowed_packet=268435456"); // 256MB
+if (!DbProvider.IsSqlite) {
+    metadataContext.Database.ExecuteSqlRaw(@"SET GLOBAL max_allowed_packet=268435456"); // 256MB
+}
 
 // Store schema version after creation
 SchemaVersionManager.StoreSchemaVersion(metadataContext);

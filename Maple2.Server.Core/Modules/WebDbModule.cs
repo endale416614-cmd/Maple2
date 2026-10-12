@@ -1,5 +1,6 @@
 ﻿using System.Reflection;
 using Autofac;
+using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Microsoft.EntityFrameworkCore;
 using Module = Autofac.Module;
@@ -12,21 +13,7 @@ public class WebDbModule : Module {
     private readonly DbContextOptions options;
 
     public WebDbModule() {
-        string? server = Environment.GetEnvironmentVariable("DB_IP");
-        string? port = Environment.GetEnvironmentVariable("DB_PORT");
-        string? database = Environment.GetEnvironmentVariable("GAME_DB_NAME");
-        string? user = Environment.GetEnvironmentVariable("DB_USER");
-        string? password = Environment.GetEnvironmentVariable("DB_PASSWORD");
-
-        if (server == null || port == null || database == null || user == null || password == null) {
-            throw new ArgumentException("Database connection information was not set");
-        }
-
-        string gameDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
-
-        options = new DbContextOptionsBuilder()
-            .UseMySql(gameDbConnection, ServerVersion.AutoDetect(gameDbConnection))
-            .Options;
+        options = DbProvider.Options(DbProvider.GAME_DB);
     }
 
     protected override void Load(ContainerBuilder builder) {

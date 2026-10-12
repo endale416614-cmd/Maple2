@@ -125,8 +125,10 @@ public partial class GameStorage {
 
         public List<PlotInfo> GetPlotsToExpire() {
             // Get all plots with expiry time <= now and owner >= 0 (not unowned or pending).
+            // Captured as a parameter: SQLite cannot translate DateTimeOffset.UtcNow.
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             List<UgcMap> expired = Context.UgcMap
-                .Where(map => map.OwnerId >= 0 && map.ExpiryTime <= DateTimeOffset.UtcNow && map.ExpiryTime > DateTimeOffset.MinValue && !map.Indoor)
+                .Where(map => map.OwnerId >= 0 && map.ExpiryTime <= now && map.ExpiryTime > DateTimeOffset.MinValue && !map.Indoor)
                 .ToList();
 
             return expired.Select(ToPlotInfo).Where(p => p != null).ToList()!;

@@ -12,6 +12,9 @@ public class WorldMapGraphStorageTest {
     private WorldMapGraphStorage? worldMapGraphStorage;
 
     private static bool IsDatabaseConfigured() {
+        if (DbProvider.IsSqlite) {
+            return System.IO.File.Exists(DbProvider.SqlitePath(DbProvider.DATA_DB));
+        }
         return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_IP")) &&
                !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DB_PORT")) &&
                !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATA_DB_NAME")) &&
@@ -40,19 +43,7 @@ public class WorldMapGraphStorageTest {
             return;
         }
 
-        string? server = Environment.GetEnvironmentVariable("DB_IP");
-        string? port = Environment.GetEnvironmentVariable("DB_PORT");
-        string? database = Environment.GetEnvironmentVariable("DATA_DB_NAME");
-        string? user = Environment.GetEnvironmentVariable("DB_USER");
-        string? password = Environment.GetEnvironmentVariable("DB_PASSWORD");
-
-        if (server == null || port == null || database == null || user == null || password == null) {
-            throw new ArgumentException("Database connection information was not set");
-        }
-
-        string dataDbConnection = $"Server={server};Port={port};Database={database};User={user};Password={password};oldguids=true";
-        DbContextOptions options = new DbContextOptionsBuilder()
-            .UseMySql(dataDbConnection, ServerVersion.AutoDetect(dataDbConnection)).Options;
+        DbContextOptions options = DbProvider.Options(DbProvider.DATA_DB);
 
         var context = new MetadataContext(options);
         context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
