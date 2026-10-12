@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using static Maple2.Model.Metadata.AiMetadata;
 
 namespace Maple2.Server.Game.Model.ActorStateComponent;
@@ -109,6 +110,17 @@ public class BattleState {
             Target = next;
             actor.AppendDebugMessage($"Retarget '{GetTargetName()}'\n");
         }
+    }
+
+    /// <summary>
+    /// A monster busy with an ally, barrier or gate turns on the player who hits it, so players can defend them.
+    /// </summary>
+    public void Provoke(IActor attacker) {
+        if (!CanBattle || KeepBattle || Target is not FieldNpc || attacker.IsDead) {
+            return;
+        }
+        Target = attacker;
+        actor.AppendDebugMessage($"Provoked by '{GetTargetName()}'\n");
     }
 
     /// <summary>Whether a target is still close enough to keep chasing (the NPC's "last sight").</summary>
@@ -238,7 +250,7 @@ public class BattleState {
         }
 
 
-        if (target is null) {
+        if (target is null || target is FieldNpc { IsDead: true }) {
             return false;
         }
 
@@ -278,10 +290,35 @@ public class BattleState {
             candidates = new List<(float, IActor)>();
         }
 
+        // Without a target node every actor in sight matches; take the nearest (players and NPCs are both candidates now).
+        float nearestSquared = float.MaxValue;
+        void Consider(IActor candidate) {
+            if (!ShouldTargetActor(candidate, sightSquared, sightHeightUp, sightHeightDown, ref nextTargetDistance, candidates)) {
+                return;
+            }
+            if (TargetNode is null) {
+                float distanceSquared = (candidate.Position - actor.Position).LengthSquared();
+                if (distanceSquared >= nearestSquared) {
+                    return;
+                }
+                nearestSquared = distanceSquared;
+            }
+            nextTarget = candidate;
+        }
+
         if (friendlyType == 0) {
             foreach (FieldPlayer player in actor.Field.Players.Values) {
-                if (ShouldTargetActor(player, sightSquared, sightHeightUp, sightHeightDown, ref nextTargetDistance, candidates)) {
-                    nextTarget = player;
+                Consider(player);
+            }
+
+            // Monsters also go for the allies, guards, barriers and gates their attack group may hit (original
+            // AttackGroup/DefenseGroup rule): defence maps such as Cusp of Life are lost when monsters break the barrier.
+            NpcMetadataBasic self = actor.Value.Metadata.Basic;
+            if (self.Friendly == 0) {
+                foreach (FieldNpc npc in actor.Field.Npcs.Values) {
+                    if (!npc.IsDead && CombatGroups.MonsterCanAttack(self, npc.Value.Metadata.Basic)) {
+                        Consider(npc);
+                    }
                 }
             }
         }
@@ -294,9 +331,7 @@ public class BattleState {
                     continue;
                 }
 
-                if (ShouldTargetActor(npc, sightSquared, sightHeightUp, sightHeightDown, ref nextTargetDistance, candidates)) {
-                    nextTarget = npc;
-                }
+                Consider(npc);
             }
         }
 
