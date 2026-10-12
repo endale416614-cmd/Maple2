@@ -670,8 +670,11 @@ public partial class FieldManager {
                     // Friendly NPC attacks hit monsters, not players.
                     return prisms.Filter(Mobs.Values, limit, ignore);
                 }
-                if (caster is FieldNpc) {
-                    return prisms.Filter(Players.Values, limit, ignore);
+                if (caster is FieldNpc monster) {
+                    // Monster attacks also hit the allies, guards, barriers and gates their attack group may hit.
+                    NpcMetadataBasic attacker = monster.Value.Metadata.Basic;
+                    return prisms.Filter(Players.Values.Concat<IActor>(Npcs.Values.Where(npc =>
+                        !npc.IsDead && CombatGroups.MonsterCanAttack(attacker, npc.Value.Metadata.Basic))), limit, ignore);
                 } else if (caster is FieldPlayer) {
                     //TODO Include other players if PVP is Active
                     return prisms.Filter(Mobs.Values, limit, ignore);

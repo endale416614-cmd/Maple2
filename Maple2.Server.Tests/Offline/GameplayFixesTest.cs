@@ -178,8 +178,27 @@ public class GameplayFixesTest {
         Assert.That(ShopManager.TryPayToken(ShopCurrencyType.Meso, 1, _ => 100, (_, _) => Assert.Fail("not a token")), Is.False);
     }
 
-    private static NpcMetadataBasic Basic(int friendly) =>
-        new(friendly, 0, 0, 0, 0, 0, 0, 36, 1, false, 0, 0, 0, 36, [], [], 0);
+    private static NpcMetadataBasic Basic(int friendly, int attackGroup = 0, int defenseGroup = 0) =>
+        new(friendly, attackGroup, defenseGroup, 0, 0, 0, 0, 36, 1, false, 0, 0, 0, 36, [], [], 0);
+
+    // Real NPC data (Friendly, AttackGroup, DefenseGroup): monsters attack allies, barriers and gates, not story NPCs or cannons.
+    [Test]
+    public void CombatGroups_MonstersAttackAlliesBarriersAndGates_Only() {
+        NpcMetadataBasic pipeZombie = Basic(0, 1, 2);      // 24000206, Cusp of Life wave monster
+        NpcMetadataBasic portalBarrier = Basic(1, 2, 1);   // 24000201, spawn 99
+        NpcMetadataBasic gate = Basic(1, 2, 1);            // 24000208
+        NpcMetadataBasic cannon = Basic(1, 2, 4);          // 24000217
+        NpcMetadataBasic katvan = Basic(2, 2, 1);          // 11000044, story NPC
+        NpcMetadataBasic teamCannon = Basic(201, 2, 4);    // 26000001, PvP
+
+        Assert.That(CombatGroups.MonsterCanAttack(pipeZombie, portalBarrier), Is.True);
+        Assert.That(CombatGroups.MonsterCanAttack(pipeZombie, gate), Is.True);
+        Assert.That(CombatGroups.MonsterCanAttack(pipeZombie, cannon), Is.False, "defense group 4");
+        Assert.That(CombatGroups.MonsterCanAttack(pipeZombie, katvan), Is.False, "story NPC");
+        Assert.That(CombatGroups.MonsterCanAttack(pipeZombie, teamCannon), Is.False);
+        Assert.That(CombatGroups.MonsterCanAttack(portalBarrier, gate), Is.False, "an ally is not a monster");
+        Assert.That(CombatGroups.MonsterCanAttack(Basic(0, 0, 0), portalBarrier), Is.False, "skill dummy without attack group");
+    }
 
     // Cusp of Life (dungeon 21002001, map 02000066) failed as soon as wave 1 started: monster_dead 99 only searched Mobs,
     // but its Portal Barrier 24000201 is a friendly NPC (Friendly 1) kept in Npcs.

@@ -406,6 +406,9 @@ public class FieldNpc : Actor<Npc> {
         if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 }) {
             HitByFriendlyNpc = true;
         }
+        if (caster is FieldPlayer && Value.Metadata.Basic.Friendly == 0) {
+            BattleState.Provoke(caster);
+        }
         base.ApplyDamage(caster, damage, attack);
     }
 
