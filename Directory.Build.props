@@ -1,0 +1,7 @@
+<Project>
+  <!-- Release builds record source paths relative to the repo (CallerFilePath in logs, stack traces),
+       not the folders of the PC that built them. Debug keeps full paths for local debugging. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <PathMap>$(MSBuildThisFileDirectory)=Maple2</PathMap>
+  </PropertyGroup>
+</Project>
