@@ -214,6 +214,17 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
+            case ConditionType.item_exist:
+                // Target is the map the item has to be obtained in (e.g. quest 50100050: item 30001151 in map 2000182),
+                // matched exactly like the npc kill condition passes Field.MapId as the target.
+                if (target.Range != null && InRange(target.Range.Value, (int) longValue)) {
+                    return true;
+                }
+
+                if (target.Integers != null && target.Integers.Contains((int) longValue)) {
+                    return true;
+                }
+                break;
             case ConditionType.gemstone_upgrade:
             case ConditionType.socket_unlock:
             case ConditionType.level_up:
