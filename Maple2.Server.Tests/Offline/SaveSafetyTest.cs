@@ -281,6 +281,32 @@ public class SaveSafetyTest {
         JsonElement ReadStatus() => JsonDocument.Parse(File.ReadAllText(statusFile!)).RootElement;
     }
 
+    [Test]
+    public void SaveStatus_MigratedSessionResult_NeverHidesTheNextSessionsPendingSave() {
+        statusFile = Path.Combine(Path.GetTempPath(), $"offline-save-status-{Guid.NewGuid():N}", "save-status.json");
+        Environment.SetEnvironmentVariable("OFFLINE_SAVE_STATUS_FILE", statusFile);
+        const long characterId = 9001;
+
+        // Client closed while changing map: the migrated session's save result is the final word.
+        long first = OfflineSaveStatus.NewSession();
+        OfflineSaveStatus.Write(characterId, 22, OfflineSaveStatus.Active, null, first);
+        OfflineSaveStatus.Write(characterId, 22, OfflineSaveStatus.Committed, null, first);
+        Assert.That(Result(), Is.EqualTo("committed"));
+
+        // Normal map change: the next session enters the world before the old one finishes; the old result is skipped.
+        long second = OfflineSaveStatus.NewSession();
+        long third = OfflineSaveStatus.NewSession();
+        OfflineSaveStatus.Write(characterId, 22, OfflineSaveStatus.Active, null, second);
+        OfflineSaveStatus.Write(characterId, 22, OfflineSaveStatus.Active, null, third);
+        OfflineSaveStatus.Write(characterId, 22, OfflineSaveStatus.Committed, null, second);
+        Assert.That(Result(), Is.EqualTo("active"));
+
+        OfflineSaveStatus.Write(characterId, 22, OfflineSaveStatus.Failed, "boom", third);
+        Assert.That(Result(), Is.EqualTo("failed"));
+
+        string? Result() => JsonDocument.Parse(File.ReadAllText(statusFile!)).RootElement.GetProperty("result").GetString();
+    }
+
     // Inserted with SQL because SQLite cannot auto-generate the Id of the composite (ReceiverId, Id) mail key.
     private Mail CreateMail(long meso) {
         const long mailId = 77;

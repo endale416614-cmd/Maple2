@@ -28,6 +28,8 @@ public abstract class Session : IDisposable {
 
     // Send timeout to prevent indefinite blocking (in milliseconds)
     private const int SEND_TIMEOUT_MS = 5000;
+    // How long a closing connection waits for the client to close its side before it is reset
+    private const int CLOSE_DRAIN_TIMEOUT_MS = 3000;
 
     public SessionState State { get; set; }
 
@@ -36,6 +38,7 @@ public abstract class Session : IDisposable {
     public Action? OnLoop;
 
     private bool disposed;
+    private int clientClosing;
     private int disconnecting; // 0 = not disconnecting, 1 = disconnect in progress/already triggered (reentrancy guard)
     private volatile bool sendFailed; // set on first SendRaw failure to stop send queue drain
     private readonly uint siv;
@@ -398,10 +401,48 @@ public abstract class Session : IDisposable {
         return packet;
     }
 
+    // Graceful close. Closing the socket right away resets the connection (linger 0, or client data not read yet), and a
+    // reset makes the client throw away packets it has received but not read yet - e.g. the GameToGame packet sent just
+    // before a migration Disconnect, which left the client stuck with "connection aborted" (10053) instead of moving map.
+    // So: send FIN after the queued bytes, read and drop whatever the client still sends until it closes its side (or the
+    // timeout), then close. The final close may still reset, but only once the client is done with the connection.
     private void CloseClient() {
-        // Must close socket before network stream to prevent lingering
-        client.Client?.Close();
-        client.Close();
+        if (Interlocked.Exchange(ref clientClosing, 1) == 1) return;
+
+        Socket? socket = client.Client;
+        try {
+            socket?.Shutdown(SocketShutdown.Send);
+        } catch (Exception) {
+            CloseClientNow(); // already reset or closed
+            return;
+        }
+        if (socket == null) {
+            CloseClientNow();
+            return;
+        }
+        _ = DrainAndCloseClient(socket);
+    }
+
+    private async Task DrainAndCloseClient(Socket socket) {
+        try {
+            using var timeout = new CancellationTokenSource(CLOSE_DRAIN_TIMEOUT_MS);
+            byte[] buffer = new byte[1024];
+            while (await socket.ReceiveAsync(buffer, SocketFlags.None, timeout.Token) > 0) { }
+        } catch (Exception) {
+            // timeout, reset or already closed: close now
+        } finally {
+            CloseClientNow();
+        }
+    }
+
+    private void CloseClientNow() {
+        try {
+            // Must close socket before network stream to prevent lingering
+            client.Client?.Close();
+            client.Close();
+        } catch (Exception ex) {
+            Logger.Debug(ex, "CloseClient failed");
+        }
     }
 
     private void LogSend(byte[] packet, int length) {

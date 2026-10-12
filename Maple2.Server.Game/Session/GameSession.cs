@@ -53,6 +53,7 @@ public sealed partial class GameSession : Core.Network.Session {
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
     private bool activeStatusWritten;
+    private long statusSession;
     private string? lastSaveError;
 
     #region Autofac Autowired
@@ -465,7 +466,8 @@ public sealed partial class GameSession : Core.Network.Session {
         // Tell the offline launcher the character is in the world, so a later missing "committed" means the save is pending.
         if (!activeStatusWritten) {
             activeStatusWritten = true;
-            OfflineSaveStatus.Write(CharacterId, AccountId, OfflineSaveStatus.Active, null);
+            statusSession = OfflineSaveStatus.NewSession();
+            OfflineSaveStatus.Write(CharacterId, AccountId, OfflineSaveStatus.Active, null, statusSession);
         }
 
         PlayerInfo.SendUpdate(new PlayerUpdateRequest {
@@ -839,10 +841,12 @@ public sealed partial class GameSession : Core.Network.Session {
             leaveError = ex.Message;
             Logger.Error(ex, "Error during session cleanup for {Player}", PlayerName);
         } finally {
-            if (leavingGame) {
+            // Also after a migration: if the client never reaches the next session (closed or crashed while changing
+            // map), this is the last word on the save, and "active" would leave the launcher waiting for a save that is done.
+            if (leavingGame || activeStatusWritten) {
                 OfflineSaveStatus.Write(CharacterId, AccountId,
                     leaveSaved ? OfflineSaveStatus.Committed : OfflineSaveStatus.Failed,
-                    leaveSaved ? null : leaveError ?? lastSaveError ?? "Save did not complete");
+                    leaveSaved ? null : leaveError ?? lastSaveError ?? "Save did not complete", statusSession);
             }
 
             SafeDispose(Guild);
