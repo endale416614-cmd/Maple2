@@ -192,6 +192,33 @@ public class OfflineEditionTest {
     }
 
     [Test]
+    public void SaveUpgrade_AddsMissingTablesAndColumns() {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        DbContextOptions options = new DbContextOptionsBuilder().UseSqlite(connection).Options;
+        using var context = new Ms2Context(options);
+        context.Database.EnsureCreated();
+
+        // Simulate a save written by an older version: one table and one column are missing.
+        context.Database.ExecuteSqlRaw("DROP TABLE \"mail\"");
+        context.Database.ExecuteSqlRaw("ALTER TABLE \"account\" DROP COLUMN \"PremiumTime\"");
+        int tablesBefore = TableCount(connection);
+
+        IReadOnlyList<string> applied = DbProvider.UpgradeSqliteSchema(context);
+
+        Assert.That(applied, Does.Contain("table mail"));
+        Assert.That(applied, Does.Contain("column account.PremiumTime"));
+        Assert.That(TableCount(connection), Is.EqualTo(tablesBefore + 1));
+        Assert.That(DbProvider.UpgradeSqliteSchema(context), Is.Empty, "running it again changes nothing");
+
+        static int TableCount(SqliteConnection connection) {
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'";
+            return Convert.ToInt32(command.ExecuteScalar());
+        }
+    }
+
+    [Test]
     public void Sqlite_TextLookupsIgnoreCaseLikeMySql() {
         using var connection = new SqliteConnection("Data Source=:memory:");
         connection.Open();
