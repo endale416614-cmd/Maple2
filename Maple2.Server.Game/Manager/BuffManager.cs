@@ -76,6 +76,12 @@ public class BuffManager : IUpdatable {
             return;
         }
 
+        // Offline cheat /godmode: monsters cannot debuff the player (stuns, slows, poisons...).
+        if (owner is FieldPlayer { GodMode: true } && caster is FieldNpc { Value.Metadata.Basic.Friendly: 0 }
+            && additionalEffect.Property.Type is BuffType.Debuff or BuffType.Debuff2) {
+            return;
+        }
+
         if (type != EventConditionType.Activate && CooldownTimes.TryGetValue(id, out long cooldownTick) && startTick < cooldownTick) {
             return;
         }
