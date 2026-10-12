@@ -68,6 +68,9 @@ public class QuestHandler : FieldPacketHandler {
             case Command.GoToDungeon:
                 HandleGoToDungeon(session, packet);
                 break;
+            case Command.ResumeDungeon:
+                HandleResumeDungeon(session, packet);
+                break;
             case Command.SkyFortress:
                 HandleSkyFortressTeleport(session);
                 break;
@@ -205,6 +208,41 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         session.Dungeon.CreateDungeonRoom(quest.Metadata.GoToDungeon.MapId, false);
+    }
+
+    /// <summary>
+    /// "Resume" on an epic quest whose story map is a private instance (e.g. Bastei Peak 2000313 for 10003105):
+    /// takes the player back to that map, entering where the quest's own dialogue sent them.
+    /// </summary>
+    private void HandleResumeDungeon(GameSession session, IByteReader packet) {
+        int questId = packet.ReadInt();
+
+        if (!session.Quest.TryGetQuest(questId, out Quest? quest) || quest.State != QuestState.Started) {
+            Logger.Warning("Resume for quest {QuestId} that is not in progress", questId);
+            return;
+        }
+
+        if (quest.Metadata.GoToDungeon.MapId != 0) {
+            session.Dungeon.CreateDungeonRoom(quest.Metadata.GoToDungeon.MapId, false);
+            return;
+        }
+
+        int mapId = quest.Metadata.Basic.ProgressMaps?.FirstOrDefault(id => ServerTableMetadata.InstanceFieldTable.Entries.ContainsKey(id)) ?? 0;
+        if (mapId == 0 || mapId == session.Field?.MapId) {
+            Logger.Warning("Resume for quest {QuestId}: no instanced progress map to return to", questId);
+            return;
+        }
+
+        int portalId = -1;
+        if (ServerTableMetadata.ScriptFunctionTable.Entries.TryGetValue(questId, out Dictionary<int, Dictionary<int, ScriptFunctionMetadata>>? scripts)) {
+            ScriptFunctionMetadata? move = scripts.Values.SelectMany(functions => functions.Values)
+                .FirstOrDefault(function => function.MoveMapId == mapId && function.MovePortalId > 0);
+            portalId = move?.MovePortalId ?? -1;
+        }
+
+        session.Send(session.PrepareField(mapId, portalId: portalId)
+            ? FieldEnterPacket.Request(session.Player)
+            : FieldEnterPacket.Error(MigrationError.s_move_err_default));
     }
 
     private void HandleMapleGuide(GameSession session, IByteReader packet) {
