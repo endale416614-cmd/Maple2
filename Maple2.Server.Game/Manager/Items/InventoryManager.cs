@@ -9,6 +9,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 using static Maple2.Model.Error.ItemInventoryError;
@@ -564,7 +565,8 @@ public class InventoryManager {
                 return false;
             }
 
-            if (session.Currency.Meret < Constants.InventoryExpandPrice1Row) {
+            bool free = OfflineCheats.IsFreebies(session.CharacterId);
+            if (!free && session.Currency.Meret < Constants.InventoryExpandPrice1Row) {
                 session.Send(ItemInventoryPacket.Error(s_cannot_charge_merat));
                 return false;
             }
@@ -573,7 +575,9 @@ public class InventoryManager {
                 return false;
             }
 
-            session.Currency.Meret -= Constants.InventoryExpandPrice1Row;
+            if (!free) {
+                session.Currency.Meret -= Constants.InventoryExpandPrice1Row;
+            }
             if (session.Player.Value.Unlock.Expand.ContainsKey(type)) {
                 session.Player.Value.Unlock.Expand[type] = newExpand;
             } else {

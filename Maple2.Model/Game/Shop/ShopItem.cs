@@ -26,10 +26,13 @@ public class ShopItem : IByteSerializable {
         };
     }
 
-    public virtual void WriteTo(IByteWriter writer) {
+    public virtual void WriteTo(IByteWriter writer) => WriteTo(writer, Metadata.Cost);
+
+    /// <summary>Writes the item with a different displayed price (offline /freebies shows everything as free).</summary>
+    public void WriteTo(IByteWriter writer, ShopCost cost) {
         writer.WriteInt(Id);
         writer.WriteInt(Metadata.ItemId);
-        writer.WriteClass<ShopCost>(Metadata.Cost);
+        writer.WriteClass<ShopCost>(cost);
         writer.WriteByte(Metadata.Rarity);
         writer.WriteInt(500);
         writer.WriteInt(StockCount);

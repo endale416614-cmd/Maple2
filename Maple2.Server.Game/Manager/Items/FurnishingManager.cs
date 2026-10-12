@@ -7,6 +7,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -115,7 +116,7 @@ public class FurnishingManager {
             return false;
         }
 
-        if (furnishingShopMetadata.Price <= 0) {
+        if (furnishingShopMetadata.Price <= 0 || OfflineCheats.IsFreebies(session.CharacterId)) {
             return true;
         }
 

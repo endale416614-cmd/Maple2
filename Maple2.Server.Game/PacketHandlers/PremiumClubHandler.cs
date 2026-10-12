@@ -8,6 +8,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -95,12 +96,14 @@ public class PremiumClubHandler : FieldPacketHandler {
             return;
         }
 
-        if (session.Currency.Meret < premiumMetadata.Price) {
-            session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
-            return;
-        }
+        if (!OfflineCheats.IsFreebies(session.CharacterId)) {
+            if (session.Currency.Meret < premiumMetadata.Price) {
+                session.Send(NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message, StringCode.s_err_lack_merat));
+                return;
+            }
 
-        session.Currency.Meret -= premiumMetadata.Price;
+            session.Currency.Meret -= premiumMetadata.Price;
+        }
 
         foreach (PremiumClubTable.Item item in premiumMetadata.BonusItems) {
             Item? bonusItem = session.Field?.ItemDrop.CreateItem(item.Id, item.Rarity, item.Amount);

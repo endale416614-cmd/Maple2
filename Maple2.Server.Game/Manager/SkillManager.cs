@@ -5,6 +5,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -127,11 +128,14 @@ public class SkillManager {
         if (SkillBook.MaxSkillTabs >= Constant.MaxSkillTabCount) {
             return false;
         }
-        if (session.Currency.Meret < Constants.SkillBookTreeAddTabFeeMerat) {
+        bool free = OfflineCheats.IsFreebies(session.CharacterId);
+        if (!free && session.Currency.Meret < Constants.SkillBookTreeAddTabFeeMerat) {
             return false;
         }
 
-        session.Currency.Meret -= Constants.SkillBookTreeAddTabFeeMerat;
+        if (!free) {
+            session.Currency.Meret -= Constants.SkillBookTreeAddTabFeeMerat;
+        }
         SkillBook.MaxSkillTabs++;
         session.Send(SkillBookPacket.Expand(SkillBook));
 

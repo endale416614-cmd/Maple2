@@ -11,6 +11,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -351,7 +352,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         }
 
         long price = entry.Metadata.SalePrice > 0 ? entry.Metadata.SalePrice : entry.Price;
-        StringCode payResult = Pay(session, price, entry.Metadata.CurrencyType);
+        StringCode payResult = OfflineCheats.IsFreebies(session.CharacterId) ? StringCode.s_empty_string : Pay(session, price, entry.Metadata.CurrencyType);
         if (payResult != StringCode.s_empty_string) {
             session.Send(NoticePacket.MessageBox(payResult));
             return null;

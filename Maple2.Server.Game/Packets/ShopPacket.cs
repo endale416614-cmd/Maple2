@@ -30,12 +30,16 @@ public static class ShopPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadItems(ICollection<ShopItem> items) {
+    public static ByteWriter LoadItems(ICollection<ShopItem> items, bool free = false) {
         var pWriter = Packet.Of(SendOp.Shop);
         pWriter.Write<Command>(Command.LoadItems);
         pWriter.WriteByte((byte) items.Count);
         foreach (ShopItem item in items) {
-            pWriter.WriteClass<ShopItem>(item);
+            if (free) {
+                item.WriteTo(pWriter, ShopCost.Zero);
+            } else {
+                pWriter.WriteClass<ShopItem>(item);
+            }
         }
 
         return pWriter;

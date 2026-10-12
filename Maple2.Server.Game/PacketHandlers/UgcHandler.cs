@@ -13,6 +13,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
@@ -117,7 +118,7 @@ public class UgcHandler : FieldPacketHandler {
                     return;
                 }
             }
-        } else {
+        } else if (!OfflineCheats.IsFreebies(session.CharacterId)) {
             switch (ugcMetadata.CurrencyType) {
                 case MeretMarketCurrencyType.Meso:
                     if (session.Currency.CanAddMeso(-ugcMetadata.CreatePrice) != -ugcMetadata.CreatePrice) {
