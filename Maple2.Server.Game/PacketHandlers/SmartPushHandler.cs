@@ -5,6 +5,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -69,7 +70,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
             if (!AutoActionPackage(session, metadata, packageId)) {
                 return;
             }
-        } else {
+        } else if (!OfflineCheats.IsFreebies(session.CharacterId)) {
             if (session.Currency.Meret < metadata.MeretCost) {
                 return;
             }
@@ -113,7 +114,7 @@ public class SmartPushHandler : PacketHandler<GameSession> {
         }
 
         // Check if player has enough currency
-        switch (currencyType) {
+        switch (OfflineCheats.IsFreebies(session.CharacterId) ? SmartPushCurrencyType.None : currencyType) {
             case SmartPushCurrencyType.Meret:
                 if (session.Currency.Meret < packageMetadata.MeretCost) {
                     return false;

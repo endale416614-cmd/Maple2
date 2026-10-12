@@ -8,6 +8,7 @@ using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -117,7 +118,7 @@ public sealed class ShopManager {
         shopNpcId = npcId;
 
         session.Send(ShopPacket.Open(activeShop, shopNpcId));
-        session.Send(ShopPacket.LoadItems(activeShop.Items.Values));
+        session.Send(ShopPacket.LoadItems(activeShop.Items.Values, OfflineCheats.IsFreebies(session.CharacterId)));
         if (!metadata.IsOnlySell) {
             session.Send(ShopPacket.BuyBackItemCount((short) buyBackItems.Count));
             if (buyBackItems.Count > 0) {
@@ -326,7 +327,7 @@ public sealed class ShopManager {
             cost = multiplierCost.Cost;
             currencyType = multiplierCost.CurrencyType;
         }
-        if (!Pay(new ShopCost { Amount = cost, Type = currencyType }, cost)) {
+        if (!OfflineCheats.IsFreebies(session.CharacterId) && !Pay(new ShopCost { Amount = cost, Type = currencyType }, cost)) {
             session.Send(ShopPacket.Error(ShopError.s_err_lack_shopitem)); // not neccessarily the right error.
             return;
         }
@@ -340,7 +341,7 @@ public sealed class ShopManager {
         activeShop = CreateInstancedShop(shop.Metadata, data, data.RestockTime);
         session.Send(ShopPacket.InstantRestock());
         session.Send(ShopPacket.Open(activeShop, shopNpcId));
-        session.Send(ShopPacket.LoadItems(activeShop.Items.Values));
+        session.Send(ShopPacket.LoadItems(activeShop.Items.Values, OfflineCheats.IsFreebies(session.CharacterId)));
     }
 
     public void Refresh() {
@@ -361,7 +362,7 @@ public sealed class ShopManager {
 
         activeShop = CreateInstancedShop(shop.Metadata, data, data.RestockTime);
         session.Send(ShopPacket.Open(activeShop, shopNpcId));
-        session.Send(ShopPacket.LoadItems(activeShop.Items.Values));
+        session.Send(ShopPacket.LoadItems(activeShop.Items.Values, OfflineCheats.IsFreebies(session.CharacterId)));
     }
 
     private void UpdateStockCount(int shopId, ShopItem shopItem, int quantity) {
@@ -471,8 +472,9 @@ public sealed class ShopManager {
             session.Send(ShopPacket.Error(ShopError.s_err_invalid_item));
             return;
         }
-        int price = (int) totalPrice;
-        if (!Pay(shopItem.Metadata.Cost, price)) {
+        bool free = OfflineCheats.IsFreebies(session.CharacterId);
+        int price = free ? 0 : (int) totalPrice;
+        if (!free && !Pay(shopItem.Metadata.Cost, price)) {
             return;
         }
 

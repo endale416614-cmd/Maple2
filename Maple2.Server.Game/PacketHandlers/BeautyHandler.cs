@@ -13,6 +13,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Maple2.Tools.Extensions;
 
@@ -494,6 +495,9 @@ public class BeautyHandler : FieldPacketHandler {
     }
 
     private static bool PayWithVoucher(GameSession session, BeautyShop shop) {
+        if (OfflineCheats.IsFreebies(session.CharacterId)) {
+            return true;
+        }
         ItemTag voucherTag = shop.Metadata.CouponTag;
 
         if (voucherTag == ItemTag.None) {
@@ -511,6 +515,9 @@ public class BeautyHandler : FieldPacketHandler {
     }
 
     private static bool PayWithCurrency(GameSession session, BeautyShopCostMetadata cost) {
+        if (OfflineCheats.IsFreebies(session.CharacterId)) {
+            return true;
+        }
         switch (cost.CurrencyType) {
             case ShopCurrencyType.Meso:
                 if (session.Currency.CanAddMeso(-cost.Price) != -cost.Price) {

@@ -5,6 +5,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 using static Maple2.Model.Error.StorageInventoryError;
@@ -200,7 +201,8 @@ public sealed class StorageManager : IDisposable {
                 session.Send(StorageInventoryPacket.Error(s_store_err_expand_max));
                 return;
             }
-            if (session.Currency.Meret < Constants.StoreExpandPrice1Row) {
+            bool free = OfflineCheats.IsFreebies(session.CharacterId);
+            if (!free && session.Currency.Meret < Constants.StoreExpandPrice1Row) {
                 session.Send(StorageInventoryPacket.Error(s_cannot_charge_merat));
                 return;
             }
@@ -210,7 +212,9 @@ public sealed class StorageManager : IDisposable {
                 return;
             }
 
-            session.Currency.Meret -= Constants.StoreExpandPrice1Row;
+            if (!free) {
+                session.Currency.Meret -= Constants.StoreExpandPrice1Row;
+            }
             expand += Constant.InventoryExpandRowCount;
 
             Load();

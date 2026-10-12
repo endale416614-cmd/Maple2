@@ -16,6 +16,7 @@ using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -319,6 +320,9 @@ public class HousingManager {
     }
 
     private static bool CheckAndRemoveCost(GameSession session, int itemId, int cost) {
+        if (OfflineCheats.IsFreebies(session.CharacterId)) {
+            return true;
+        }
         switch (itemId) {
             case >= 90000001 and <= 90000003:
                 if (session.Currency.Meso < cost) {

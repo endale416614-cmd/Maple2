@@ -12,6 +12,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -674,7 +675,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
-        long blueprintCost = design.CreatePrice;
+        long blueprintCost = OfflineCheats.IsFreebies(session.CharacterId) ? 0 : design.CreatePrice;
 
         long negAmount = -1 * blueprintCost;
         if (session.Currency.CanAddMeret(negAmount) != negAmount) {

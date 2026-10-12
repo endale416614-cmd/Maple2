@@ -116,3 +116,26 @@ public class UnstuckCommand : GameCommand {
         return houseRank.TryGetValue(session.Guild.Guild.HouseTheme, out GuildTable.House? house) && house.MapId == session.Player.Value.Character.MapId;
     }
 }
+
+/// <summary>/freebies: toggles buying anything for free, whatever the currency.</summary>
+public class FreebiesCommand : GameCommand {
+    private readonly GameSession session;
+
+    public FreebiesCommand(GameSession session) : base(AdminPermissions.None, "freebies", "Toggle free purchases: buy anything without paying, whatever the currency.") {
+        this.session = session;
+        this.SetHandler<InvocationContext>(Handle);
+    }
+
+    private void Handle(InvocationContext ctx) {
+        if (!OfflineCheats.Enabled) {
+            ctx.Console.Error.WriteLine("Cheats are off. Set CheatCommands=true in launcher.ini and restart the game.");
+            return;
+        }
+
+        if (OfflineCheats.ToggleFreebies(session.CharacterId)) {
+            ctx.Console.Out.WriteLine("Freebies ON: everything you buy is free, whatever the currency. Reopen any shop that is already open. Type /freebies again to turn it off.");
+        } else {
+            ctx.Console.Out.WriteLine("Freebies OFF.");
+        }
+    }
+}
