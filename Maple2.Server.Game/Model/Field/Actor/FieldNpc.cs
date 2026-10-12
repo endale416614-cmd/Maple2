@@ -424,6 +424,7 @@ public class FieldNpc : Actor<Npc> {
         foreach (int globalDropId in dropInfo.GlobalDropBoxIds) {
             globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level, Field.ItemDrop.AllDrops, OfflineGrind.DropRate));
         }
+        OfflineGrind.ScaleMeso(globalDrops);
 
         foreach (Item item in globalDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
@@ -438,6 +439,7 @@ public class FieldNpc : Actor<Npc> {
         foreach (int globalHitDropId in dropInfo.GlobalHitDropBoxIds) {
             globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalHitDropId, Value.Metadata.Basic.Level));
         }
+        OfflineGrind.ScaleMeso(globalDrops);
 
         foreach (Item item in globalDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
@@ -446,7 +448,7 @@ public class FieldNpc : Actor<Npc> {
         }
 
         foreach (int individualHitDropId in dropInfo.IndividualHitDropBoxIds) {
-            foreach (Item item in Field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, individualHitDropId)) {
+            foreach (Item item in OfflineGrind.ScaleMeso(Field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, individualHitDropId).ToList())) {
                 float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
                 float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
                 Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id);
@@ -460,6 +462,7 @@ public class FieldNpc : Actor<Npc> {
         foreach (int individualDropId in dropInfo.IndividualDropBoxIds) {
             individualDrops.AddRange(Field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, individualDropId, all: Field.ItemDrop.AllDrops, dropRate: OfflineGrind.DropRate));
         }
+        OfflineGrind.ScaleMeso(individualDrops);
 
         foreach (Item item in individualDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
@@ -477,6 +480,7 @@ public class FieldNpc : Actor<Npc> {
         foreach (int deadGlobalDropId in dropInfo.DeadGlobalDropBoxIds) {
             globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(deadGlobalDropId, Value.Metadata.Basic.Level, all));
         }
+        OfflineGrind.ScaleMeso(globalDrops);
 
         foreach (Item item in globalDrops) {
             float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);

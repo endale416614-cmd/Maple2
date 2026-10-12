@@ -10,6 +10,9 @@
   // Chance multiplier for the monsters' own loot rolls (equipment, potions, materials ...). 1 = original.
   "DropRateMultiplier": 3,
 
+  // Multiplier for the mesos monsters drop. 1 = original.
+  "MesoMultiplier": 6,
+
   // Extra upgrade-material drops from monsters. Chance per kill (0..1); amount = Amount + AmountPerLevel * monster level.
   // Bosses get BossMultiplier times the amount.
   "BossMultiplier": 5,

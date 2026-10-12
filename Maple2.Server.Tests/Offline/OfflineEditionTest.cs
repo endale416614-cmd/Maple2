@@ -87,6 +87,16 @@ public class OfflineEditionTest {
         Assert.That(config.DropRateMultiplier, Is.GreaterThanOrEqualTo(1));
         Assert.That(config.UpgradeDrops.Select(drop => drop.ItemId), Does.Contain(40100023), "Onyx Crystal");
         Assert.That(config.UpgradeDrops.Select(drop => drop.Chance), Is.All.InRange(0f, 1f));
+        Assert.That(config.MesoMultiplier, Is.EqualTo(6f), "monster mesos x6");
+    }
+
+    [Test]
+    public void Grind_MesoScaling() {
+        Assert.That(Maple2.Server.Game.Util.OfflineGrind.ScaledMeso(37, 6f), Is.EqualTo(222));
+        Assert.That(Maple2.Server.Game.Util.OfflineGrind.ScaledMeso(1, 1f), Is.EqualTo(1));
+        Assert.That(Maple2.Server.Game.Util.OfflineGrind.ScaledMeso(int.MaxValue / 2, 6f), Is.EqualTo(int.MaxValue), "no overflow");
+        var old = Maple2.Server.Game.Util.OfflineGrind.Parse("""{ "TargetKillsPerLevel": 200, "UpgradeDrops": [] }""");
+        Assert.That(old!.MesoMultiplier, Is.EqualTo(1f), "a grind file without the setting keeps the original mesos");
     }
 
     [Test]

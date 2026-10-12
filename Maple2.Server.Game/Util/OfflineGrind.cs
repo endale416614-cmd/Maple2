@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Maple2.Model;
+using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Tools;
 using Maple2.Tools.Extensions;
@@ -13,7 +15,8 @@ namespace Maple2.Server.Game.Util;
 /// </summary>
 public static class OfflineGrind {
     public sealed record UpgradeDrop(int ItemId, string Name, int MinLevel, int MaxLevel, float Chance, int Amount, float AmountPerLevel);
-    public sealed record Config(int TargetKillsPerLevel, float MaxExpMultiplier, float DropRateMultiplier, float BossMultiplier, UpgradeDrop[] UpgradeDrops);
+    public sealed record Config(int TargetKillsPerLevel, float MaxExpMultiplier, float DropRateMultiplier, float BossMultiplier, UpgradeDrop[] UpgradeDrops,
+        float MesoMultiplier = 1);
 
     public static readonly bool Enabled =
         string.Equals(Environment.GetEnvironmentVariable("OFFLINE_GRIND"), "true", StringComparison.OrdinalIgnoreCase);
@@ -21,6 +24,22 @@ public static class OfflineGrind {
     private static readonly Lazy<Config?> LazyConfig = new(Load);
 
     public static Config? Settings => Enabled ? LazyConfig.Value : null;
+
+    /// <summary>Multiplier for the mesos monsters drop (1 when off or not set).</summary>
+    public static float MesoRate => Settings?.MesoMultiplier is > 0 and var rate ? rate : 1f;
+
+    /// <summary>Scales the meso drops among a monster's loot by <see cref="MesoRate"/>; other items are untouched.</summary>
+    public static List<Item> ScaleMeso(List<Item> drops) {
+        float rate = MesoRate;
+        if (rate != 1f) {
+            foreach (Item item in drops.Where(item => item.IsMeso())) {
+                item.Amount = ScaledMeso(item.Amount, rate);
+            }
+        }
+        return drops;
+    }
+
+    public static int ScaledMeso(int amount, float rate) => (int) Math.Clamp(Math.Round(amount * (double) rate), 1, int.MaxValue);
 
     /// <summary>Loot-roll chance multiplier for monster kills (1 when off).</summary>
     public static float DropRate => Math.Max(1f, Settings?.DropRateMultiplier ?? 1f);
@@ -72,6 +91,12 @@ public static class OfflineGrind {
         }
     }
 
+    public static Config? Parse(string json) => JsonSerializer.Deserialize<Config>(json, new JsonSerializerOptions {
+        PropertyNameCaseInsensitive = true,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+    });
+
     private static Config? Load() {
         string path = Environment.GetEnvironmentVariable("OFFLINE_GRIND_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-grind.json");
         if (!File.Exists(path)) {
@@ -79,14 +104,10 @@ public static class OfflineGrind {
             return null;
         }
         try {
-            Config? config = JsonSerializer.Deserialize<Config>(File.ReadAllText(path), new JsonSerializerOptions {
-                PropertyNameCaseInsensitive = true,
-                ReadCommentHandling = JsonCommentHandling.Skip,
-                AllowTrailingCommas = true,
-            });
+            Config? config = Parse(File.ReadAllText(path));
             if (config != null) {
-                Log.Logger.Information("Offline grind rates: {Kills} kills/level target, loot x{Drop}, {Count} upgrade drops",
-                    config.TargetKillsPerLevel, config.DropRateMultiplier, config.UpgradeDrops?.Length ?? 0);
+                Log.Logger.Information("Offline grind rates: {Kills} kills/level target, loot x{Drop}, meso x{Meso}, {Count} upgrade drops",
+                    config.TargetKillsPerLevel, config.DropRateMultiplier, config.MesoMultiplier, config.UpgradeDrops?.Length ?? 0);
             }
             return config == null ? null : config with { UpgradeDrops = config.UpgradeDrops ?? [] };
         } catch (JsonException ex) {
