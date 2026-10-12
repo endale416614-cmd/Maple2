@@ -37,7 +37,8 @@ public partial class MovementState {
 
             movement.actor.Field.RemoveNpc(movement.actor.ObjectId);
 
-            if (lastPosition is null) {
+            // A newer path or a teleport (scene skip, move_user) already replaced this one.
+            if (!movement.actor.Field.EndPlayerPath(player, movement.actor) || lastPosition is null) {
                 return;
             }
 

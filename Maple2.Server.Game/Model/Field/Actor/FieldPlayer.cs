@@ -616,6 +616,8 @@ public class FieldPlayer : Actor<Player> {
             return;
         }
 
+        // The latest move wins: an unfinished move_user_path must not pull the player back afterwards.
+        Field.CancelPlayerPath(this);
         Session.Send(PortalPacket.MoveByPortal(this, portal.Position, portal.Rotation));
     }
 
