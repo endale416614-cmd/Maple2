@@ -94,7 +94,9 @@ public partial class GameStorage {
                 return null;
             }
 
-            SaveItems(model.Id, mail.Items.ToArray());
+            if (!SaveItems(model.Id, mail.Items.ToArray())) {
+                return null;
+            }
             if (!Commit()) {
                 return null;
             }

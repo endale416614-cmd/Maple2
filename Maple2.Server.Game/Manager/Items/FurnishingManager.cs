@@ -314,7 +314,7 @@ public class FurnishingManager {
 
     public void Save(GameStorage.Request db) {
         lock (session.Item) {
-            db.SaveItems(session.AccountId, storage.ToArray());
+            db.Ensure(db.SaveItems(session.AccountId, storage.ToArray()), "furnishing storage");
         }
     }
 }

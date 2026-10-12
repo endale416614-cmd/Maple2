@@ -340,8 +340,8 @@ public class HousingManager {
     }
 
     public void Save(GameStorage.Request db) {
-        db.SaveHome(Home);
-        db.SavePlotInfo(Home.Indoor);
+        db.Ensure(db.SaveHome(Home), "home");
+        db.Ensure(db.SavePlotInfo(Home.Indoor), "indoor plot");
     }
 
     public void InitNewHome(string characterName, ExportedUgcMapMetadata? template) {

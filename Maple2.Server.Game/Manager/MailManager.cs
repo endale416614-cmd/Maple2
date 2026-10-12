@@ -21,6 +21,11 @@ public sealed class MailManager {
 
     private readonly SortedList<long, Mail> inbox;
 
+    // Collected mails whose collect marks are not yet in the database. They are written by Save() in the same
+    // transaction as the currency and items they credited, so a reward can neither be lost nor claimed twice.
+    private readonly Dictionary<long, (Mail Mail, int Version)> pending = new();
+    private readonly Dictionary<long, int> saving = new();
+
     private readonly ILogger logger = Log.ForContext<MailManager>();
 
     public MailManager(GameSession session) {
@@ -56,6 +61,9 @@ public sealed class MailManager {
             return false;
         }
 
+        lock (pending) {
+            pending.Remove(mailId);
+        }
         inbox.Remove(mailId);
         session.Send(MailPacket.Deleted(mailId));
         return true;
@@ -78,6 +86,12 @@ public sealed class MailManager {
         }
 
         inboxMail.Update(mail);
+        lock (pending) {
+            if (pending.TryGetValue(mailId, out (Mail Mail, int Version) entry)) {
+                entry.Mail.ReadTime = mail.ReadTime;
+                pending[mailId] = (entry.Mail, entry.Version + 1);
+            }
+        }
         return MailError.none;
     }
 
@@ -86,20 +100,56 @@ public sealed class MailManager {
             return MailError.mail_not_found;
         }
 
-        using GameStorage.Request db = session.GameStorage.Context();
-        Mail? mail = db.GetMail(mailId, session.CharacterId);
-        if (mail == null) {
-            return MailError.mail_not_found;
-        }
-
         lock (session.Item) {
-            MailError error = CollectInternal(db, mail);
+            // A mail that was already collected but not saved yet is the source of truth, not the stale database row.
+            Mail? mail;
+            lock (pending) {
+                mail = pending.TryGetValue(mailId, out (Mail Mail, int Version) entry) ? entry.Mail : null;
+            }
+            if (mail == null) {
+                using GameStorage.Request db = session.GameStorage.Context();
+                mail = db.GetMail(mailId, session.CharacterId);
+                if (mail == null) {
+                    return MailError.mail_not_found;
+                }
+            }
+
+            MailError error = CollectInternal(mail);
             if (error != MailError.none) {
                 return error;
             }
 
             inboxMail.Update(mail);
             return MailError.none;
+        }
+    }
+
+    // Writes the collect marks of every collected mail. Call inside the same transaction that saves currency and inventory.
+    public void Save(GameStorage.Request db) {
+        lock (pending) {
+            saving.Clear();
+            foreach ((long mailId, (Mail Mail, int Version) entry) in pending) {
+                db.Ensure(db.UpdateMail(entry.Mail) != null, $"collected mail {mailId}");
+                saving[mailId] = entry.Version;
+            }
+        }
+    }
+
+    // Call after the save that included Save(db) committed.
+    public void Saved() {
+        lock (pending) {
+            foreach ((long mailId, int version) in saving) {
+                if (pending.TryGetValue(mailId, out (Mail Mail, int Version) entry) && entry.Version == version) {
+                    pending.Remove(mailId);
+                }
+            }
+            saving.Clear();
+        }
+    }
+
+    private void MarkPending(Mail mail) {
+        lock (pending) {
+            pending[mail.Id] = (mail, pending.TryGetValue(mail.Id, out (Mail Mail, int Version) entry) ? entry.Version + 1 : 1);
         }
     }
 
@@ -151,8 +201,8 @@ public sealed class MailManager {
         return MailError.none;
     }
 
-    // Items on input mail will be cleared.
-    private MailError CollectInternal(GameStorage.Request db, Mail mail) {
+    // Items on input mail will be cleared. Anything credited is recorded in pending so that the next save persists it atomically.
+    private MailError CollectInternal(Mail mail) {
         if (mail.MesoCollected() && mail.MeretCollected() && mail.GameMeretCollected() && mail.Items.Count == 0) {
             return MailError.s_mail_error_already_receive;
         }
@@ -183,14 +233,10 @@ public sealed class MailManager {
             collectGameMeret = true;
         }
 
-        if (collectMeso || collectMeret || collectGameMeret) {
-            Mail? updatedMail = db.UpdateMail(mail);
-            if (updatedMail == null) {
-                return MailError.s_mail_error;
-            }
-        }
-
         // Collect the mail only after we have fully validated everything.
+        if (collectMeso || collectMeret || collectGameMeret) {
+            MarkPending(mail);
+        }
         if (collectMeso) {
             session.Currency.Meso += mail.Meso;
         }
@@ -207,12 +253,14 @@ public sealed class MailManager {
                 return MailError.s_mail_error_attachcount;
             }
 
-            if (!session.Item.Inventory.Add(item, notifyNew: true, commit: true)) {
+            // Not committed here: the item moves to the character when the save commits, together with the collect mark.
+            if (!session.Item.Inventory.Add(item, notifyNew: true, commit: false)) {
                 logger.Error("Mail {MailId} was collected but items could not be added to inventory. Item: {Item}", mail.Id, item);
                 return MailError.s_mail_error_receiveitem_to_inven;
             }
 
             mail.Items.RemoveAt(i);
+            MarkPending(mail);
         }
 
         session.Send(MailPacket.Collect(mail.Id));

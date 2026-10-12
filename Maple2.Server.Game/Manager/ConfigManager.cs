@@ -587,7 +587,7 @@ public class ConfigManager {
     #endregion
 
     public void Save(GameStorage.Request db) {
-        db.SaveCharacterConfig(
+        db.Ensure(db.SaveCharacterConfig(
             session.CharacterId, keyBinds.Values.ToList(),
             hotBars.Select(hotBar => hotBar.Slots).ToList(),
             skillMacros,
@@ -603,6 +603,6 @@ public class ConfigManager {
             GatheringCounts,
             GuideRecords,
             Skill.SkillBook
-        );
+        ), "character config");
     }
 }

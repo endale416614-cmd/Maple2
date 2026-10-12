@@ -52,6 +52,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public string PlayerName => Player.Value.Character.Name;
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
+    private bool activeStatusWritten;
+    private string? lastSaveError;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -460,6 +462,12 @@ public sealed partial class GameSession : Core.Network.Session {
         Scheduler.Start();
         State = SessionState.Connected;
 
+        // Tell the offline launcher the character is in the world, so a later missing "committed" means the save is pending.
+        if (!activeStatusWritten) {
+            activeStatusWritten = true;
+            OfflineSaveStatus.Write(CharacterId, AccountId, OfflineSaveStatus.Active, null);
+        }
+
         PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = AccountId,
             CharacterId = CharacterId,
@@ -794,6 +802,11 @@ public sealed partial class GameSession : Core.Network.Session {
         // Snapshot values needed after teardown
         long fieldTickSnapshot = Field?.FieldTick ?? Environment.TickCount64;
 
+        // A session that is still connected is leaving the game (logout or disconnect), not moving between maps or channels.
+        bool leavingGame = State == SessionState.Connected;
+        bool leaveSaved = false;
+        string? leaveError = null;
+
         if (State == SessionState.Connected) {
             PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                 AccountId = AccountId,
@@ -821,10 +834,17 @@ public sealed partial class GameSession : Core.Network.Session {
 
             // Cache config & persistence
             SaveCacheConfig();
-            MigrationSave();
+            leaveSaved = MigrationSave();
         } catch (Exception ex) {
+            leaveError = ex.Message;
             Logger.Error(ex, "Error during session cleanup for {Player}", PlayerName);
         } finally {
+            if (leavingGame) {
+                OfflineSaveStatus.Write(CharacterId, AccountId,
+                    leaveSaved ? OfflineSaveStatus.Committed : OfflineSaveStatus.Failed,
+                    leaveSaved ? null : leaveError ?? lastSaveError ?? "Save did not complete");
+            }
+
             SafeDispose(Guild);
             SafeDispose(Buddy);
             SafeDispose(Party);
@@ -895,52 +915,70 @@ public sealed partial class GameSession : Core.Network.Session {
         return $"GameSession: {Player?.Value?.Character?.Name} ({CharacterId}) [{State}] // Account: {AccountId}, Machine: {MachineId}, Channel: {Player?.Value?.Character?.Channel}, Map: {Player?.Value?.Character?.MapId}]";
     }
 
-    public void MigrationSave() {
-        if (preMigrationSaved) return;
+    // Returns true if the whole snapshot was committed (or an earlier migration save already did).
+    public bool MigrationSave() {
+        if (preMigrationSaved) return true;
 
         try {
             AcquireLock(AccountId, 5);
-            Save();
+            if (!Save()) {
+                return false;
+            }
             preMigrationSaved = true;
+            return true;
         } catch (Exception ex) {
+            lastSaveError = ex.Message;
             Logger.Error(ex, "MigrationSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            return false;
         } finally {
             ReleaseLock(AccountId);
         }
     }
 
-    public void SessionSave() {
+    public bool SessionSave() {
         try {
             AcquireLock(AccountId, 5);
-            Save();
+            return Save();
         } catch (Exception ex) {
+            lastSaveError = ex.Message;
             Logger.Error(ex, "SessionSave failed AccountId={AccountId} CharacterId={CharacterId}", AccountId, CharacterId);
+            return false;
         } finally {
             ReleaseLock(AccountId);
         }
     }
 
     // Don't call this directly, since it does not acquire the account lock.
-    private void Save() {
-        using GameStorage.Request db = GameStorage.Context();
-        db.BeginTransaction();
-        db.SavePlayer(Player);
-        TrySaveComponent(UgcMarket.Save);
-        TrySaveComponent(Config.Save);
-        TrySaveComponent(Shop.Save);
-        TrySaveComponent(Item.Save);
-        TrySaveComponent(Survival.Save);
-        TrySaveComponent(Housing.Save);
-        TrySaveComponent(GameEvent.Save);
-        TrySaveComponent(Achievement.Save);
-        TrySaveComponent(Quest.Save);
-        TrySaveComponent(Dungeon.Save);
-        db.Commit();
-        db.SaveChanges();
-        return;
+    // Saves every component in one transaction: either the whole snapshot commits or nothing is written.
+    private bool Save() {
+        // Hold the item lock for the whole snapshot so currency, items and collected mail are captured consistently.
+        lock (Item) {
+            using GameStorage.Request db = GameStorage.Context();
+            var components = new List<(string Name, Action<GameStorage.Request> Save)> {
+                ("player", request => request.Ensure(request.SavePlayer(Player), "player")),
+                ("ugc market", request => UgcMarket.Save(request)),
+                ("config", request => Config.Save(request)),
+                ("shop", request => Shop.Save(request)),
+                ("items", request => Item.Save(request)),
+                ("survival", request => Survival.Save(request)),
+                ("housing", request => Housing.Save(request)),
+                ("game events", request => GameEvent.Save(request)),
+                ("achievements", request => Achievement.Save(request)),
+                ("quests", request => Quest.Save(request)),
+                ("dungeons", request => Dungeon.Save(request)),
+                ("mail", request => Mail.Save(request)),
+            };
 
-        void TrySaveComponent(Action<GameStorage.Request> action) {
-            try { action(db); } catch (Exception ex) { Logger.Error(ex, "Error saving component for {Player}", PlayerName); }
+            if (!db.SaveAtomic(components, out string? failedComponent, out Exception? error)) {
+                lastSaveError = $"{failedComponent}: {error?.Message}";
+                return false;
+            }
+
+            // Only now is it safe to forget what this snapshot contained.
+            Item.Saved();
+            Mail.Saved();
+            lastSaveError = null;
+            return true;
         }
     }
 }
