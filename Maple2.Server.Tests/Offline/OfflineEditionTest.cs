@@ -158,7 +158,7 @@ public class OfflineEditionTest {
         Environment.SetEnvironmentVariable("OFFLINE_ECONOMY_FILE", tempFile);
 
         ShopItemMetadata potion = new(1, 117, 2000001, 1, new ShopCost { Type = ShopCurrencyType.Meso, Amount = 50 }, 0, "SH",
-            new ShopItemMetadata.Requirement(0, new(0, 0), new(0, 0), new(default, 0), new(default, 0)),
+            new ShopItemMetadata.Requirement(0, new(12345, 1), new(0, 0), new(default, 0), new(default, 0)),
             null, 1, ShopItemLabel.None, "", false, false, 10000, false);
         var table = new ShopItemTable(new Dictionary<int, Dictionary<int, ShopItemMetadata>> {
             [117] = new() { [potion.Id] = potion },
@@ -172,7 +172,18 @@ public class OfflineEditionTest {
         Assert.That(pouches[0].Cost.Type, Is.EqualTo(ShopCurrencyType.Meso));
         Assert.That(pouches[0].Cost.Amount, Is.EqualTo(2000));
         Assert.That(pouches[0].SellUnit, Is.EqualTo(potion.SellUnit));
+        Assert.That(pouches[0].Category, Is.EqualTo("PS"), "pouches go to the Consumables tab, not the template's tab");
+        Assert.That(pouches[0].Requirements.Achievement.Id, Is.EqualTo(0), "the template's requirements must not gate the pouches");
         Assert.That(table.Entries[117][potion.Id], Is.SameAs(potion));
+    }
+
+    [Test]
+    public void MeretExchange_ShippedConfigCoversEveryShopKind() {
+        OfflineEconomy.Config? config = OfflineEconomy.Load();
+        Assert.That(config?.MeretExchange, Is.Not.Null, "offline-economy.json must parse (comments inside the array)");
+        // General store, potions, food, armor + weapons (Bonin), weapons (Morgan), crafting (Rachael).
+        Assert.That(config!.MeretExchange.ShopIds, Is.SupersetOf(new[] { 105, 116, 123, 109, 126, 178 }));
+        Assert.That(config.MeretExchange.Category, Is.EqualTo("PS"));
     }
 
     [Test]
