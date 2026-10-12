@@ -96,4 +96,10 @@ public class ItemManager {
         Inventory.Save(db);
         Furnishing.Save(db);
     }
+
+    // Called after the save that included Save(db) committed.
+    public void Saved() {
+        Equips.Saved();
+        Inventory.Saved();
+    }
 }

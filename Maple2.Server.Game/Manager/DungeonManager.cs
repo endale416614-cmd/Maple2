@@ -635,6 +635,6 @@ public class DungeonManager {
     }
 
     public void Save(GameStorage.Request db) {
-        db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray());
+        db.Ensure(db.SaveDungeonRecords(session.CharacterId, Records.Values.ToArray()), "dungeon records");
     }
 }

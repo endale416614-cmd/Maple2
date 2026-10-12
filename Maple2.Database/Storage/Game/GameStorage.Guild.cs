@@ -118,7 +118,9 @@ public partial class GameStorage {
             BeginTransaction();
 
             Context.Guild.Update(guild);
-            SaveGuildMembers(guild.Id, guild.Members.Values);
+            if (!SaveGuildMembers(guild.Id, guild.Members.Values)) {
+                return false;
+            }
 
             return Commit();
         }

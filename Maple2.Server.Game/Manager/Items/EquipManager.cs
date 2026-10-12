@@ -18,6 +18,7 @@ public class EquipManager {
     public readonly ConcurrentDictionary<BadgeType, Item> Badge;
 
     private readonly List<Item> delete = [];
+    private Item[] savedDelete = [];
 
     public EquipManager(GameStorage.Request db, GameSession session) {
         this.session = session;
@@ -363,12 +364,24 @@ public class EquipManager {
     public void Save(GameStorage.Request db) {
         lock (session.Item) {
             // Discarded items only need saving once; the list used to be re-saved on every map change.
-            if (delete.Count > 0 && db.SaveItems(0, delete.ToArray())) {
-                delete.Clear();
+            // The list is only trimmed in Saved(), once the whole save has committed.
+            savedDelete = delete.ToArray();
+            if (savedDelete.Length > 0) {
+                db.Ensure(db.SaveItems(0, savedDelete), "discarded equipment");
             }
-            db.SaveItems(session.CharacterId, Gear.Values.ToArray());
-            db.SaveItems(session.CharacterId, Outfit.Values.ToArray());
-            db.SaveItems(session.CharacterId, Badge.Values.ToArray());
+            db.Ensure(db.SaveItems(session.CharacterId, Gear.Values.ToArray()), "equipped gear");
+            db.Ensure(db.SaveItems(session.CharacterId, Outfit.Values.ToArray()), "equipped outfit");
+            db.Ensure(db.SaveItems(session.CharacterId, Badge.Values.ToArray()), "equipped badges");
+        }
+    }
+
+    // Called after the save that included Save(db) committed.
+    public void Saved() {
+        lock (session.Item) {
+            foreach (Item item in savedDelete) {
+                delete.Remove(item);
+            }
+            savedDelete = [];
         }
     }
 }

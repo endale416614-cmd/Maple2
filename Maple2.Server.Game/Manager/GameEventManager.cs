@@ -167,6 +167,6 @@ public sealed class GameEventManager {
         foreach (GameEventUserValue userValue in accumulatedTimeValues) {
             userValue.SetValue((DateTime.Now.AddSeconds(userValue.Long()) - session.Player.Value.Character.LastModified).Seconds.ToString());
         }
-        db.SaveGameEventUserValues(session.CharacterId, eventValues.Values.SelectMany(value => value.Values).ToList());
+        db.Ensure(db.SaveGameEventUserValues(session.CharacterId, eventValues.Values.SelectMany(value => value.Values).ToList()), "game event values");
     }
 }
