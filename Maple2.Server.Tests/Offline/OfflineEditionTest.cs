@@ -219,6 +219,25 @@ public class OfflineEditionTest {
     }
 
     [Test]
+    public void SaveMigration_VersionsOldSavesAndRefusesNewerOnes() {
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        DbContextOptions options = new DbContextOptionsBuilder().UseSqlite(connection).Options;
+        using var context = new Ms2Context(options);
+        context.Database.EnsureCreated();
+        Assume.That(DbProvider.GetSaveVersion(context), Is.EqualTo(0), "a save from before versioning");
+
+        IReadOnlyList<string> applied = DbProvider.MigrateSqliteSave(context);
+        Assert.That(applied, Has.Some.StartsWith("migration 1"));
+        Assert.That(DbProvider.GetSaveVersion(context), Is.EqualTo(DbProvider.SaveSchemaVersion));
+        Assert.That(DbProvider.MigrateSqliteSave(context), Is.Empty, "an up-to-date save is left alone");
+
+        context.Database.ExecuteSqlRaw($"PRAGMA user_version = {DbProvider.SaveSchemaVersion + 1}");
+        var ex = Assert.Throws<InvalidOperationException>(() => DbProvider.MigrateSqliteSave(context));
+        Assert.That(ex!.Message, Does.Contain("newer version"));
+    }
+
+    [Test]
     public void Sqlite_TextLookupsIgnoreCaseLikeMySql() {
         using var connection = new SqliteConnection("Data Source=:memory:");
         connection.Open();

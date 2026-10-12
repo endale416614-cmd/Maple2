@@ -105,6 +105,52 @@ public static class DbProvider {
     }
 
     /// <summary>
+    /// Version of the save format this build writes (PRAGMA user_version of game-server.db). Saves made before
+    /// versioning have 0. Raise it together with a new entry in <see cref="SaveMigrations"/> whenever a change is not
+    /// purely additive (renamed/removed columns, data rewrites); additive changes need no entry.
+    /// </summary>
+    public const int SaveSchemaVersion = 1;
+
+    /// <summary>Numbered save migrations: entry N turns a version N-1 save into version N (runs in one transaction).</summary>
+    private static readonly SortedDictionary<int, (string Description, Action<DbContext> Apply)> SaveMigrations = new() {
+        [1] = ("baseline: versioned saves (no data change)", _ => { }),
+    };
+
+    /// <summary>
+    /// Brings an existing save to <see cref="SaveSchemaVersion"/>: numbered migrations in order, then the additive
+    /// schema upgrade. A save from a newer version is refused (the caller must not open it). Returns what changed.
+    /// </summary>
+    public static IReadOnlyList<string> MigrateSqliteSave(DbContext context) {
+        int version = GetSaveVersion(context);
+        if (version > SaveSchemaVersion) {
+            throw new InvalidOperationException(
+                $"This save was written by a newer version of the game (save format {version}, this version understands {SaveSchemaVersion}). " +
+                "Update the game, or restore a save backup made by this version.");
+        }
+        var applied = new List<string>();
+        foreach ((int target, (string description, Action<DbContext> apply)) in SaveMigrations.Where(entry => entry.Key > version)) {
+            using var transaction = context.Database.BeginTransaction();
+            apply(context);
+            SetSaveVersion(context, target);
+            transaction.Commit();
+            applied.Add($"migration {target}: {description}");
+        }
+        applied.AddRange(UpgradeSqliteSchema(context));
+        if (GetSaveVersion(context) != SaveSchemaVersion) {
+            SetSaveVersion(context, SaveSchemaVersion);
+        }
+        return applied;
+    }
+
+    public static int GetSaveVersion(DbContext context) {
+        return context.Database.SqlQueryRaw<int>("SELECT user_version AS Value FROM pragma_user_version").AsEnumerable().First();
+    }
+
+    private static void SetSaveVersion(DbContext context, int version) {
+        context.Database.ExecuteSqlRaw($"PRAGMA user_version = {version}");
+    }
+
+    /// <summary>
     /// Additive save upgrade for SQLite (EnsureCreated never changes an existing database): creates missing tables
     /// and indexes and adds missing columns (NOT NULL columns get the type's zero value). Never drops or alters
     /// existing data. Returns the statements it ran.
@@ -191,12 +237,13 @@ public static class DbProvider {
         // WAL lets the World/Login/Game/Web processes read while one of them writes.
         context.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
         if (!created) {
-            // An existing save from an older version: add what newer versions expect.
-            foreach (string change in UpgradeSqliteSchema(context)) {
+            // An existing save: refuse one from a newer version, bring an older one up to date.
+            foreach (string change in MigrateSqliteSave(context)) {
                 Serilog.Log.Logger.Information("Save upgraded: {Change}", change);
             }
             return;
         }
+        SetSaveVersion(context, SaveSchemaVersion);
 
         foreach ((string table, long nextId) in IdSeeds) {
             context.Database.ExecuteSqlRaw(
