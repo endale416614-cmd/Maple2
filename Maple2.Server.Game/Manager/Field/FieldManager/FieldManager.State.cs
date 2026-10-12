@@ -654,6 +654,10 @@ public partial class FieldManager {
     private IEnumerable<IActor> GetTargetPool(IActor caster, Prism[] prisms, ApplyTargetType targetType, int limit, ICollection<IActor>? ignore) {
         switch (targetType) {
             case ApplyTargetType.Friendly:
+                if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 }) {
+                    // A friendly NPC's own side is the players (and other friendly NPCs).
+                    return prisms.Filter(Players.Values.Concat<IActor>(Npcs.Values), limit, ignore);
+                }
                 if (caster is FieldNpc) {
                     return prisms.Filter(Mobs.Values, limit, ignore);
                 } else if (caster is FieldPlayer) {
@@ -662,6 +666,10 @@ public partial class FieldManager {
                 Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
                 return [];
             case ApplyTargetType.Hostile:
+                if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 }) {
+                    // Friendly NPC attacks hit monsters, not players.
+                    return prisms.Filter(Mobs.Values, limit, ignore);
+                }
                 if (caster is FieldNpc) {
                     return prisms.Filter(Players.Values, limit, ignore);
                 } else if (caster is FieldPlayer) {
