@@ -83,8 +83,10 @@ public class NpcTalkHandler : FieldPacketHandler {
 
         int options = 0;
         var talkType = NpcTalkType.None;
-        if (npc.Value.Metadata.Basic.ShopId > 0) {
-            session.Shop.Load(npc.Value.Metadata.Basic.ShopId, npc.Value.Id);
+        // Offline edition: NPCs without a shipped shop may get one (Doctor Pask sells potions and support items).
+        int shopId = npc.Value.Metadata.Basic.ShopId > 0 ? npc.Value.Metadata.Basic.ShopId : OfflineEconomy.ShopForNpc(npc.Value.Id);
+        if (shopId > 0) {
+            session.Shop.Load(shopId, npc.Value.Id);
             talkType |= NpcTalkType.Dialog;
             options++;
         }

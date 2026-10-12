@@ -176,6 +176,30 @@ public class OfflineEditionTest {
     }
 
     [Test]
+    public void DoctorShop_PaskSellsPotionsForMesos() {
+        string path = Path.Combine(Paths.SOLUTION_DIR, "offline-doctor-shop.json");
+        Assume.That(File.Exists(path), "offline-doctor-shop.json missing");
+        OfflineEconomy.DoctorShop doctor = OfflineEconomy.LoadDoctorShop(path)!;
+        Assert.That(doctor.NpcIds, Does.Contain(11004318), "Pask");
+        Assert.That(doctor.Items.Select(item => item.ItemId), Does.Contain(20000024).And.Contain(20000004), "White Potion, Elixir");
+
+        ShopItemMetadata potion = new(1, 116, 20000022, 1, new ShopCost { Type = ShopCurrencyType.Meso, Amount = 750 }, 0, "PS",
+            new ShopItemMetadata.Requirement(0, new(0, 0), new(0, 0), new(default, 0), new(default, 0)),
+            null, 1, ShopItemLabel.None, "", false, false, 10000, false);
+        var items = new Dictionary<int, Dictionary<int, ShopItemMetadata>> { [116] = new() { [potion.Id] = potion } };
+        OfflineEconomy.AddDoctorShopItems(items, doctor);
+        Assert.That(items[doctor.ShopId].Values.Select(item => item.ItemId), Is.EquivalentTo(doctor.Items.Select(item => item.ItemId)));
+        Assert.That(items[doctor.ShopId].Values.Select(item => item.Cost.Type), Is.All.EqualTo(ShopCurrencyType.Meso));
+        Assert.That(items[doctor.ShopId].Values.Select(item => item.ShopId), Is.All.EqualTo(doctor.ShopId));
+
+        var shop116 = new ShopMetadata(116, 3, "shop", default, true, false, false, false, false, false, false, 0, false,
+            new ShopRestockData(default, default, default, 0, 0, 0, false, false, false));
+        ShopTable shops = OfflineEconomy.Apply(new ShopTable(new Dictionary<int, ShopMetadata> { [116] = shop116 }), doctor);
+        Assert.That(shops.Entries[doctor.ShopId].Id, Is.EqualTo(doctor.ShopId));
+        Assert.That(shops.Entries[doctor.ShopId].FrameType, Is.EqualTo(shop116.FrameType), "same window as the potion shop");
+    }
+
+    [Test]
     public void TestKit_ShippedKnightKitIsComplete() {
         string path = Path.Combine(Paths.SOLUTION_DIR, "offline-testkit.json");
         Assume.That(File.Exists(path), "offline-testkit.json missing");
