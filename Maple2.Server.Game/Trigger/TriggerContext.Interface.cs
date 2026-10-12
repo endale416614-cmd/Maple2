@@ -11,7 +11,7 @@ namespace Maple2.Server.Game.Trigger;
 
 public partial class TriggerContext {
     public void CreateWidget(string type) {
-        DebugLog("[CreateWidget] type:{Type}", type);
+        if (TraceEnabled) DebugLog("[CreateWidget] type:{Type}", type);
         var widget = type switch {
             "OxQuiz" => new OxQuizWidget(Field),
             "SceneMovie" => new SceneMovieWidget(Field),
@@ -23,22 +23,22 @@ public partial class TriggerContext {
     }
 
     public void GuideEvent(int eventId) {
-        DebugLog("[GuideEvent] eventId:{Id}", eventId);
+        if (TraceEnabled) DebugLog("[GuideEvent] eventId:{Id}", eventId);
         Broadcast(TriggerPacket.UiGuide(eventId));
     }
 
     public void HideGuideSummary(int entityId, int textId) {
-        DebugLog("[HideGuideSummary] entityId:{EntityId}, textId:{TextId}", entityId, textId);
+        if (TraceEnabled) DebugLog("[HideGuideSummary] entityId:{EntityId}, textId:{TextId}", entityId, textId);
         Broadcast(TriggerPacket.UiHideSummary(entityId));
     }
 
     public void Notice(int type, string script, bool arg3) {
-        DebugLog("[Notice] type:{Type}, script:{Script}, arg3:{Arg3}", type, script, arg3);
+        if (TraceEnabled) DebugLog("[Notice] type:{Type}, script:{Script}, arg3:{Arg3}", type, script, arg3);
         Broadcast(NoticePacket.Notice(NoticePacket.Flags.Mint, new InterfaceText(script), 3000));
     }
 
     public void PlaySystemSoundByUserTag(int userTagId, string soundKey) {
-        DebugLog("[PlaySystemSoundByUserTag] userTagId:{TagId}, soundKey:{SoundKey}", userTagId, soundKey);
+        if (TraceEnabled) DebugLog("[PlaySystemSoundByUserTag] userTagId:{TagId}, soundKey:{SoundKey}", userTagId, soundKey);
         foreach (FieldPlayer player in Field.Players.Values) {
             if (player.TagId == userTagId) {
                 player.Session.Send(SoundPacket.System(soundKey));
@@ -47,7 +47,7 @@ public partial class TriggerContext {
     }
 
     public void PlaySystemSoundInBox(string sound, params int[] boxIds) {
-        DebugLog("[PlaySystemSoundInBox] sound:{Sound}, boxIds:{BoxIds}", sound, string.Join(", ", boxIds));
+        if (TraceEnabled) DebugLog("[PlaySystemSoundInBox] sound:{Sound}, boxIds:{BoxIds}", sound, string.Join(", ", boxIds));
         if (boxIds.Length == 0) {
             Broadcast(SoundPacket.System(sound));
             return;
@@ -61,19 +61,19 @@ public partial class TriggerContext {
     }
 
     public void ScoreBoardCreate(string type, string title, int maxScore) {
-        ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
+        if (TraceEnabled) ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
     }
 
     public void ScoreBoardRemove() {
-        ErrorLog("[ScoreBoardRemove]");
+        if (TraceEnabled) ErrorLog("[ScoreBoardRemove]");
     }
 
     public void ScoreBoardSetScore(int score) {
-        ErrorLog("[ScoreBoardSetScore] score:{Score}", score);
+        if (TraceEnabled) ErrorLog("[ScoreBoardSetScore] score:{Score}", score);
     }
 
     public void SetEventUiRound(int[] rounds, int arg3, int vOffset) {
-        DebugLog("[SetEventUIRound] rounds:{Rounds}, arg3:{Arg3}, vOffset:{VOffset}", string.Join(", ", rounds), arg3, vOffset);
+        if (TraceEnabled) DebugLog("[SetEventUIRound] rounds:{Rounds}, arg3:{Arg3}, vOffset:{VOffset}", string.Join(", ", rounds), arg3, vOffset);
         int round = rounds.ElementAtOrDefault(0, 1);
         int maxRound = rounds.ElementAtOrDefault(1, 1);
         int minRound = rounds.ElementAtOrDefault(2, 1);
@@ -84,7 +84,7 @@ public partial class TriggerContext {
     }
 
     public void SetEventUiScript(BannerType type, string script, int duration, string[] boxIds) {
-        DebugLog("[SetEventUIScript] type:{Type}, script:{Script}, duration:{Duration}, boxIds:{BoxIds}", type, script, duration, string.Join(", ", boxIds));
+        if (TraceEnabled) DebugLog("[SetEventUIScript] type:{Type}, script:{Script}, duration:{Duration}, boxIds:{BoxIds}", type, script, duration, string.Join(", ", boxIds));
         ByteWriter packet = MassiveEventPacket.Banner(type, script, duration);
 
         int[] notBoxIdInts = boxIds
@@ -111,7 +111,7 @@ public partial class TriggerContext {
     }
 
     public void SetEventUiCountdown(string script, int[] roundCountdown, string[] boxIds) {
-        DebugLog("[SetEventUICountdown] script:{Script}, roundCountdown:{Countdown}, boxIds:{BoxIds}", script, string.Join(", ", roundCountdown), string.Join(", ", boxIds));
+        if (TraceEnabled) DebugLog("[SetEventUICountdown] script:{Script}, roundCountdown:{Countdown}, boxIds:{BoxIds}", script, string.Join(", ", roundCountdown), string.Join(", ", boxIds));
         if (roundCountdown.Length != 2) {
             return;
         }
@@ -140,12 +140,12 @@ public partial class TriggerContext {
     }
 
     public void SetVisibleUi(string[] uiNames, bool visible) {
-        DebugLog("[SetVisibleUI] uiNames:{UiNames}, visible:{Visible}", string.Join(", ", uiNames), visible);
+        if (TraceEnabled) DebugLog("[SetVisibleUI] uiNames:{UiNames}, visible:{Visible}", string.Join(", ", uiNames), visible);
         Broadcast(TriggerPacket.SetVisibleUi(visible, string.Join(",", uiNames)));
     }
 
     public void ShowCountUi(string text, int stage, int count, int soundType) {
-        DebugLog("[ShowCountUI] text:{Text}, stage:{Stage}, count:{Count}, soundType:{SoundType}", text, stage, count, soundType);
+        if (TraceEnabled) DebugLog("[ShowCountUI] text:{Text}, stage:{Stage}, count:{Count}, soundType:{SoundType}", text, stage, count, soundType);
         Broadcast(MassiveEventPacket.Countdown(text, stage, count, soundType));
     }
 
@@ -155,12 +155,12 @@ public partial class TriggerContext {
     }
 
     public void ShowGuideSummary(int entityId, int textId, int duration) {
-        DebugLog("[ShowGuideSummary] entityId:{EntityId}, textId:{TextId}, duration:{Duration}", entityId, textId, duration);
+        if (TraceEnabled) DebugLog("[ShowGuideSummary] entityId:{EntityId}, textId:{TextId}, duration:{Duration}", entityId, textId, duration);
         Broadcast(TriggerPacket.UiShowSummary(entityId, textId, duration));
     }
 
     public void ShowRoundUi(int round, int duration, bool isFinalRound) {
-        DebugLog("[ShowRoundUI] round:{Round}, duration:{Duration}", round, duration);
+        if (TraceEnabled) DebugLog("[ShowRoundUI] round:{Round}, duration:{Duration}", round, duration);
         Broadcast(MassiveEventPacket.StartRound(round, duration));
     }
 
@@ -171,33 +171,33 @@ public partial class TriggerContext {
     }
 
     public void SideNpcTalkBottom(int npcId, string illust, int duration, string script) {
-        DebugLog("[SideNpcTalkBottom] npcId:{NpcId}, illust:{Illustration}, duration:{Duration}, script:{Script}", npcId, illust, duration, script);
+        if (TraceEnabled) DebugLog("[SideNpcTalkBottom] npcId:{NpcId}, illust:{Illustration}, duration:{Duration}, script:{Script}", npcId, illust, duration, script);
         Broadcast(TriggerPacket.SidePopupTalk(SideNpcTalkType.TalkBottom, duration, illust, string.Empty, script));
     }
 
     public void SideNpcMovie(string usm, int duration) {
-        DebugLog("[SideNpcMovie] usm:{Usm}, duration:{Duration}", usm, duration);
+        if (TraceEnabled) DebugLog("[SideNpcMovie] usm:{Usm}, duration:{Duration}", usm, duration);
         Broadcast(TriggerPacket.SidePopupTalk(SideNpcTalkType.Movie, duration, usm: usm));
     }
 
     public void SideNpcCutin(string illust, int duration) {
-        DebugLog("[SideNpcMovie] illust:{Illustration}, duration:{Duration}", illust, duration);
+        if (TraceEnabled) DebugLog("[SideNpcMovie] illust:{Illustration}, duration:{Duration}", illust, duration);
         Broadcast(TriggerPacket.SidePopupTalk(SideNpcTalkType.CutIn, duration, illust));
     }
 
     public void WidgetAction(string type, string func, string widgetArg, string desc, int widgetArgNum) {
-        DebugLog("[WidgetAction] type:{Type}, func:{Func}, widgetArg:{Args}, desc:{Desc}, widgetArgNum:{ArgNum}", type, func, widgetArg, desc, widgetArgNum);
+        if (TraceEnabled) DebugLog("[WidgetAction] type:{Type}, func:{Func}, widgetArg:{Args}, desc:{Desc}, widgetArgNum:{ArgNum}", type, func, widgetArg, desc, widgetArgNum);
         if (!Field.Widgets.TryGetValue(type, out Widget? widget)) {
             return;
         }
 
-        DebugLog("Calling Action on widget of type {Type}", widget.GetType().Name);
+        if (TraceEnabled) DebugLog("Calling Action on widget of type {Type}", widget.GetType().Name);
         widget.Action(func, widgetArgNum, widgetArg);
     }
 
     #region Conditions
     public bool WidgetValue(string type, string widgetName, string widgetArg, bool negate, string desc = "") {
-        DebugLog("[WidgetValue] type:{Type}, widgetName:{Name}, desc:{Desc}", type, widgetName, desc);
+        if (TraceEnabled) DebugLog("[WidgetValue] type:{Type}, widgetName:{Name}, desc:{Desc}", type, widgetName, desc);
         if (!Field.Widgets.TryGetValue(type, out Widget? widget)) {
             return negate;
         }

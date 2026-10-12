@@ -232,7 +232,11 @@ public class FieldPlayer : Actor<Player> {
                 return;
             }
 
-            if (stateSkill.Metadata.Property.State != State) {
+            if (!IsStillInSkillState(stateSkill.Metadata.Property.State, State)) {
+                if (Trigger.TriggerContext.TraceEnabled) {
+                    Logger.Information("[StateSkill] cancel {SkillId}: needs {SkillState}, player is {State}/{SubState}",
+                        stateSkill.SkillId, stateSkill.Metadata.Property.State, State, SubState);
+                }
                 Field.Broadcast(SkillPacket.Cancel(stateSkill));
                 ActiveSkills.StateSkill = null;
                 return;
@@ -244,6 +248,19 @@ public class FieldPlayer : Actor<Player> {
                 Field.Broadcast(SkillPacket.Cancel(stateSkill));
             }
         }
+    }
+
+    /// <summary>
+    /// Whether the player still counts as being in the state a state skill needs. An air mount (glide skill) is
+    /// started mid-jump and the client keeps reporting Jump/Fall for a moment, so those keep the glide alive;
+    /// landing (or anything else) ends it.
+    /// </summary>
+    public static bool IsStillInSkillState(ActorState skillState, ActorState playerState) {
+        if (skillState == playerState) {
+            return true;
+        }
+
+        return skillState == ActorState.Glide && playerState is ActorState.Jump or ActorState.JumpTo or ActorState.Fall;
     }
 
     public void OnStateSync(StateSync stateSync) {

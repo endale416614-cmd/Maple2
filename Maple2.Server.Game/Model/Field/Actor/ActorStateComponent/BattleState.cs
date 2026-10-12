@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
+using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using static Maple2.Model.Metadata.AiMetadata;
 
@@ -69,6 +70,11 @@ public class BattleState {
             actor.AppendDebugMessage($"Lost target '{GetTargetName()}'\n");
 
             Target = null;
+            // A target node is an instruction for the battle that just ended. Kept around, its from/to range would
+            // also limit how far the idle NPC looks for its next target (e.g. 1200 instead of a 6000 sight).
+            if (TargetNode is not { Type: NodeTargetType.HasAdditional, NoChangeWhenNoTarget: true }) {
+                TargetNode = null;
+            }
             if (actor is FieldPet { OwnerId: 0 } pet) {
                 actor.Field.Broadcast(PetPacket.SyncTaming(0, pet));
             }
@@ -78,7 +84,7 @@ public class BattleState {
             if (actor is FieldPet { OwnerId: 0, TamingPoint: <= 0 }) {
                 return;
             }
-            FindNewTarget();
+            Target = FindNewTarget();
 
             nextTargetSearchTick = tickCount + 500;
 
@@ -86,6 +92,31 @@ public class BattleState {
                 actor.AppendDebugMessage($"New target '{GetTargetName()}'\n");
             }
         }
+    }
+
+    /// <summary>
+    /// Applies an AI target node: picks the best target under the node's rules (nearest, farthest, random, ...).
+    /// When nothing matches, the NPC keeps the target it has.
+    /// </summary>
+    public void ApplyTargetNode(TargetNode node) {
+        TargetNode = node;
+        if (!CanBattle) {
+            return;
+        }
+
+        IActor? next = FindNewTarget();
+        if (next is not null && next != Target) {
+            Target = next;
+            actor.AppendDebugMessage($"Retarget '{GetTargetName()}'\n");
+        }
+    }
+
+    /// <summary>Whether a target is still close enough to keep chasing (the NPC's "last sight").</summary>
+    public static bool WithinLastSight(Vector3 position, Vector3 targetPosition, NpcMetadataDistance distance) {
+        float distanceSquared = (targetPosition - position).LengthSquared();
+        float verticalOffset = targetPosition.Z - position.Z;
+        float radiusSquared = distance.LastSightRadius * distance.LastSightRadius;
+        return distanceSquared < radiusSquared && verticalOffset <= distance.LastSightHeightUp && verticalOffset >= -distance.LastSightHeightDown - 10;
     }
 
     public bool IsInRange(float distanceSquared, float verticalOffset, float radiusSquared, float heightUp, float heightDown) {
@@ -209,7 +240,10 @@ public class BattleState {
             return false;
         }
 
-        return ShouldTargetActor(target, actor.Value.Metadata.Distance.LastSightRadius * actor.Value.Metadata.Distance.LastSightRadius, actor.Value.Metadata.Distance.SightHeightUp, actor.Value.Metadata.Distance.SightHeightDown);
+        // Keeping a target only depends on sight. The target node's from/to range decides which target to pick
+        // (ApplyTargetNode); applying it here made NPCs drop a target they were still chasing as soon as it was
+        // farther than e.g. 1200, after which they idled for good.
+        return WithinLastSight(actor.Position, target.Position, actor.Value.Metadata.Distance);
     }
 
     private int GetTargetType() {
@@ -226,7 +260,7 @@ public class BattleState {
         return friendlyType;
     }
 
-    private void FindNewTarget() {
+    private IActor? FindNewTarget() {
         int friendlyType = GetTargetType();
         float sightSquared = actor.Value.Metadata.Distance.Sight;
         float sightHeightUp = actor.Value.Metadata.Distance.SightHeightUp;
@@ -280,6 +314,6 @@ public class BattleState {
             }
         }
 
-        Target = nextTarget;
+        return nextTarget;
     }
 }

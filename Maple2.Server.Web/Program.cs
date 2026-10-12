@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
+using Maple2.Server.Core.Constants;
 using Autofac;
 using Autofac.Extensions.DependencyInjection;
 using Maple2.Server.Core.Modules;
@@ -36,7 +37,7 @@ int.TryParse(Environment.GetEnvironmentVariable("WEB_PORT") ?? "4000", out int w
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(options => {
-    options.Listen(new IPEndPoint(IPAddress.Any, webPort), listen => {
+    options.Listen(new IPEndPoint(Target.BindIp, webPort), listen => {
         listen.Protocols = HttpProtocols.Http1;
     });
     // Omitting for now since HTTPS requires a certificate

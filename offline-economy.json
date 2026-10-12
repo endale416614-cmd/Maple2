@@ -1,0 +1,16 @@
+{
+  // Offline edition economy. Meret (the former cash-shop currency) is bought with Mesos earned in play:
+  // the town potion shops (shops 116, 117, 122: Erin, Vivian, Hana, Emily, ... in every town) sell the
+  // game's own "N-Meret Pouch" items. Opening a pouch credits that much Meret.
+  // Price of each pouch = Meret * MesosPerMeret. Restart the servers after editing.
+  "MesosPerMeret": 200,
+  "MeretExchange": {
+    "ShopIds": [116, 117, 122],
+    "Pouches": [
+      { "ItemId": 20300055, "Meret": 10 },
+      { "ItemId": 20300066, "Meret": 100 },
+      { "ItemId": 20300056, "Meret": 500 },
+      { "ItemId": 20300070, "Meret": 1000 }
+    ]
+  }
+}

@@ -26,6 +26,10 @@ public static class DotEnv {
             string key = line[..index].Trim();
             string value = line[(index + 1)..].Trim();
 
+            // Variables already set by the caller (docker, scripts) win over .env.
+            if (Environment.GetEnvironmentVariable(key) != null) {
+                continue;
+            }
             Environment.SetEnvironmentVariable(key, value);
         }
     }

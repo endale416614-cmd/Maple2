@@ -16,7 +16,8 @@ public partial class GameStorage {
     public partial class Request {
         // TODO: Should this filter out your own listings?
         public ICollection<MesoListing> SearchMesoListings(int pageSize, long minAmount = 0, long maxAmount = long.MaxValue) {
-            return Context.MesoMarket.Where(listing => listing.ExpiryTime > DateTime.Now)
+            DateTime now = DateTime.Now;
+            return Context.MesoMarket.Where(listing => listing.ExpiryTime > now)
                 .Where(listing => listing.Amount >= minAmount)
                 .Where(listing => listing.Amount <= maxAmount)
                 .OrderBy(listing => listing.Price)
@@ -80,7 +81,8 @@ public partial class GameStorage {
         ///  Get active UGC listings by character Id
         /// </summary>
         public IList<UgcMarketItem> GetUgcListingsByCharacterId(long characterId) {
-            return Context.UgcMarketItem.Where(listing => listing.CharacterId == characterId && listing.ListingEndTime > DateTime.Now)
+            DateTime now = DateTime.Now;
+            return Context.UgcMarketItem.Where(listing => listing.CharacterId == characterId && listing.ListingEndTime > now)
                 .AsEnumerable()
                 .Select(ToMarketEntry)
                 .ToList()!;
@@ -156,24 +158,26 @@ public partial class GameStorage {
         }
 
         public ICollection<UgcMarketItem> GetUgcMarketItems(params int[] tabIds) {
+            DateTime now = DateTime.Now;
             if (tabIds.Length == 0) {
                 return Context.UgcMarketItem
-                    .Where(item => item.ListingEndTime > DateTime.Now)
+                    .Where(item => item.ListingEndTime > now)
                     .AsEnumerable()
                     .Select(ToMarketEntry)
                     .ToList()!;
             }
 
             return Context.UgcMarketItem
-                .Where(item => item.ListingEndTime > DateTime.Now && tabIds.Contains(item.TabId))
+                .Where(item => item.ListingEndTime > now && tabIds.Contains(item.TabId))
                 .AsEnumerable()
                 .Select(ToMarketEntry)
                 .ToList()!;
         }
 
         public ICollection<UgcMarketItem> GetUgcMarketPromotedItems() {
+            DateTime now = DateTime.Now;
             ICollection<UgcMarketItem> items = Context.UgcMarketItem
-                .Where(item => item.PromotionEndTime > DateTime.Now)
+                .Where(item => item.PromotionEndTime > now)
                 .OrderBy(item => EF.Functions.Random())
                 .Take(12)
                 .AsEnumerable()
@@ -187,8 +191,9 @@ public partial class GameStorage {
         }
 
         public ICollection<UgcMarketItem> GetUgcMarketNewItems() {
+            DateTime now = DateTime.Now;
             ICollection<UgcMarketItem> items = Context.UgcMarketItem
-                .Where(item => item.ListingEndTime > DateTime.Now)
+                .Where(item => item.ListingEndTime > now)
                 .OrderByDescending(item => item.CreationTime)
                 .Take(6)
                 .AsEnumerable()

@@ -11,6 +11,7 @@ using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Model.State;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Maple2.Tools.Collision;
 using System.Diagnostics.CodeAnalysis;
@@ -385,6 +386,8 @@ public class FieldNpc : Actor<Npc> {
         }
     }
 
+    private readonly HashSet<long> corpseAllDropsGiven = [];
+
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
         if (IsCorpse) {
             // Corpse loot intentionally drops on every hit — players are expected to keep
@@ -419,7 +422,7 @@ public class FieldNpc : Actor<Npc> {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
         foreach (int globalDropId in dropInfo.GlobalDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level, Field.ItemDrop.AllDrops, OfflineGrind.DropRate));
         }
 
         foreach (Item item in globalDrops) {
@@ -455,7 +458,7 @@ public class FieldNpc : Actor<Npc> {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var individualDrops = new List<Item>();
         foreach (int individualDropId in dropInfo.IndividualDropBoxIds) {
-            individualDrops.AddRange(Field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, individualDropId));
+            individualDrops.AddRange(Field.ItemDrop.GetIndividualDropItems(player.Session, player.Value.Character.Level, individualDropId, all: Field.ItemDrop.AllDrops, dropRate: OfflineGrind.DropRate));
         }
 
         foreach (Item item in individualDrops) {
@@ -467,9 +470,12 @@ public class FieldNpc : Actor<Npc> {
 
     public void DropCorpseLoot(FieldPlayer player) {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
+        // Corpse loot drops on every hit; the offline "all drops" table only once per player and corpse,
+        // or a multi-hit skill would drop the whole table for every hit.
+        bool all = Field.ItemDrop.AllDrops && corpseAllDropsGiven.Add(player.Value.Character.Id);
         var globalDrops = new List<Item>();
         foreach (int deadGlobalDropId in dropInfo.DeadGlobalDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(deadGlobalDropId, Value.Metadata.Basic.Level));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(deadGlobalDropId, Value.Metadata.Basic.Level, all));
         }
 
         foreach (Item item in globalDrops) {
@@ -510,6 +516,7 @@ public class FieldNpc : Actor<Npc> {
                 }
 
                 DropIndividualLoot(player);
+                DropUpgradeMaterials(player);
                 GiveExp(player);
 
                 player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
@@ -526,6 +533,7 @@ public class FieldNpc : Actor<Npc> {
 
             DropGlobalLoot(taggedPlayer!.Value.Character.Id);
             DropIndividualLoot(taggedPlayer);
+            DropUpgradeMaterials(taggedPlayer);
 
             foreach (KeyValuePair<int, DamageRecordTarget> damageDealer in DamageDealers) {
                 if (!Field.TryGetPlayer(damageDealer.Key, out FieldPlayer? player)) {
@@ -548,13 +556,34 @@ public class FieldNpc : Actor<Npc> {
             return;
         }
 
+        // Offline grind rates (1 when off).
+        float expMultiplier = OfflineGrind.ExpMultiplier(Field.TableMetadata.ExpTable, Value.Metadata.Basic.Level);
+
         if (Value.Metadata.Basic.CustomExp == -1) {
             // TODO: this is temporary. We need to know how to split exp between players.
-            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level);
+            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, expMultiplier);
             return;
         }
 
-        player.Session.Exp.AddExp(Value.Metadata.Basic.CustomExp);
+        player.Session.Exp.AddExp((long) (Value.Metadata.Basic.CustomExp * (double) expMultiplier));
+    }
+
+    // Offline grind rates: level-based upgrade materials (Onyx, Crystal Fragments, ...), see offline-grind.json.
+    private void DropUpgradeMaterials(FieldPlayer player) {
+        if (!OfflineGrind.Enabled || Value.Metadata.Basic.Friendly != 0) {
+            return;
+        }
+
+        NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
+        foreach ((int itemId, int amount) in OfflineGrind.RollUpgradeDrops(Value.Metadata.Basic.Level, Value.IsBoss, Random.Shared)) {
+            Item? item = Field.ItemDrop.CreateItem(itemId, amount: amount);
+            if (item == null) {
+                continue;
+            }
+            float x = Random.Shared.Next((int) Position.X - dropInfo.DropDistanceRandom, (int) Position.X + dropInfo.DropDistanceRandom);
+            float y = Random.Shared.Next((int) Position.Y - dropInfo.DropDistanceRandom, (int) Position.Y + dropInfo.DropDistanceRandom);
+            Field.DropItem(new Vector3(x, y, Position.Z), Rotation, item, owner: this, characterId: player.Value.Character.Id);
+        }
     }
 
     public void SendDebugAiInfo(GameSession requester) {

@@ -6,6 +6,7 @@ using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Manager.Items;
 
@@ -325,13 +326,14 @@ public class EquipManager {
     }
 
     public static StringCode ValidateEquipItem(GameSession session, Item item) {
-        if (item.Metadata.Limit.Level > session.Player.Value.Character.Level) {
+        bool testKit = OfflineTestKit.IgnoresRestrictions(item.Id); // offline play-testing gear: no level/job limit
+        if (!testKit && item.Metadata.Limit.Level > session.Player.Value.Character.Level) {
             return StringCode.s_item_err_puton_low_level;
         }
         if (item.IsExpired()) {
             return StringCode.s_item_err_puton_expired;
         }
-        if (item.Metadata.Limit.JobLimits.Length > 0 && !item.Metadata.Limit.JobLimits.Contains(session.Player.Value.Character.Job.Code())) {
+        if (!testKit && item.Metadata.Limit.JobLimits.Length > 0 && !item.Metadata.Limit.JobLimits.Contains(session.Player.Value.Character.Job.Code())) {
             return StringCode.s_item_err_puton_job;
         }
         if (item.Binding != null && item.Binding.CharacterId != session.CharacterId) {
@@ -360,7 +362,10 @@ public class EquipManager {
 
     public void Save(GameStorage.Request db) {
         lock (session.Item) {
-            db.SaveItems(0, delete.ToArray());
+            // Discarded items only need saving once; the list used to be re-saved on every map change.
+            if (delete.Count > 0 && db.SaveItems(0, delete.ToArray())) {
+                delete.Clear();
+            }
             db.SaveItems(session.CharacterId, Gear.Values.ToArray());
             db.SaveItems(session.CharacterId, Outfit.Values.ToArray());
             db.SaveItems(session.CharacterId, Badge.Values.ToArray());

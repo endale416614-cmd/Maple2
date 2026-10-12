@@ -9,5 +9,13 @@ public sealed class WebContext(DbContextOptions options) : DbContext(options) {
     protected override void OnModelCreating(ModelBuilder modelBuilder) {
         base.OnModelCreating(modelBuilder);
         modelBuilder.Entity<UgcResource>(Maple2.Database.Model.UgcResource.Configure);
+
+        if (this.IsSqlite()) {
+            SqliteSupport.ApplyConventions(modelBuilder);
+        }
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) {
+        SqliteSupport.Configure(optionsBuilder);
     }
 }

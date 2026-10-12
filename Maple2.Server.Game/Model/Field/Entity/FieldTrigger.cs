@@ -68,14 +68,15 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
             return;
         }
 
-        nextTick += Constant.NextStateTriggerDefaultTick;
+        // The field clock stops while nobody is on the map; don't replay the missed ticks back to back on return.
+        nextTick = Math.Max(nextTick, tickCount - Constant.NextStateTriggerDefaultTick) + Constant.NextStateTriggerDefaultTick;
 
         if (nextState != null) {
-            Context.DebugLog("[OnExit] {State}", state?.Name ?? "null");
+            if (TriggerContext.TraceEnabled) Context.DebugLog("[OnExit] {State}", state?.Name ?? "null");
             state?.OnExit();
             state = nextState;
             Context.StartTick = Field.FieldTick;
-            Context.DebugLog("[OnEnter] {State}", state.Name);
+            if (TriggerContext.TraceEnabled) Context.DebugLog("[OnEnter] {State}", state.Name);
             nextState = state.OnEnter();
 
             // If OnEnter transitions to nextState, we skip OnTick.

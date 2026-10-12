@@ -9,7 +9,7 @@ namespace Maple2.Server.Game.Trigger;
 
 public partial class TriggerContext {
     public void ChangeMonster(int removeSpawnId, int addSpawnId) {
-        DebugLog("[ChangeMonster] removeSpawnId:{RemoveId}, addSpawnId:{AddId}", removeSpawnId, addSpawnId);
+        if (TraceEnabled) DebugLog("[ChangeMonster] removeSpawnId:{RemoveId}, addSpawnId:{AddId}", removeSpawnId, addSpawnId);
         foreach (FieldNpc fieldNpc in Field.EnumerateNpcs()) {
             if (fieldNpc.SpawnPointId == removeSpawnId) {
                 Field.RemoveNpc(fieldNpc.ObjectId);
@@ -20,7 +20,7 @@ public partial class TriggerContext {
     }
 
     public void SpawnMonster(int[] spawnIds, bool autoTarget, int delay) {
-        WarnLog("[CreateMonster] spawnIds:{SpawnIds}, autoTarget:{AutoTarget}, delay:{Delay}", string.Join(", ", spawnIds), autoTarget, delay);
+        if (TraceEnabled) WarnLog("[CreateMonster] spawnIds:{SpawnIds}, autoTarget:{AutoTarget}, delay:{Delay}", string.Join(", ", spawnIds), autoTarget, delay);
         foreach (int spawnId in spawnIds) {
             if (delay > 0) {
                 Events.Schedule(() => SpawnNpc(spawnId, autoTarget), TimeSpan.FromMilliseconds(delay));
@@ -31,7 +31,7 @@ public partial class TriggerContext {
     }
 
     public void DestroyMonster(int[] spawnIds, bool arg2) {
-        WarnLog("[DestroyMonster] spawnIds:{SpawnIds}, Arg2:{Arg2}", string.Join(", ", spawnIds), arg2);
+        if (TraceEnabled) WarnLog("[DestroyMonster] spawnIds:{SpawnIds}, Arg2:{Arg2}", string.Join(", ", spawnIds), arg2);
         if (spawnIds.Contains(-1)) {
             foreach (FieldNpc fieldNpc in Field.EnumerateNpcs()) {
                 Field.RemoveNpc(fieldNpc.ObjectId);
@@ -49,20 +49,20 @@ public partial class TriggerContext {
     }
 
     private void SpawnMonster(int spawnId) {
-        DebugLog("[SpawnMonster] spawnId:{SpawnId}", spawnId);
+        if (TraceEnabled) DebugLog("[SpawnMonster] spawnId:{SpawnId}", spawnId);
         SpawnNpc(spawnId);
     }
 
     public void InitNpcRotation(int[] spawnIds) {
-        ErrorLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
+        if (TraceEnabled) ErrorLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
     }
 
     public void LimitSpawnNpcCount(int limitCount, string desc) {
-        ErrorLog("[LimitSpawnNpcCount] limitCount:{Count}", limitCount);
+        if (TraceEnabled) ErrorLog("[LimitSpawnNpcCount] limitCount:{Count}", limitCount);
     }
 
     public void MoveNpc(int spawnId, string patrolName) {
-        DebugLog("[MoveNpc] spawnId:{SpawnId} patrolName:{PatrolName}", spawnId, patrolName);
+        if (TraceEnabled) DebugLog("[MoveNpc] spawnId:{SpawnId} patrolName:{PatrolName}", spawnId, patrolName);
 
         List<FieldNpc> fieldNpcs = Field.EnumerateNpcs().Where(npc => npc.SpawnPointId == spawnId).ToList();
         if (fieldNpcs.Count == 0) {
@@ -81,7 +81,7 @@ public partial class TriggerContext {
     }
 
     public void MoveNpcToPos(int spawnId, Vector3 position, Vector3 rotation) {
-        WarnLog("[MoveNpcToPos] spawnId:{SpawnId}", spawnId);
+        if (TraceEnabled) WarnLog("[MoveNpcToPos] spawnId:{SpawnId}", spawnId);
         foreach (FieldNpc npc in Field.EnumerateNpcs()) {
             if (npc.SpawnPointId == spawnId) {
                 npc.Position = position;
@@ -91,7 +91,7 @@ public partial class TriggerContext {
     }
 
     public void NpcRemoveAdditionalEffect(int spawnId, int additionalEffectId) {
-        WarnLog("[NpcRemoveAdditionalEffect] spawnId:{SpawnId}", spawnId);
+        if (TraceEnabled) WarnLog("[NpcRemoveAdditionalEffect] spawnId:{SpawnId}", spawnId);
         foreach (FieldNpc npc in Field.EnumerateNpcs()) {
             if (npc.SpawnPointId == spawnId) {
                 npc.Buffs.Remove(additionalEffectId, npc.ObjectId);
@@ -100,11 +100,11 @@ public partial class TriggerContext {
     }
 
     public void NpcToPatrolInBox(int boxId, int npcId, string spawnId, string patrolName) {
-        ErrorLog("[NpcToPatrolInBox] boxId:{BoxId}, npcId:{NpcId}, spawnId:{SpawnId}, patrolName:{PatrolName}", spawnId, npcId, spawnId, patrolName);
+        if (TraceEnabled) ErrorLog("[NpcToPatrolInBox] boxId:{BoxId}, npcId:{NpcId}, spawnId:{SpawnId}, patrolName:{PatrolName}", spawnId, npcId, spawnId, patrolName);
     }
 
     public void SetAiExtraData(string key, int value, bool isModify, int boxId) {
-        WarnLog("[SetAiExtraData] key:{Key}, value:{Value}, isModify:{IsModify}, boxId:{BoxId}", key, value, isModify, boxId);
+        if (TraceEnabled) WarnLog("[SetAiExtraData] key:{Key}, value:{Value}, isModify:{IsModify}, boxId:{BoxId}", key, value, isModify, boxId);
         var npcs = boxId != 0 ? NpcsInBox(boxId) : Field.EnumerateNpcs();
         foreach (FieldNpc npc in npcs) {
             // Assumed that we increment the current by the value if isModify is true
@@ -145,7 +145,7 @@ public partial class TriggerContext {
     }
 
     public void SetNpcDuelHpBar(bool isOpen, int spawnId, int durationTick, int npcHpStep) {
-        DebugLog("[SetNpcDuelHpBar] isOpen:{IsOpen}, spawnId:{SpawnId}, durationTick:{Duration}, npcHpStep:{HpStep}", isOpen, spawnId, durationTick, npcHpStep);
+        if (TraceEnabled) DebugLog("[SetNpcDuelHpBar] isOpen:{IsOpen}, spawnId:{SpawnId}, durationTick:{Duration}, npcHpStep:{HpStep}", isOpen, spawnId, durationTick, npcHpStep);
         IActor? actor = Field.GetActorsBySpawnId(spawnId).FirstOrDefault();
         if (actor is null) {
             return;
@@ -155,21 +155,21 @@ public partial class TriggerContext {
     }
 
     public void SetNpcEmotionLoop(int spawnId, string sequenceName, float duration) {
-        WarnLog("[SetNpcEmotionLoop] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, duration);
+        if (TraceEnabled) WarnLog("[SetNpcEmotionLoop] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, duration);
 
         FieldNpc? fieldNpc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         fieldNpc?.Animate(sequenceName, duration);
     }
 
     public void SetNpcEmotionSequence(int spawnId, string sequenceName, int durationTick) {
-        WarnLog("[SetNpcEmotionSequence] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, durationTick);
+        if (TraceEnabled) WarnLog("[SetNpcEmotionSequence] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, durationTick);
 
         FieldNpc? fieldNpc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         fieldNpc?.Animate(sequenceName);
     }
 
     public void SetNpcRotation(int spawnId, float rotation) {
-        WarnLog("[SetNpcRotation] spawnId:{SpawnId}, rotation:{Rotation}", spawnId, rotation);
+        if (TraceEnabled) WarnLog("[SetNpcRotation] spawnId:{SpawnId}, rotation:{Rotation}", spawnId, rotation);
         foreach (FieldNpc npc in Field.EnumerateNpcs()) {
             if (npc.SpawnPointId == spawnId) {
                 npc.Rotation = npc.Rotation with {
@@ -190,7 +190,7 @@ public partial class TriggerContext {
 
     #region Conditions
     public bool CheckNpcAdditionalEffect(int spawnId, int additionalEffectId, int level, bool negate) {
-        DebugLog("[CheckNpcAdditionalEffect] spawnId:{SpawnId}, additionalEffectId:{EffectId}, level:{Level}", spawnId, additionalEffectId, level);
+        if (TraceEnabled) DebugLog("[CheckNpcAdditionalEffect] spawnId:{SpawnId}, additionalEffectId:{EffectId}, level:{Level}", spawnId, additionalEffectId, level);
         IEnumerable<IActor> actors = Field.GetActorsBySpawnId(spawnId);
         bool hasAnyBuff = false;
         foreach (IActor actor in actors) {
@@ -208,8 +208,16 @@ public partial class TriggerContext {
     }
 
     public bool MonsterDead(int[] spawnIds, bool autoTarget) {
-        DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}", string.Join(", ", spawnIds), autoTarget);
+        if (TraceEnabled) DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}", string.Join(", ", spawnIds), autoTarget);
         IEnumerable<FieldNpc> matchingMobs = Field.Mobs.Values.Where(x => spawnIds.Contains(x.SpawnPointId));
+
+        if (TraceEnabled && matchingMobs.Count(mob => !mob.IsDead) is var aliveCount && aliveCount != lastAliveCount) {
+            // Only when the number left changes: positions change every tick and would log at 10 Hz.
+            lastAliveCount = aliveCount;
+            FieldNpc[] alive = matchingMobs.Where(mob => !mob.IsDead).ToArray();
+            DebugLog("[MonsterDead] {Alive} alive: {Mobs}", alive.Length, string.Join("; ", alive.Select(mob =>
+                $"{mob.Value.Metadata.Id}@spawn{mob.SpawnPointId} pos=({mob.Position.X:0},{mob.Position.Y:0},{mob.Position.Z:0}) inBattle={mob.BattleState.InBattle}")));
+        }
 
         foreach (FieldNpc mob in matchingMobs) {
             if (!mob.IsDead) {
@@ -222,10 +230,10 @@ public partial class TriggerContext {
     }
 
     public bool MonsterInCombat(int[] spawnIds, bool negate) {
-        DebugLog("[MonsterInCombat] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
+        if (TraceEnabled) DebugLog("[MonsterInCombat] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
         foreach (FieldNpc mob in Field.Mobs.Values) {
-            if (mob.SpawnPointId > 0 || !spawnIds.Contains(mob.SpawnPointId)) {
-                continue;
+            if (!spawnIds.Contains(mob.SpawnPointId)) {
+                continue; // (was "SpawnPointId > 0 ||", which skipped every trigger-spawned mob)
             }
 
             if (mob.BattleState.InBattle) {
@@ -237,7 +245,7 @@ public partial class TriggerContext {
     }
 
     public bool NpcDetected(int boxId, int[] spawnIds, bool negate) {
-        DebugLog("[NpcDetected] boxId:{BoxId}, spawnIds:{SpawnIds}", boxId, string.Join(", ", spawnIds));
+        if (TraceEnabled) DebugLog("[NpcDetected] boxId:{BoxId}, spawnIds:{SpawnIds}", boxId, string.Join(", ", spawnIds));
         if (spawnIds.Length == 0 || spawnIds[0] == 0) {
             return NpcsInBox(boxId).Any();
         }
@@ -252,7 +260,7 @@ public partial class TriggerContext {
     }
 
     public bool NpcIsDeadByStringId(string stringId) {
-        ErrorLog("[NpcIsDeadByStringId] stringId:{Round}", stringId);
+        if (TraceEnabled) ErrorLog("[NpcIsDeadByStringId] stringId:{Round}", stringId);
         return false;
     }
     #endregion

@@ -10,6 +10,7 @@ using Microsoft.Extensions.Logging;
 using Serilog;
 using System.Reflection;
 using Maple2.Database.Storage;
+using System.Net;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Modules;
 using Maple2.Server.Core.Network;
@@ -38,7 +39,7 @@ Log.Logger = new LoggerConfiguration()
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 builder.WebHost.UseKestrel(options => {
-    options.ListenAnyIP(Target.GrpcLoginPort, listen => {
+    options.Listen(new IPEndPoint(Target.BindIp, Target.GrpcLoginPort), listen => {
         listen.Protocols = HttpProtocols.Http2;
     });
 });

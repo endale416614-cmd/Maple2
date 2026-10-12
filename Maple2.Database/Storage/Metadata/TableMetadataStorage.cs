@@ -159,7 +159,8 @@ public class TableMetadataStorage {
         premiumClubTable = Retrieve<PremiumClubTable>(context, TableNames.VIP);
         individualItemDropTable = Retrieve<IndividualItemDropTable>(context, TableNames.INDIVIDUAL_ITEM_DROP);
         colorPaletteTable = Retrieve<ColorPaletteTable>(context, TableNames.COLOR_PALETTE);
-        meretMarketCategoryTable = Retrieve<MeretMarketCategoryTable>(context, TableNames.MERET_MARKET_CATEGORY);
+        Lazy<MeretMarketCategoryTable> shippedMeretCategories = Retrieve<MeretMarketCategoryTable>(context, TableNames.MERET_MARKET_CATEGORY);
+        meretMarketCategoryTable = new Lazy<MeretMarketCategoryTable>(() => OfflineEconomy.Apply(shippedMeretCategories.Value));
         shopBeautyCouponTable = Retrieve<ShopBeautyCouponTable>(context, TableNames.SHOP_BEAUTY_COUPON);
         furnishingShopTable = Retrieve<FurnishingShopTable>(context, TableNames.SHOP_FURNISHING);
         gachaInfoTable = Retrieve<GachaInfoTable>(context, TableNames.GACHA_INFO);
@@ -196,7 +197,8 @@ public class TableMetadataStorage {
         armorVariationTable = Retrieve<ItemEquipVariationTable>(context, TableNames.ITEM_OPTION_VARIATION_ARMOR);
         petVariationTable = Retrieve<ItemEquipVariationTable>(context, TableNames.ITEM_OPTION_VARIATION_PET);
         weaponVariationTable = Retrieve<ItemEquipVariationTable>(context, TableNames.ITEM_OPTION_VARIATION_WEAPON);
-        dungeonRoomTable = Retrieve<DungeonRoomTable>(context, TableNames.DUNGEON_ROOM);
+        Lazy<DungeonRoomTable> shippedDungeonRooms = Retrieve<DungeonRoomTable>(context, TableNames.DUNGEON_ROOM);
+        dungeonRoomTable = new Lazy<DungeonRoomTable>(() => OfflineDungeons.Apply(shippedDungeonRooms.Value));
         dungeonRankRewardTable = Retrieve<DungeonRankRewardTable>(context, TableNames.DUNGEON_RANK_REWARD);
         dungeonConfigTable = Retrieve<DungeonConfigTable>(context, TableNames.DUNGEON_CONFIG);
         dungeonMissionTable = Retrieve<DungeonMissionTable>(context, TableNames.DUNGEON_MISSION);

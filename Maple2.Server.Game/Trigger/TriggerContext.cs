@@ -45,49 +45,56 @@ public partial class TriggerContext : ITriggerContext {
 
     private void Broadcast(ByteWriter packet) => Field.Broadcast(packet);
 
-    private string lastDebugKey = "";
+    private readonly Dictionary<string, string> lastDebugKeys = new();
+    private int lastAliveCount = -1;
 
-    [Conditional("TRIGGER_DEBUG")]
+    /// <summary>
+    /// Trigger tracing for quest/dungeon debugging: OFFLINE_TRIGGER_TRACE=true logs every state change and action.
+    /// (Previously only available in builds compiled with TRIGGER_DEBUG.)
+    /// </summary>
+    internal static readonly bool TraceEnabled =
+        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_TRIGGER_TRACE"), "true", StringComparison.OrdinalIgnoreCase);
+
     [MessageTemplateFormatMethod("messageTemplate")]
     internal void DebugLog(string messageTemplate, params object[] args) {
-        LogOnce(logger.Debug, messageTemplate, args);
+        if (TraceEnabled) LogOnce(logger.Information, messageTemplate, args);
     }
 
-    [Conditional("TRIGGER_DEBUG")]
     [MessageTemplateFormatMethod("messageTemplate")]
     internal void WarnLog(string messageTemplate, params object[] args) {
-        LogOnce(logger.Warning, messageTemplate, args);
+        if (TraceEnabled) LogOnce(logger.Warning, messageTemplate, args);
     }
 
-    [Conditional("TRIGGER_DEBUG")]
     [MessageTemplateFormatMethod("messageTemplate")]
     internal void ErrorLog(string messageTemplate, params object[] args) {
-        LogOnce(logger.Error, messageTemplate, args);
+        if (TraceEnabled) LogOnce(logger.Error, messageTemplate, args);
     }
 
     private void LogOnce(Action<string, object[]> logAction, string messageTemplate, params object[] args) {
-        string key = messageTemplate + string.Join(", ", args);
-        if (key == lastDebugKey) {
+        // Remembered per message template: a state polling several conditions each tick alternates templates,
+        // which a single "last message" defeated (every poll was logged).
+        string key = string.Join(", ", args);
+        if (lastDebugKeys.TryGetValue(messageTemplate, out string? last) && last == key) {
             return;
         }
 
-        logAction($"{owner.Value.Name} {messageTemplate}", args);
-        lastDebugKey = key;
+        logAction($"[{Field.MapId}] {owner.Value.Name} {messageTemplate}", args);
+        lastDebugKeys[messageTemplate] = key;
     }
 
     // Accessors
     public bool ShadowExpeditionPoints(int score) {
-        ErrorLog("[GetShadowExpeditionPoints]");
+        if (TraceEnabled) ErrorLog("[GetShadowExpeditionPoints]");
         return 0 >= score;
     }
 
     public bool DungeonVariable(int id, int value) {
-        ErrorLog("[GetDungeonVariable] id:{Id}", id);
+        if (TraceEnabled) ErrorLog("[GetDungeonVariable] id:{Id}", id);
         return false;
     }
 
     public bool NpcDamage(int spawnPointId, float damage, OperatorType operatorType) {
-        ErrorLog("[GetNpcDamageRate] spawnPointId:{Id}, damage:{Damage}, operatorType:{Operator}", spawnPointId, damage, operatorType);
+        if (TraceEnabled) ErrorLog("[GetNpcDamageRate] spawnPointId:{Id}, damage:{Damage}, operatorType:{Operator}", spawnPointId, damage, operatorType);
         return operatorType switch {
             OperatorType.Greater => damage > 1.0f,
             OperatorType.GreaterEqual => damage >= 1.0f,
@@ -99,7 +106,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool NpcHp(int spawnPointId, bool isRelative, int value, CompareType compareType) {
-        ErrorLog("[GetNpcHpRate] spawnPointId:{Id}, isRelative:{IsRelative}, value:{Value}, compareType:{CompareType}", spawnPointId, isRelative, value, compareType);
+        if (TraceEnabled) ErrorLog("[GetNpcHpRate] spawnPointId:{Id}, isRelative:{IsRelative}, value:{Value}, compareType:{CompareType}", spawnPointId, isRelative, value, compareType);
         return compareType switch {
             CompareType.lower => value > 100,
             CompareType.lowerEqual => value >= 100,
@@ -110,22 +117,22 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool DungeonId(int dungeonId) {
-        ErrorLog("[GetDungeonId]");
+        if (TraceEnabled) ErrorLog("[GetDungeonId]");
         return dungeonId == 0;
     }
 
     public bool DungeonLevel(int level) {
-        ErrorLog("[GetDungeonLevel]");
+        if (TraceEnabled) ErrorLog("[GetDungeonLevel]");
         return level == 3;
     }
 
     public bool DungeonMaxUserCount(int value) {
-        ErrorLog("[GetDungeonMaxUserCount]");
+        if (TraceEnabled) ErrorLog("[GetDungeonMaxUserCount]");
         return value == 1;
     }
 
     public bool DungeonRound(int round) {
-        ErrorLog("[GetDungeonRoundsRequired]");
+        if (TraceEnabled) ErrorLog("[GetDungeonRoundsRequired]");
         return int.MaxValue == round;
     }
 
@@ -141,7 +148,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool CountUsers(int boxId, int userTagId, int minUsers, OperatorType operatorType, bool negate) {
-        DebugLog("[GetUserCount] boxId:{BoxId}, userTagId:{TagId}", boxId, userTagId);
+        if (TraceEnabled) DebugLog("[GetUserCount] boxId:{BoxId}, userTagId:{TagId}", boxId, userTagId);
         if (!Objects.Boxes.TryGetValue(boxId, out TriggerBox? box)) {
             return negate;
         }
@@ -165,7 +172,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool NpcExtraData(int spawnId, string extraDataKey, int extraDataValue, OperatorType operatorType) {
-        WarnLog("[GetNpcExtraData] spawnId:{SpawnId}, extraDataKey:{Key}, extraDataValue:{Value}, operatorType:{Operator}", spawnId, extraDataKey, extraDataValue, operatorType);
+        if (TraceEnabled) WarnLog("[GetNpcExtraData] spawnId:{SpawnId}, extraDataKey:{Key}, extraDataValue:{Value}, operatorType:{Operator}", spawnId, extraDataKey, extraDataValue, operatorType);
         var npc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         if (npc is null) {
             return false;
@@ -182,18 +189,18 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool DungeonPlayTime(int playSeconds) {
-        ErrorLog("[GetDungeonPlayTime]");
+        if (TraceEnabled) ErrorLog("[GetDungeonPlayTime]");
         return playSeconds == 0;
     }
 
     // Scripts seem to just check if this is "Fail"
     public bool DungeonState(string checkState) {
-        ErrorLog("[GetDungeonState]");
+        if (TraceEnabled) ErrorLog("[GetDungeonState]");
         return checkState == "";
     }
 
     public bool DungeonFirstUserMissionScore(int score, OperatorType operatorType) {
-        ErrorLog("[GetDungeonFirstUserMissionScore]");
+        if (TraceEnabled) ErrorLog("[GetDungeonFirstUserMissionScore]");
         return operatorType switch {
             OperatorType.Greater => score > 0,
             OperatorType.GreaterEqual => score >= 0,
@@ -205,7 +212,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool ScoreBoardScore(int score, OperatorType operatorType) {
-        ErrorLog("[GetScoreBoardScore]");
+        if (TraceEnabled) ErrorLog("[GetScoreBoardScore]");
         return operatorType switch {
             OperatorType.Greater => score > 0,
             OperatorType.GreaterEqual => score >= 0,
@@ -217,7 +224,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool UserValue(string key, int value, bool negate) {
-        WarnLog("[GetUserValue] key:{Key}", key);
+        if (TraceEnabled) WarnLog("[GetUserValue] key:{Key}", key);
         int userValue = Field.UserValues.GetValueOrDefault(key, 0);
         if (negate) {
             return userValue != value;

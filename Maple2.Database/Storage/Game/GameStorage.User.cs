@@ -1,4 +1,5 @@
 ﻿using System.Text.Json;
+using Maple2.Database.Context;
 using Maple2.Database.Extensions;
 using Maple2.Database.Model;
 using Maple2.Model.Enum;
@@ -48,6 +49,10 @@ public partial class GameStorage {
                 return true;
             }
 #endif
+            // Offline single-player edition: the one local profile may have no password.
+            if (OfflineMode.Enabled && account != null && string.IsNullOrEmpty(account.Password)) {
+                return true;
+            }
             // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
             return account != null && BCrypt.Net.BCrypt.Verify(password, account.Password);
         }

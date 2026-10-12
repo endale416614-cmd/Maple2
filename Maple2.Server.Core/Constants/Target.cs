@@ -26,7 +26,15 @@ public static class Target {
 
     public static readonly bool InstancedContent = false;
 
+    // Address every server socket listens on. Loopback keeps the servers reachable from this PC only;
+    // set BIND_IP=0.0.0.0 to host for other machines.
+    public static readonly IPAddress BindIp = IPAddress.Loopback;
+
     static Target() {
+        if (IPAddress.TryParse(Environment.GetEnvironmentVariable("BIND_IP"), out IPAddress? bindIpAddress)) {
+            BindIp = bindIpAddress;
+        }
+
         if (IPAddress.TryParse(Environment.GetEnvironmentVariable("LOGIN_IP"), out IPAddress? loginIpAddress)) {
             LoginIp = loginIpAddress;
         }

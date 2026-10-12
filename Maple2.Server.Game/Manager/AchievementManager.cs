@@ -71,7 +71,7 @@ public sealed class AchievementManager {
                     CurrentGrade = grade.Grade,
                     RewardGrade = grade.Grade,
                 };
-                GameStorage.Request db = session.GameStorage.Context();
+                using GameStorage.Request db = session.GameStorage.Context();
                 achievement = db.CreateAchievement(metadata.AccountWide ? session.AccountId : session.CharacterId, achievement);
                 if (achievement == null) {
                     throw new InvalidOperationException($"Failed to create achievement: {metadata.Id}");
@@ -274,7 +274,7 @@ public sealed class AchievementManager {
                     CurrentGrade = metadata.Grades.Keys.Min(),
                     RewardGrade = metadata.Grades.Keys.Min(),
                 };
-                GameStorage.Request db = session.GameStorage.Context();
+                using GameStorage.Request db = session.GameStorage.Context();
                 achievement = db.CreateAchievement(metadata.AccountWide ? session.AccountId : session.CharacterId, achievement);
                 if (achievement == null) {
                     throw new InvalidOperationException($"Failed to create achievement: {metadata.Id}");

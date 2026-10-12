@@ -338,7 +338,15 @@ public class MeretMarketHandler : FieldPacketHandler {
             return null;
         }
 
-        if (entry.Metadata.RequireAchievementId > 0 && session.Achievement.HasAchievement(entry.Metadata.RequireAchievementId, entry.Metadata.RequireAchievementRank)) {
+        if (entry.Metadata.RequireAchievementId > 0 && !session.Achievement.HasAchievement(entry.Metadata.RequireAchievementId, entry.Metadata.RequireAchievementRank)) {
+            return null;
+        }
+
+        // Create the item before charging: a failure must never cost Meret.
+        Item? item = session.Field?.ItemDrop.CreateItem(entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
+        if (item == null) {
+            Logger.Error("Failed to create item {ItemId}, {Rarity}, {Quantity}", entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
+            session.Send(NoticePacket.MessageBox(StringCode.s_err_lack_money));
             return null;
         }
 
@@ -347,12 +355,6 @@ public class MeretMarketHandler : FieldPacketHandler {
         if (payResult != StringCode.s_empty_string) {
             session.Send(NoticePacket.MessageBox(payResult));
             return null;
-        }
-
-        Item? item = session.Field?.ItemDrop.CreateItem(entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
-        if (item == null) {
-            Logger.Fatal("Failed to create item {ItemId}, {Rarity}, {Quantity}", entry.ItemMetadata.Id, entry.Metadata.Rarity, entry.Metadata.Quantity + entry.Metadata.BonusQuantity);
-            throw new InvalidOperationException($"Fatal: Failed to create item {entry.ItemMetadata.Id}, {entry.Metadata.Rarity}, {entry.Metadata.Quantity + entry.Metadata.BonusQuantity}");
         }
 
         if (entry.Metadata.DurationInDays > 0) {

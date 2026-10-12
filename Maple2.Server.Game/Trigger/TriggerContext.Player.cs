@@ -10,7 +10,7 @@ namespace Maple2.Server.Game.Trigger;
 
 public partial class TriggerContext {
     public void EnableSpawnPointPc(int spawnPointId, bool enabled) {
-        DebugLog("[EnableSpawnPointPc] spawnPointId:{Type}, enabled:{Enabled}", spawnPointId, enabled);
+        if (TraceEnabled) DebugLog("[EnableSpawnPointPc] spawnPointId:{Type}, enabled:{Enabled}", spawnPointId, enabled);
         if (!Field.TryGetPlayerSpawn(spawnPointId, out FieldPlayerSpawnPoint? fieldPlayerSpawn)) {
             logger.Error("[EnableSpawnPointPc] Invalid Player Spawn Point ID: {spawnPointId} in Map ID: {mapId}", spawnPointId, Field.MapId);
             return;
@@ -20,15 +20,15 @@ public partial class TriggerContext {
     }
 
     public void GiveExp(int boxId, float expRate, bool arg3) {
-        ErrorLog("[GiveExp] boxId:{BoxId}, expRate:{ExpRate}", boxId, expRate);
+        if (TraceEnabled) ErrorLog("[GiveExp] boxId:{BoxId}, expRate:{ExpRate}", boxId, expRate);
     }
 
     public void GiveRewardContent(int rewardId) {
-        ErrorLog("[GiveRewardContent] rewardId:{RewardId}", rewardId);
+        if (TraceEnabled) ErrorLog("[GiveRewardContent] rewardId:{RewardId}", rewardId);
     }
 
     public void KickMusicAudience(int targetBoxId, int targetPortalId) {
-        DebugLog("[KickMusicAudience] targetBoxId:{BoxId}, targetPortalId:{PortalId}", targetBoxId, targetPortalId);
+        if (TraceEnabled) DebugLog("[KickMusicAudience] targetBoxId:{BoxId}, targetPortalId:{PortalId}", targetBoxId, targetPortalId);
         if (Field.PerformanceStage is null) {
             return;
         }
@@ -46,7 +46,7 @@ public partial class TriggerContext {
     }
 
     public void MoveRandomUser(int mapId, int portalId, int boxId, int count) {
-        DebugLog("[MoveRandomUser] mapId:{MapId}, portalId:{PortalId}, boxId:{BoxId}, count:{Count}", mapId, portalId, boxId, count);
+        if (TraceEnabled) DebugLog("[MoveRandomUser] mapId:{MapId}, portalId:{PortalId}, boxId:{BoxId}, count:{Count}", mapId, portalId, boxId, count);
         FieldPlayer[] players = PlayersInBox(boxId).ToArray();
         Random.Shared.Shuffle(players);
         if (count > players.Length) {
@@ -75,7 +75,7 @@ public partial class TriggerContext {
     }
 
     public void MoveToPortal(int userTagId, int portalId, int boxId) {
-        DebugLog("[MoveToPortal] userTagId:{TagId}, portalId:{PortalId}, boxId:{BoxId}", userTagId, portalId, boxId);
+        if (TraceEnabled) DebugLog("[MoveToPortal] userTagId:{TagId}, portalId:{PortalId}, boxId:{BoxId}", userTagId, portalId, boxId);
         if (!Field.TryGetPortal(portalId, out FieldPortal? portal)) {
             return;
         }
@@ -88,7 +88,7 @@ public partial class TriggerContext {
     }
 
     public void MoveUser(int mapId, int portalId, int boxId) {
-        DebugLog("[MoveUser] mapId:{MapId}, portalId:{PortalId}, boxId:{BoxId}", mapId, portalId, boxId);
+        if (TraceEnabled) DebugLog("[MoveUser] mapId:{MapId}, portalId:{PortalId}, boxId:{BoxId}", mapId, portalId, boxId);
         if (mapId == 0) {
             foreach (FieldPlayer player in PlayersInBox(boxId)) {
                 player.Session.ReturnField();
@@ -115,13 +115,13 @@ public partial class TriggerContext {
     }
 
     public void MoveUserPath(string path) {
-        DebugLog("[MoveUserPath] path:{Path}", path);
+        if (TraceEnabled) DebugLog("[MoveUserPath] path:{Path}", path);
 
         Field.MovePlayerAlongPath(path);
     }
 
     public void MoveUserToBox(int boxId, int portalId) {
-        DebugLog("[MoveUserToBox] boxId:{BoxId}, portalId:{PortalId}", boxId, portalId);
+        if (TraceEnabled) DebugLog("[MoveUserToBox] boxId:{BoxId}, portalId:{PortalId}", boxId, portalId);
         if (!Field.TryGetPortal(portalId, out FieldPortal? portal)) {
             return;
         }
@@ -132,18 +132,18 @@ public partial class TriggerContext {
     }
 
     public void MoveUserToPos(Vector3 position, Vector3 rotation) {
-        DebugLog("[MoveUserToPos] position:{Position}, rotation:{Rotation}", position, rotation);
+        if (TraceEnabled) DebugLog("[MoveUserToPos] position:{Position}, rotation:{Rotation}", position, rotation);
         foreach (FieldPlayer player in Field.Players.Values) {
             player.MoveToPosition(position, rotation);
         }
     }
 
     public void PatrolConditionUser(string patrolName, int patrolIndex, int additionalEffectId) {
-        ErrorLog("[PatrolConditionUser] patrolName:{Name}, patrolIndex:{Index}, additionalEffectId:{EffectId}", patrolName, patrolIndex, additionalEffectId);
+        if (TraceEnabled) ErrorLog("[PatrolConditionUser] patrolName:{Name}, patrolIndex:{Index}, additionalEffectId:{EffectId}", patrolName, patrolIndex, additionalEffectId);
     }
 
     public void SetAchievement(int triggerId, string type, string code) {
-        DebugLog("[SetAchievement] type:{Type}, code:{Code}, triggerId:{TriggerId}", type, code, triggerId);
+        if (TraceEnabled) DebugLog("[SetAchievement] type:{Type}, code:{Code}, triggerId:{TriggerId}", type, code, triggerId);
 
         type = string.IsNullOrWhiteSpace(type) ? "trigger" : type;
         if (!Enum.TryParse<ConditionType>(type, out ConditionType conditionType)) {
@@ -156,46 +156,46 @@ public partial class TriggerContext {
     }
 
     public void SetPcEmotionLoop(string sequenceName, float duration, bool loop) {
-        DebugLog("[SetPcEmotionLoop] sequenceName:{SequenceName}, duration:{Duration}, arg3:{Arg3}", sequenceName, duration, loop);
+        if (TraceEnabled) DebugLog("[SetPcEmotionLoop] sequenceName:{SequenceName}, duration:{Duration}, arg3:{Arg3}", sequenceName, duration, loop);
         Broadcast(TriggerPacket.UiEmotionLoop(sequenceName, (int) duration, loop));
     }
 
     public void SetPcEmotionSequence(string[] sequenceNames) {
-        DebugLog("[SetPcEmotionSequence] sequenceNames:{SequenceNames}", string.Join(", ", sequenceNames));
+        if (TraceEnabled) DebugLog("[SetPcEmotionSequence] sequenceNames:{SequenceNames}", string.Join(", ", sequenceNames));
         Broadcast(TriggerPacket.UiEmotionSequence(sequenceNames));
     }
 
     public void SetPcRotation(Vector3 rotation) {
-        DebugLog("[SetPcRotation] rotation:{Rotation}", rotation);
+        if (TraceEnabled) DebugLog("[SetPcRotation] rotation:{Rotation}", rotation);
         Broadcast(TriggerPacket.UiPlayerRotation(rotation));
     }
 
     public void SetQuestAccept(int questId) {
-        ErrorLog("[SetQuestAccept] questId:{QuestId}", questId);
+        if (TraceEnabled) ErrorLog("[SetQuestAccept] questId:{QuestId}", questId);
     }
 
     public void SetQuestComplete(int questId) {
-        ErrorLog("[SetQuestComplete] questId:{QuestId}", questId);
+        if (TraceEnabled) ErrorLog("[SetQuestComplete] questId:{QuestId}", questId);
     }
 
     public void TalkNpc(int spawnId) {
-        ErrorLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
+        if (TraceEnabled) ErrorLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
     }
 
     public void AddUserValue(string key, int value) {
-        WarnLog("[AddUserValue] key:{Key}, value:{Value}", key, value);
+        if (TraceEnabled) WarnLog("[AddUserValue] key:{Key}, value:{Value}", key, value);
         if (Field.UserValues.TryGetValue(key, out int userValue)) {
             Field.UserValues[key] = userValue + value;
         }
     }
 
     public void SetUserValue(int triggerId, string key, int value) {
-        WarnLog("[SetUserValue] key:{Key}, value:{Value}, triggerId:{TriggerId}", key, value, triggerId);
+        if (TraceEnabled) WarnLog("[SetUserValue] key:{Key}, value:{Value}, triggerId:{TriggerId}", key, value, triggerId);
         Field.UserValues[key] = value;
     }
 
     public void FaceEmotion(int spawnId, string emotionName) {
-        DebugLog("[FaceEmotion] spawnId:{SpawnId}, emotionName:{Emotion}", spawnId, emotionName);
+        if (TraceEnabled) DebugLog("[FaceEmotion] spawnId:{SpawnId}, emotionName:{Emotion}", spawnId, emotionName);
         if (spawnId == 0) {
             FieldPlayer? firstPlayer = Field.Players.Values.FirstOrDefault();
             if (firstPlayer == null) {
@@ -211,7 +211,7 @@ public partial class TriggerContext {
     }
 
     public void SetState(int triggerId, string[] states, bool randomize) {
-        ErrorLog("[SetState] triggerId:{TriggerId}, states:{States}, randomize:{Randomize}", triggerId, string.Join(", ", states), randomize);
+        if (TraceEnabled) ErrorLog("[SetState] triggerId:{TriggerId}, states:{States}, randomize:{Randomize}", triggerId, string.Join(", ", states), randomize);
         if (randomize) {
             Random.Shared.Shuffle(states);
         }
@@ -221,7 +221,7 @@ public partial class TriggerContext {
 
     #region Conditions
     public bool CheckAnyUserAdditionalEffect(int boxId, int additionalEffectId, int level, bool negate) {
-        DebugLog("[CheckAnyUserAdditionalEffect] boxId:{BoxId}, additionalEffectId:{EffectId}, level:{Level}", boxId, additionalEffectId, level);
+        if (TraceEnabled) DebugLog("[CheckAnyUserAdditionalEffect] boxId:{BoxId}, additionalEffectId:{EffectId}, level:{Level}", boxId, additionalEffectId, level);
         foreach (FieldPlayer player in PlayersInBox(boxId)) {
             if (player.Buffs.HasBuff(additionalEffectId, (short) level)) {
                 return !negate;
@@ -232,12 +232,12 @@ public partial class TriggerContext {
     }
 
     public bool CheckSameUserTag(int boxId, bool negate) {
-        ErrorLog("[CheckSameUserTag] boxId:{BoxId}", boxId);
+        if (TraceEnabled) ErrorLog("[CheckSameUserTag] boxId:{BoxId}", boxId);
         return false;
     }
 
     public bool QuestUserDetected(int[] boxIds, int[] questIds, int[] questStates, int jobCode, bool negate) {
-        DebugLog("[QuestUserDetected] boxIds:{BoxIds}, questIds:{QuestIds}, questStates:{QuestStates}, jobCode:{JobCode}",
+        if (TraceEnabled) DebugLog("[QuestUserDetected] boxIds:{BoxIds}, questIds:{QuestIds}, questStates:{QuestStates}, jobCode:{JobCode}",
             string.Join(", ", boxIds), string.Join(", ", questIds), string.Join(", ", questStates), (JobCode) jobCode);
 
 
@@ -273,7 +273,7 @@ public partial class TriggerContext {
     }
 
     public bool UserDetected(int[] boxIds, JobCode jobCode, bool negate) {
-        DebugLog("[UserDetected] boxIds:{BoxIds}, jobCode:{JobCode}", string.Join(", ", boxIds), (JobCode) jobCode);
+        if (TraceEnabled) DebugLog("[UserDetected] boxIds:{BoxIds}, jobCode:{JobCode}", string.Join(", ", boxIds), (JobCode) jobCode);
         IEnumerable<TriggerBox> boxes = boxIds
             .Select(boxId => Objects.Boxes.GetValueOrDefault(boxId))
             .Where(box => box != null)!;

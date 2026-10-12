@@ -1,0 +1,27 @@
+{
+  // Offline edition grinding rates. Only active with OFFLINE_GRIND=true (launcher.ini: GrindRates=true).
+  // Edit and restart the game to apply.
+
+  // Monster exp is scaled so that killing monsters of your own level takes about this many kills per level
+  // (the original game needed ~700 kills at Lv20 and ~4,000 at Lv40-50). Never lowers exp (minimum 1x).
+  "TargetKillsPerLevel": 200,
+  "MaxExpMultiplier": 50,
+
+  // Chance multiplier for the monsters' own loot rolls (equipment, potions, materials ...). 1 = original.
+  "DropRateMultiplier": 3,
+
+  // Extra upgrade-material drops from monsters. Chance per kill (0..1); amount = Amount + AmountPerLevel * monster level.
+  // Bosses get BossMultiplier times the amount.
+  "BossMultiplier": 5,
+  "UpgradeDrops": [
+    { "ItemId": 40100001, "Name": "Crystal Fragment",   "MinLevel": 1,  "Chance": 0.30, "Amount": 1, "AmountPerLevel": 0.10 },
+    { "ItemId": 40100023, "Name": "Onyx Crystal",       "MinLevel": 20, "Chance": 0.40, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40100024, "Name": "Chaos Onyx Crystal", "MinLevel": 40, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0 },
+    { "ItemId": 40100002, "Name": "Red Crystal",        "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
+    { "ItemId": 40100003, "Name": "Blue Crystal",       "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
+    { "ItemId": 40100021, "Name": "Green Crystal",      "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
+    { "ItemId": 40100026, "Name": "Metacell",           "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 },
+    { "ItemId": 40300001, "Name": "Blue Gem Dust",      "MinLevel": 30, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.05 },
+    { "ItemId": 40300002, "Name": "Purple Gem Dust",    "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 }
+  ]
+}

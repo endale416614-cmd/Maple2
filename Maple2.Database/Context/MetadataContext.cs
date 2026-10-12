@@ -60,6 +60,14 @@ public sealed class MetadataContext(DbContextOptions options) : DbContext(option
         modelBuilder.Entity<FunctionCubeMetadata>(ConfigureFunctionCubeMetadata);
         modelBuilder.Entity<TriggerMetadata>(ConfigureTriggerMetadata);
         modelBuilder.Entity<BanWordMetadata>(BanWordMetadataConfigure);
+
+        if (this.IsSqlite()) {
+            SqliteSupport.ApplyConventions(modelBuilder);
+        }
+    }
+
+    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder) {
+        SqliteSupport.Configure(optionsBuilder);
     }
 
     private static void ConfigureAdditionalEffectMetadata(EntityTypeBuilder<AdditionalEffectMetadata> builder) {

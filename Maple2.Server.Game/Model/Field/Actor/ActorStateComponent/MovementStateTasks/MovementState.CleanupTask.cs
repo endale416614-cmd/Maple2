@@ -49,11 +49,11 @@ public partial class MovementState {
                 .OrderBy(npc => Vector3.DistanceSquared(player.Position, npc.Position))
                 .FirstOrDefault();
 
-            if (closestNpc == null) {
-                return;
+            // Facing the nearest NPC is cosmetic; the player must always end where the path ended, or the client
+            // camera (which followed the dummy NPC) and the player's real position fall out of sync.
+            if (closestNpc != null) {
+                player.Transform.LookTo(Vector3.Normalize(closestNpc.Position - lastPosition.Value));
             }
-
-            player.Transform.LookTo(Vector3.Normalize(closestNpc.Position - lastPosition.Value));
             player.MoveToPosition(lastPosition.Value, player.Rotation);
         }
     }

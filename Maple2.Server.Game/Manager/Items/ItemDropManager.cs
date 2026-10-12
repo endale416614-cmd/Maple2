@@ -5,6 +5,7 @@ using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 
 namespace Maple2.Server.Game.Manager.Items;
@@ -16,9 +17,14 @@ public class ItemDropManager {
         this.field = field;
     }
 
+    /// <summary>Offline option: drops in this field give every item of their table (see <see cref="OfflineDrops"/>).</summary>
+    public bool AllDrops => OfflineDrops.DungeonAllDrops && field is DungeonFieldManager;
+
     // level is the NPC's level. It gates both group-level and item-level min/max level checks within
     // globalDropItemBox/globalDropItemSet (e.g. meso amounts in group 103 scale with NPC level).
-    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0) {
+    // all: every eligible item of every eligible group drops once, instead of the weighted roll.
+    // dropRate: multiplies the chance of every non-empty drop-count outcome (offline grind rates; 1 = original).
+    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0, bool all = false, float dropRate = 1f) {
         if (!field.ServerTableMetadata.GlobalDropItemBoxTable.DropGroups.TryGetValue(globalDropBoxId, out Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? dropGroup)) {
             return new List<Item>();
         }
@@ -49,15 +55,16 @@ public class ItemDropManager {
 
                 var itemsAmount = new WeightedSet<GlobalDropItemBoxTable.Group.DropCount>();
                 foreach (GlobalDropItemBoxTable.Group.DropCount dropCount in group.DropCounts) {
-                    itemsAmount.Add(dropCount, dropCount.Probability);
+                    itemsAmount.Add(dropCount, ScaleChance(dropCount.Probability, dropCount.Amount > 0, dropRate));
                 }
 
-                int amount = itemsAmount.Get().Amount;
-                if (amount == 0) {
+                int amount = all ? 0 : itemsAmount.Get().Amount;
+                if (amount == 0 && !all) {
                     continue;
                 }
 
                 var weightedItems = new WeightedSet<GlobalDropItemBoxTable.Item>();
+                var eligibleItems = new List<GlobalDropItemBoxTable.Item>();
 
                 // Randomize list in order to get true random items when pulled from weightedItems.
                 foreach (GlobalDropItemBoxTable.Item itemEntry in items.OrderBy(_ => Random.Shared.Next())) {
@@ -74,6 +81,18 @@ public class ItemDropManager {
                         continue;
                     }
                     weightedItems.Add(itemEntry, itemEntry.Weight);
+                    eligibleItems.Add(itemEntry);
+                }
+
+                if (all) {
+                    foreach (GlobalDropItemBoxTable.Item eligible in eligibleItems) {
+                        int eligibleAmount = Random.Shared.Next(eligible.DropCount.Min, eligible.DropCount.Max + 1);
+                        Item? eligibleItem = CreateItem(eligible.Id, eligible.Rarity, Math.Max(1, eligibleAmount));
+                        if (eligibleItem != null) {
+                            results.Add(eligibleItem);
+                        }
+                    }
+                    continue;
                 }
 
                 if (weightedItems.Count == 0) {
@@ -100,7 +119,8 @@ public class ItemDropManager {
     // level gates which drop groups are eligible. For mob drops this is the player's character level
     // (MinLevel in individualDropItemTable is a player requirement, not NPC level — e.g. Shinjo's Feather
     // requires player level 30+). For other callers (e.g. housing rewards) it may be a different score.
-    public ICollection<Item> GetIndividualDropItems(GameSession session, int level, int individualDropBoxId, int index = -1, int dropGroupId = -1) {
+    // all: every eligible item of every eligible group drops, instead of the weighted roll.
+    public ICollection<Item> GetIndividualDropItems(GameSession session, int level, int individualDropBoxId, int index = -1, int dropGroupId = -1, bool all = false, float dropRate = 1f) {
         if (!field.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDict)) {
             return new List<Item>();
         }
@@ -110,7 +130,7 @@ public class ItemDropManager {
                 return GetAllGroups(session, level, [entry], index).ToList();
             }
         }
-        return GetAllGroups(session, level, entryDict.Values.ToList()).ToList();
+        return GetAllGroups(session, level, entryDict.Values.ToList(), all: all, dropRate: dropRate).ToList();
     }
 
     public ICollection<Item> GetIndividualDropItems(int individualDropBoxId, int rarity = -1) {
@@ -141,7 +161,7 @@ public class ItemDropManager {
         return CreateIndividualDropBoxItems(selectedItem, session.Player.Value.Character).ToList();
     }
 
-    private IEnumerable<Item> GetAllGroups(GameSession session, int level, List<IndividualDropItemTable.Entry> entry, int index = -1) {
+    private IEnumerable<Item> GetAllGroups(GameSession session, int level, List<IndividualDropItemTable.Entry> entry, int index = -1, bool all = false, float dropRate = 1f) {
         var items = new List<Item>();
         foreach (IndividualDropItemTable.Entry group in entry) {
             if (group.MinLevel > level) {
@@ -155,11 +175,25 @@ public class ItemDropManager {
 
             var itemsAmount = new WeightedSet<IndividualDropItemTable.Entry.DropCount>();
             foreach (IndividualDropItemTable.Entry.DropCount dropCount in group.DropCounts) {
-                itemsAmount.Add(dropCount, dropCount.Probability);
+                itemsAmount.Add(dropCount, ScaleChance(dropCount.Probability, dropCount.Count > 0, dropRate));
             }
 
-            int amount = itemsAmount.Get().Count;
-            if (amount == 0) {
+            int amount = all ? 0 : itemsAmount.Get().Count;
+            if (amount == 0 && !all) {
+                continue;
+            }
+
+            if (all) {
+                // Every item of the group (all jobs), keeping only the quest and map conditions.
+                foreach (IndividualDropItemTable.Item itemEntry in itemEntries) {
+                    if (itemEntry.QuestId > 0 && (!session.Quest.TryGetQuest(itemEntry.QuestId, out Quest? quest) || quest.State != QuestState.Started)) {
+                        continue;
+                    }
+                    if (itemEntry.MapIds.Length > 0 && !itemEntry.MapIds.Contains(field.Metadata.Id)) {
+                        continue;
+                    }
+                    items = items.Concat(CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character)).ToList();
+                }
                 continue;
             }
 
@@ -211,6 +245,13 @@ public class ItemDropManager {
         }
 
         return items;
+    }
+
+    private static int ScaleChance(int probability, bool dropsSomething, float dropRate) {
+        if (!dropsSomething || dropRate <= 1f) {
+            return probability;
+        }
+        return (int) Math.Min(int.MaxValue / 64, probability * (double) dropRate);
     }
 
     private IEnumerable<Item> CreateIndividualDropBoxItems(IndividualDropItemTable.Item selectedItem, Character? character = null, int rarity = -1) {

@@ -953,6 +953,10 @@ public partial class FieldManager {
             }
             Broadcast(FieldPacket.RemoveNpc(objectId));
             Broadcast(ProxyObjectPacket.RemoveNpc(objectId));
+            if (npc.Navigation is not null) {
+                // Every spawn adds a crowd agent; without this, each respawn leaked one for the field's lifetime.
+                Navigation.Crowd.RemoveAgent(npc.Navigation.agent);
+            }
             npc.Dispose();
         }, removeDelay);
         return true;

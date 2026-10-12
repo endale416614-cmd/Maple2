@@ -27,17 +27,24 @@ public class StateSkillHandler : FieldPacketHandler {
         var state = (ActorState) packet.ReadInt();
         int clientTick = packet.ReadInt();
         long itemUid = packet.ReadLong();
+        if (Trigger.TriggerContext.TraceEnabled) {
+            Logger.Information("[StateSkill] use {SkillId},{Level} state:{State} item:{ItemUid} player:{PlayerState}",
+                skillId, skillLevel, state, itemUid, session.Player.State);
+        }
 
         if (itemUid != 0 && session.Item.Inventory.Get(itemUid) == null) {
+            Logger.Warning("[StateSkill] {SkillId} rejected: item {ItemUid} not in inventory", skillId, itemUid);
             return; // Invalid item
         }
 
         if (!session.Field.SkillMetadata.TryGet(skillId, skillLevel, out SkillMetadata? metadata)) {
+            Logger.Warning("[StateSkill] {SkillId},{Level} rejected: no skill metadata", skillId, skillLevel);
             return;
         }
 
         var cast = new SkillRecord(metadata, skillCastUid, session.Player);
         if (!session.Player.SkillCastConsume(cast)) {
+            Logger.Warning("[StateSkill] {SkillId} rejected: cannot pay its cost", skillId);
             return;
         }
 
