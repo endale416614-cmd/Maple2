@@ -207,9 +207,17 @@ public partial class TriggerContext {
         return negate ? !hasAnyBuff : hasAnyBuff;
     }
 
+    // Friendly combat NPCs (Friendly 1: barriers, cannons, guardians, escorted allies) live in Field.Npcs, and scripts check
+    // them with monster_dead too, mostly as "protected object destroyed -> fail" (Cusp of Life spawn 99 Portal Barrier,
+    // Watchtower Rampart, Dais Maze, Biome Test Site...). Searching only Mobs found nothing = "all dead" and failed at once.
+    // Story NPCs (Friendly 2) never die and stay out, as before (Dark Wind HQ 52000138 lists Katvan/Blackeye with its waves).
+    public static bool CountsForMonsterDead(NpcMetadataBasic basic) => basic.Friendly != 2;
+
     public bool MonsterDead(int[] spawnIds, bool autoTarget) {
         if (TraceEnabled) DebugLog("[MonsterDead] spawnIds:{SpawnIds}, arg2:{Arg2}", string.Join(", ", spawnIds), autoTarget);
-        IEnumerable<FieldNpc> matchingMobs = Field.Mobs.Values.Where(x => spawnIds.Contains(x.SpawnPointId));
+        IEnumerable<FieldNpc> matchingMobs = Field.Mobs.Values
+            .Concat(Field.Npcs.Values.Where(npc => CountsForMonsterDead(npc.Value.Metadata.Basic)))
+            .Where(x => spawnIds.Contains(x.SpawnPointId));
 
         if (TraceEnabled && matchingMobs.Count(mob => !mob.IsDead) is var aliveCount && aliveCount != lastAliveCount) {
             // Only when the number left changes: positions change every tick and would log at 10 Hz.

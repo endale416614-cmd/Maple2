@@ -177,4 +177,16 @@ public class GameplayFixesTest {
         Assert.That(balances[CurrencyType.Treva], Is.EqualTo(100));
         Assert.That(ShopManager.TryPayToken(ShopCurrencyType.Meso, 1, _ => 100, (_, _) => Assert.Fail("not a token")), Is.False);
     }
+
+    private static NpcMetadataBasic Basic(int friendly) =>
+        new(friendly, 0, 0, 0, 0, 0, 0, 36, 1, false, 0, 0, 0, 36, [], [], 0);
+
+    // Cusp of Life (dungeon 21002001, map 02000066) failed as soon as wave 1 started: monster_dead 99 only searched Mobs,
+    // but its Portal Barrier 24000201 is a friendly NPC (Friendly 1) kept in Npcs.
+    [Test]
+    public void MonsterDead_CountsFriendlyCombatNpcs_ButNotStoryNpcs() {
+        Assert.That(TriggerContext.CountsForMonsterDead(Basic(0)), Is.True, "monster");
+        Assert.That(TriggerContext.CountsForMonsterDead(Basic(1)), Is.True, "Portal Barrier 24000201 / guardian / cannon");
+        Assert.That(TriggerContext.CountsForMonsterDead(Basic(2)), Is.False, "Katvan 11000044 in 52000138 act3_wave2_move");
+    }
 }
