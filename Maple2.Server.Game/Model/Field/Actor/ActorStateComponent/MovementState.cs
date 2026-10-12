@@ -112,10 +112,22 @@ public partial class MovementState {
         return new NpcTalkTask(actor.TaskState, this, NpcTaskPriority.Interrupt);
     }
 
-    //public bool TryJumpTo(Vector3 position, float height) {
-    //
-    //}
-    //
+    /// <summary>
+    /// Jumps in an arc to an absolute position (AI jump node), ignoring the navmesh while airborne.
+    /// </summary>
+    public NpcTask TryJumpTo(Vector3 position, bool isBattle, float speed, float heightMultiplier, string sequence) {
+        walkTask?.Cancel();
+
+        NpcTaskPriority priority = isBattle ? NpcTaskPriority.BattleWalk : NpcTaskPriority.IdleAction;
+
+        return new NpcJumpToTask(actor.TaskState, priority, this) {
+            Position = position,
+            Speed = speed,
+            HeightMultiplier = heightMultiplier,
+            Sequence = sequence,
+        };
+    }
+
     //public bool TryStun() {
     //
     //}
@@ -196,7 +208,8 @@ public partial class MovementState {
     }
 
     public void Update(long tickCount) {
-        if (actor.Animation.PlayingSequence != stateSequence) {
+        // Airborne NPCs keep jumping even if the jump animation is missing or ended (Idle would stop them mid-air).
+        if (actor.Animation.PlayingSequence != stateSequence && walkType != WalkType.Jump) {
             Idle();
         }
 

@@ -103,6 +103,42 @@ public partial class MovementState {
         }
     }
 
+    public class NpcJumpToTask : NpcTask {
+        private readonly MovementState movement;
+        public Vector3 Position { get; init; }
+        public float Speed { get; init; }
+        public float HeightMultiplier { get; init; }
+        public string Sequence { get; init; } = "";
+        public override bool CancelOnInterrupt => Priority == NpcTaskPriority.IdleAction;
+
+        public NpcJumpToTask(TaskState taskState, NpcTaskPriority priority, MovementState movement) : base(taskState, priority) {
+            this.movement = movement;
+        }
+
+        protected override void TaskResumed() {
+            movement.JumpTo(this, Position, Speed, HeightMultiplier, Sequence);
+        }
+
+        protected override void TaskPaused() {
+            movement.Idle();
+        }
+
+        protected override void TaskFinished(bool isCompleted) {
+            if (movement.walkTask != this) {
+                return; // never started
+            }
+
+            // A jump cut short (new move order, despawn script) still lands, instead of leaving the NPC in mid-air.
+            if (!isCompleted && movement.walkType == WalkType.Jump) {
+                movement.Land();
+            }
+
+            movement.walkTask = null;
+            movement.walkType = WalkType.None;
+            movement.Idle();
+        }
+    }
+
     private void MoveTo(NpcTask task, Vector3 position, string sequence, float speed, bool lookAt) {
         if (!CanTransitionToState(ActorState.Walk)) {
             task.Cancel();

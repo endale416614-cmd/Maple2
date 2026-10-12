@@ -13,7 +13,16 @@ public partial class MovementState {
         MoveTo,
         ToTarget,
         FromTarget,
+        Jump,
     }
+
+    // Shortest airtime, so a jump to (almost) the same spot still shows a hop.
+    private const float MinJumpSeconds = 0.3f;
+    private Vector3 jumpStart;
+    private Vector3 jumpEnd;
+    private float jumpPeak;
+    private float jumpDuration;
+    private float jumpElapsed;
 
     private Vector3 walkDirection;
     private Vector3 walkTargetPosition;
@@ -79,7 +88,77 @@ public partial class MovementState {
         UpdateDebugMarker(actor.Navigation.GetAgentPosition(), debugAgent, tickCount);
     }
 
+    private void JumpTo(NpcTask task, Vector3 position, float speed, float heightMultiplier, string sequence) {
+        if (!CanTransitionToState(ActorState.Walk)) {
+            task.Cancel();
+
+            return;
+        }
+
+        emoteActionTask?.Cancel();
+
+        // Speed is horizontal units per second; the arc peaks HeightMultiplier * distance / 2 above the
+        // start-end line (0.5 = the 45 degree throw arc).
+        Vector2 offset = new Vector2(position.X - actor.Position.X, position.Y - actor.Position.Y);
+        float distance = offset.Length();
+
+        jumpStart = actor.Position;
+        jumpEnd = position;
+        jumpDuration = Math.Max(distance / Math.Max(speed, 1f), MinJumpSeconds);
+        jumpPeak = heightMultiplier * distance * 0.5f;
+        jumpElapsed = 0;
+
+        if (distance > 0) {
+            actor.Transform.LookTo(Vector3.Normalize(new Vector3(offset, 0)));
+        }
+
+        walkType = WalkType.Jump;
+        walkTask = task;
+
+        actor.AppendDebugMessage($"> Jumping to position\n");
+
+        if (actor.Animation.TryPlaySequence(sequence, aniSpeed, AnimationType.Misc)
+            || actor.Animation.TryPlaySequence("Jump_A", aniSpeed, AnimationType.Misc)) {
+            stateSequence = actor.Animation.PlayingSequence;
+            walkSequence = stateSequence;
+        }
+
+        SetState(ActorState.Walk);
+    }
+
+    private void StateJumpUpdate(long tickCount, long tickDelta) {
+        float delta = (float) tickDelta / 1000;
+        jumpElapsed += delta;
+
+        float progress = Math.Min(jumpElapsed / jumpDuration, 1f);
+        Vector3 position = Vector3.Lerp(jumpStart, jumpEnd, progress);
+        position.Z += 4 * jumpPeak * progress * (1 - progress);
+
+        Velocity = delta > 0 ? (position - actor.Position) / delta : Vector3.Zero;
+        actor.Position = position;
+
+        UpdateDebugMarker(actor.Position, debugNpc, tickCount);
+
+        if (progress >= 1) {
+            Land();
+            walkTask?.Completed();
+        }
+    }
+
+    private void Land() {
+        Velocity = Vector3.Zero;
+        // Puts the navmesh agent under the NPC again; if the spot is off the mesh it just stays where it landed.
+        if (actor.Navigation?.UpdatePosition(jumpEnd) != true) {
+            actor.Position = jumpEnd;
+        }
+    }
+
     private void StateWalkUpdate(long tickCount, long tickDelta) {
+        if (walkType == WalkType.Jump) {
+            StateJumpUpdate(tickCount, tickDelta);
+            return;
+        }
+
         if (actor.Navigation is null) {
             return;
         }
