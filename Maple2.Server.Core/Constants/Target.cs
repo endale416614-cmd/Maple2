@@ -81,5 +81,26 @@ public static class Target {
         if (bool.TryParse(Environment.GetEnvironmentVariable("INSTANCED_CONTENT"), out bool instancedOverride)) {
             InstancedContent = instancedOverride;
         }
+
+        // Offline single-player edition: every socket stays on this PC whatever the environment says
+        // (an inherited BIND_IP=0.0.0.0 or *_IP override must not expose the servers).
+        if (string.Equals(Environment.GetEnvironmentVariable("OFFLINE_MODE"), "true", StringComparison.OrdinalIgnoreCase)) {
+            ForcedToLoopback = !IPAddress.IsLoopback(BindIp) || !IPAddress.IsLoopback(LoginIp) || !IPAddress.IsLoopback(GameIp)
+                               || !IPAddress.IsLoopback(GrpcWorldIp) || GrpcGameIp != IPAddress.Loopback.ToString() || !WebUri.IsLoopback;
+            BindIp = IPAddress.Loopback;
+            LoginIp = IPAddress.Loopback;
+            GameIp = IPAddress.Loopback;
+            GrpcGameIp = IPAddress.Loopback.ToString();
+            GrpcWorldIp = IPAddress.Loopback;
+            GrpcWorldUri = new Uri($"http://{GrpcWorldIp}:{GrpcWorldPort}");
+            WebUri = new Uri($"http://{IPAddress.Loopback}:{WebUri.Port}");
+        }
     }
+
+    /// <summary>True when OFFLINE_MODE overrode a non-loopback address from the environment (logged at start-up).</summary>
+    public static readonly bool ForcedToLoopback;
+
+    /// <summary>Whether every listen and advertised address is on this PC.</summary>
+    public static bool AllLoopback => IPAddress.IsLoopback(BindIp) && IPAddress.IsLoopback(LoginIp) && IPAddress.IsLoopback(GameIp)
+                                      && IPAddress.IsLoopback(GrpcWorldIp) && GrpcGameIp == IPAddress.Loopback.ToString() && WebUri.IsLoopback;
 }
