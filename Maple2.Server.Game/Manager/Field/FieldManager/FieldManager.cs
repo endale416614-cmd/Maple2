@@ -1,4 +1,5 @@
 ﻿using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -655,6 +656,11 @@ public partial class FieldManager : IField {
         return true;
     }
 
+    // The dummy NPC walking each player's current move_user_path (key: player ObjectId). Only this one may move the
+    // player to its path end: a newer path or a teleport replaces it, so a slow path left over from a skipped
+    // cutscene can't pull the player back out of the scene (Mountain Pass 63000041: walled off from the fight).
+    private readonly ConcurrentDictionary<int, FieldNpc> playerPathDummies = new();
+
     public void MovePlayerAlongPath(string pathName) {
         MS2PatrolData? patrolData = Entities.Patrols.FirstOrDefault(p => p.Name == pathName);
         if (patrolData is null) {
@@ -666,6 +672,7 @@ public partial class FieldManager : IField {
                 continue;
             }
 
+            CancelPlayerPath(player);
             FieldNpc? dummyNpc = SpawnNpc(npcMetadata, player.Position, player.Rotation);
             if (dummyNpc is null) {
                 continue;
@@ -673,10 +680,23 @@ public partial class FieldManager : IField {
             Broadcast(FieldPacket.AddNpc(dummyNpc));
             Broadcast(ProxyObjectPacket.AddNpc(dummyNpc));
 
+            playerPathDummies[player.ObjectId] = dummyNpc;
             dummyNpc.SetPatrolData(patrolData);
             dummyNpc.MovementState.CleanupPatrolData(player);
             player.Session.Send(FollowNpcPacket.FollowNpc(dummyNpc.ObjectId));
         }
+    }
+
+    /// <summary>Drops the player's unfinished move_user_path without moving the player.</summary>
+    public void CancelPlayerPath(FieldPlayer player) {
+        if (playerPathDummies.TryRemove(player.ObjectId, out FieldNpc? dummy)) {
+            RemoveNpc(dummy.ObjectId);
+        }
+    }
+
+    /// <summary>True if <paramref name="dummy"/> is still the player's current path, which then ends.</summary>
+    public bool EndPlayerPath(FieldPlayer player, FieldNpc dummy) {
+        return playerPathDummies.TryRemove(new KeyValuePair<int, FieldNpc>(player.ObjectId, dummy));
     }
 
     public void VibrateObjects(DamageRecord record, Vector3 position) {

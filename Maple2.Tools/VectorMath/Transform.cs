@@ -142,17 +142,24 @@ public class Transform {
         up = Vector3.Normalize(up);
 
         if (snapToGroundPlane) {
-            direction = Vector3.Normalize(direction - Vector3.Dot(direction, up) * up); // plane projection formula
-
-            if (direction.IsNearlyEqual(new Vector3(0, 0, 0), 1e-3f)) {
-                direction = FrontAxis;
-            }
+            direction -= Vector3.Dot(direction, up) * up; // plane projection formula
         }
+
+        // A zero, NaN or (when snapping) vertical direction has no heading: keep the current facing. Normalizing it
+        // gave NaN axes, and because Scale is read back from the axes, every later turn of that actor stayed NaN.
+        float length = direction.Length();
+        if (!(length > 1e-3f) || !float.IsFinite(length)) {
+            return;
+        }
+        direction /= length;
 
         Vector3 right = Vector3.Cross(direction, up);
         up = Vector3.Cross(right, direction);
 
         float scale = Scale;
+        if (!(scale > 0) || !float.IsFinite(scale)) {
+            scale = 1; // heals a transform an older bug already left NaN
+        }
 
         RightAxis = scale * right;
         UpAxis = scale * up;
