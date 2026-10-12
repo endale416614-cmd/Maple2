@@ -22,73 +22,6 @@ public static class OfflineEconomy {
 
     private static readonly ILogger Logger = Log.Logger.ForContext(typeof(OfflineEconomy));
 
-    // Doctor shop (offline-doctor-shop.json, built by tools/build_doctor_shop.py): NPCs that sell every potion and
-    // support item for Mesos. Path: OFFLINE_DOCTOR_SHOP_FILE, default next to the solution. Without the file, no change.
-    public sealed record DoctorShop(int[] NpcIds, int ShopId, int TemplateShopId, DoctorShopItem[] Items);
-    public sealed record DoctorShopItem(int ItemId, string Name, int Price);
-    private static readonly Lazy<DoctorShop?> Doctor = new(() => LoadDoctorShop(
-        Environment.GetEnvironmentVariable("OFFLINE_DOCTOR_SHOP_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-doctor-shop.json")));
-
-    public static DoctorShop? LoadDoctorShop(string path) {
-        if (!File.Exists(path)) {
-            return null;
-        }
-        try {
-            DoctorShop? shop = JsonSerializer.Deserialize<DoctorShop>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            return shop is { ShopId: > 0, NpcIds: not null, Items: not null } ? shop : null;
-        } catch (JsonException ex) {
-            Logger.Error(ex, "Invalid doctor shop file {Path}; not loaded", path);
-            return null;
-        }
-    }
-
-    /// <summary>The shop an NPC without a shipped shop opens in the offline edition (0 = none).</summary>
-    public static int ShopForNpc(int npcId) => Doctor.Value is { } shop && shop.NpcIds.Contains(npcId) ? shop.ShopId : 0;
-
-    /// <summary>Adds the doctor shop (its window copied from the template shop).</summary>
-    public static ShopTable Apply(ShopTable table) => Apply(table, Doctor.Value);
-
-    public static ShopTable Apply(ShopTable table, DoctorShop? doctor) {
-        if (doctor == null || table.Entries.ContainsKey(doctor.ShopId) || !table.Entries.TryGetValue(doctor.TemplateShopId, out ShopMetadata? template)) {
-            return table;
-        }
-        var entries = new Dictionary<int, ShopMetadata>(table.Entries) {
-            [doctor.ShopId] = template with { Id = doctor.ShopId, DisplayOnlyUsable = false },
-        };
-        return new ShopTable(entries);
-    }
-
-    /// <summary>The doctor shop's items: one ordinary entry of the template shop per item, priced in Mesos.</summary>
-    public static void AddDoctorShopItems(Dictionary<int, Dictionary<int, ShopItemMetadata>> entries, DoctorShop? doctor) {
-        if (doctor == null || entries.ContainsKey(doctor.ShopId)
-            || !entries.TryGetValue(doctor.TemplateShopId, out Dictionary<int, ShopItemMetadata>? templateItems) || templateItems.Count == 0) {
-            return;
-        }
-        ShopItemMetadata template = templateItems.Values.First();
-        var items = new Dictionary<int, ShopItemMetadata>();
-        int entryId = 1;
-        foreach (DoctorShopItem item in doctor.Items.Where(item => item.Price > 0)) {
-            items[entryId] = template with {
-                Id = entryId,
-                ShopId = doctor.ShopId,
-                ItemId = item.ItemId,
-                Rarity = 1,
-                Cost = new ShopCost { Type = ShopCurrencyType.Meso, Amount = item.Price },
-                SellCount = 0,
-                Category = "PS",
-                RestrictedBuyData = null,
-                Label = ShopItemLabel.None,
-                IconTag = "",
-                RandomOption = false,
-                Probability = 10000,
-                IsPremiumItem = false,
-            };
-            entryId++;
-        }
-        entries[doctor.ShopId] = items;
-        Logger.Information("Offline doctor shop {ShopId}: {Count} potions and support items for NPCs {Npcs}", doctor.ShopId, items.Count, doctor.NpcIds);
-    }
-
     public static Config? Load() {
         string path = Environment.GetEnvironmentVariable("OFFLINE_ECONOMY_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-economy.json");
         if (!File.Exists(path)) {
@@ -170,15 +103,8 @@ public static class OfflineEconomy {
         return new MeretMarketCategoryTable(entries);
     }
 
-    /// <summary>Adds Meret pouches, priced in Mesos, to the configured shops, and the doctor shop.</summary>
+    /// <summary>Adds Meret pouches, priced in Mesos, to the configured shops.</summary>
     public static ShopItemTable Apply(ShopItemTable table) {
-        if (table.Entries is Dictionary<int, Dictionary<int, ShopItemMetadata>> mutable) {
-            AddDoctorShopItems(mutable, Doctor.Value);
-        } else {
-            var copy = new Dictionary<int, Dictionary<int, ShopItemMetadata>>(table.Entries);
-            AddDoctorShopItems(copy, Doctor.Value);
-            table = new ShopItemTable(copy);
-        }
         Config? config = Load();
         if (config?.MeretExchange == null || config.MesosPerMeret <= 0) {
             return table;
