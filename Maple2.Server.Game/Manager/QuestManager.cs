@@ -667,7 +667,7 @@ public sealed class QuestManager {
     }
 
     public void Save(GameStorage.Request db) {
-        db.SaveQuests(session.AccountId, accountValues.Values);
-        db.SaveQuests(session.CharacterId, characterValues.Values);
+        db.Ensure(db.SaveQuests(session.AccountId, accountValues.Values), "account quests");
+        db.Ensure(db.SaveQuests(session.CharacterId, characterValues.Values), "character quests");
     }
 }

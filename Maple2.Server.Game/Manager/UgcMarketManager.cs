@@ -150,7 +150,7 @@ public sealed class UgcMarketManager {
     }
 
     public void Save(GameStorage.Request db) {
-        db.SaveUgcMarketItems(items.Values);
-        db.SaveSoldUgcMarketItems(sales.Values);
+        db.Ensure(db.SaveUgcMarketItems(items.Values), "ugc market items");
+        db.Ensure(db.SaveSoldUgcMarketItems(sales.Values), "sold ugc market items");
     }
 }
