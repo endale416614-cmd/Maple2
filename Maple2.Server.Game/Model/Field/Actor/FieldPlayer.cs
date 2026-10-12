@@ -8,6 +8,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Collision;
 using Maple2.Tools.Scheduler;
 using System.Numerics;
@@ -103,6 +104,9 @@ public class FieldPlayer : Actor<Player> {
         get => Value.Account.AdminPermissions;
         set => Value.Account.AdminPermissions = value;
     }
+
+    /// <summary>Offline cheat /godmode: no damage taken, every hit kills.</summary>
+    public bool GodMode => OfflineCheats.IsGodMode(Value.Character.Id);
 
     private readonly EventQueue scheduler;
 
@@ -492,7 +496,7 @@ public class FieldPlayer : Actor<Player> {
     /// </summary>
     /// <param name="amount"></param>
     public void ConsumeHp(int amount) {
-        if (amount <= 0) {
+        if (amount <= 0 || GodMode) {
             return;
         }
 
@@ -616,6 +620,9 @@ public class FieldPlayer : Actor<Player> {
     }
 
     public void FallDamage(float distance) {
+        if (GodMode) {
+            return;
+        }
         double distanceScalingFactor = 0.04813; // base distance scaling factor
         double hpRatioExponent = 1.087; // HP ratio exponent for diminishing returns
         double currentHp = Stats.Values[BasicAttribute.Health].Current;

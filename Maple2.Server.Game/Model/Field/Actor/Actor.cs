@@ -121,6 +121,19 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             return;
         }
 
+        // Offline cheat /godmode: the player takes no damage, and each of their hits on an NPC takes all its health.
+        if (this is FieldPlayer { GodMode: true }) {
+            targetRecord.AddDamage(DamageType.Miss, 0);
+            return;
+        }
+        if (caster is FieldPlayer { GodMode: true } && this is FieldNpc) {
+            long health = Math.Max(1, Stats.Values[BasicAttribute.Health].Current);
+            targetRecord.AddDamage(DamageType.Critical, health);
+            ApplyCheatDamage(caster, health);
+            caster.Buffs.TriggerEvent(caster, caster, this, EventConditionType.OnOwnerAttackHit, skillId: damage.SkillId);
+            return;
+        }
+
         long damageAmount = 0;
         for (int i = 0; i < attack.Damage.Count; i++) {
             Reflect(caster);
@@ -176,6 +189,29 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
     }
 
     protected virtual void OnDamageReceived(IActor caster, long amount) { }
+
+    /// <summary>
+    /// Offline cheat /killall: takes all remaining health as damage from the killer, so kill credit (quests, exp, drops)
+    /// goes to them like a normal kill. Death itself happens on the next Update, as usual.
+    /// </summary>
+    public void CheatKill(IActor killer) {
+        long health = Stats.Values[BasicAttribute.Health].Current;
+        if (IsDead || health <= 0) {
+            return;
+        }
+        ApplyCheatDamage(killer, health);
+    }
+
+    private void ApplyCheatDamage(IActor caster, long amount) {
+        if (!DamageDealers.TryGetValue(caster.ObjectId, out DamageRecordTarget? record)) {
+            record = new DamageRecordTarget(this);
+            DamageDealers.TryAdd(caster.ObjectId, record);
+        }
+        record.AddDamage(DamageType.Normal, amount);
+        Stats.Values[BasicAttribute.Health].Add(-amount);
+        Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
+        OnDamageReceived(caster, amount);
+    }
 
     public virtual void Reflect(IActor target) {
         if (Buffs.Reflect == null || Buffs.Reflect.Counter >= Buffs.Reflect.Metadata.Count) {

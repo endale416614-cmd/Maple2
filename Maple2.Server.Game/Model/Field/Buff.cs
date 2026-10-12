@@ -219,6 +219,10 @@ public class Buff : IUpdatable, IByteSerializable {
             return;
         }
 
+        if (Owner is FieldPlayer { GodMode: true }) {
+            return; // offline cheat /godmode: no damage over time
+        }
+
         var record = new DotDamageRecord(Caster, Owner, Metadata.Dot.Damage) {
             ProcCount = ProcCount,
         };
