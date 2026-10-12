@@ -40,6 +40,9 @@ public class GameServer : Server<GameSession> {
         this.gameStorage = gameStorage;
         this.debugGraphicsContext = debugGraphicsContext;
         this.itemMetadataStorage = itemMetadataStorage;
+        if (serverTableMetadataStorage.ConstantsTable.MailExpiryDays > 0) {
+            GameStorage.MailExpiryDays = serverTableMetadataStorage.ConstantsTable.MailExpiryDays;
+        }
 
         using GameStorage.Request db = gameStorage.Context();
         bannerCache = db.GetBanners().ToImmutableList();

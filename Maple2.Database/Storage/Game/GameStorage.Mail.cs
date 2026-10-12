@@ -1,10 +1,15 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using Maple2.Database.Extensions;
+using Microsoft.EntityFrameworkCore;
 using Mail = Maple2.Model.Game.Mail;
 using Item = Maple2.Model.Game.Item;
 
 namespace Maple2.Database.Storage;
 
 public partial class GameStorage {
+    // Days a mail stays in the mailbox when its sender set no expiry. The client hides mail whose expiry has passed, and an
+    // expiry of 0 has passed, so every stored mail needs one. The game server sets this from the server constants.
+    public static int MailExpiryDays { get; set; } = 30;
+
     public partial class Request {
         public Mail? GetMail(long mailId, long characterId) {
             Model.Mail? model = Context.Mail.Find(characterId, mailId);
@@ -65,6 +70,7 @@ public partial class GameStorage {
         }
 
         public ICollection<Mail> GetAllMail(long characterId, long minId = 0) {
+            RepairMailExpiry(characterId);
             Mail[] mails = Context.Mail.Where(mail => mail.ReceiverId == characterId)
                 .Where(mail => mail.Id > minId)
                 .AsEnumerable()
@@ -85,7 +91,19 @@ public partial class GameStorage {
             return Math.Max(100000, (Context.Mail.Max(existing => (long?) existing.Id) ?? 0) + 1);
         }
 
+        // Mails stored without an expiry (every sender but one stopped setting it upstream) were invisible in the mailbox,
+        // together with their items. They get a fresh expiry, counted from now since the player never saw them.
+        private void RepairMailExpiry(long characterId) {
+            DateTime missing = DateTime.UnixEpoch.AddDays(1);
+            DateTime expiry = DateTimeOffset.UtcNow.AddDays(MailExpiryDays).ToUnixTimeSeconds().FromEpochSeconds();
+            Context.Mail.Where(mail => mail.ReceiverId == characterId && mail.ExpiryTime < missing)
+                .ExecuteUpdate(setters => setters.SetProperty(mail => mail.ExpiryTime, expiry));
+        }
+
         public Mail? CreateMail(Mail mail) {
+            if (mail.ExpiryTime <= 0) {
+                mail.ExpiryTime = DateTimeOffset.UtcNow.AddDays(MailExpiryDays).ToUnixTimeSeconds();
+            }
             Model.Mail model = mail;
             // SQLite cannot auto-number a column inside a composite key (ReceiverId, Id): assign the next id here.
             model.Id = Maple2.Database.Context.DbProvider.IsSqlite ? NextSqliteMailId() : 0;

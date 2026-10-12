@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
@@ -67,6 +68,38 @@ public class SaveSafetyTest {
 
         Assert.That(first, Is.GreaterThanOrEqualTo(100000));
         Assert.That(second, Is.GreaterThan(first));
+    }
+
+    [Test]
+    public void CreateMail_WithoutExpiry_GetsDefaultExpiry() {
+        // Mail with expiry 0 counts as expired in the client: the mail and its items were invisible.
+        Assume.That(DbProvider.IsSqlite, "runs with DB_PROVIDER=sqlite");
+        long id;
+        using (GameStorage.Request db = NewRequest()) {
+            id = db.CreateMail(new Mail { ReceiverId = accountId, Meso = 10 })!.Id;
+        }
+
+        long expected = DateTimeOffset.UtcNow.AddDays(GameStorage.MailExpiryDays).ToUnixTimeSeconds();
+        using GameStorage.Request read = NewRequest();
+        Assert.That(read.GetMail(id, accountId)!.ExpiryTime, Is.EqualTo(expected).Within(120));
+    }
+
+    [Test]
+    public void GetAllMail_RepairsStoredMailWithoutExpiry() {
+        Assume.That(DbProvider.IsSqlite, "runs with DB_PROVIDER=sqlite");
+        long id;
+        using (GameStorage.Request db = NewRequest()) {
+            id = db.CreateMail(new Mail { ReceiverId = accountId, Meso = 10 })!.Id;
+        }
+        using (var context = new Ms2Context(options)) {
+            // As written before the fix: expiry 0, stored as the epoch in local time.
+            context.Database.ExecuteSqlRaw("UPDATE `mail` SET ExpiryTime = {0}", DateTimeOffset.FromUnixTimeSeconds(0).LocalDateTime);
+        }
+
+        using GameStorage.Request db2 = NewRequest();
+        Mail mail = db2.GetAllMail(accountId).Single(m => m.Id == id);
+        Assert.That(mail.ExpiryTime, Is.GreaterThan(DateTimeOffset.UtcNow.AddDays(GameStorage.MailExpiryDays - 1).ToUnixTimeSeconds()));
+        Assert.That(db2.GetMail(id, accountId)!.ExpiryTime, Is.EqualTo(mail.ExpiryTime), "the repair is stored");
     }
 
     [Test]
