@@ -13,6 +13,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using Maple2.Tools.Extensions;
 using Serilog;
@@ -442,6 +443,8 @@ public class DungeonManager {
                 }
             }
 
+            // Offline edition: no clear-reward gear that only other classes can wear.
+            items = items.Where(item => OfflineClassDrops.Allowed(item, [session.Player.Value.Character.Job.Code()])).ToList();
             foreach (Item item in items) {
                 UserRecord.RewardItems.Add(item);
                 if (!session.Item.Inventory.Add(item, true)) {

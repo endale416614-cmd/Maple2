@@ -200,6 +200,16 @@ public class OfflineEditionTest {
     }
 
     [Test]
+    public void ClassDrops_OnlyGearThePlayerCanWear() {
+        JobCode[] knightOnly = [JobCode.Knight];
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor(knightOnly, [JobCode.Knight]), Is.True);
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor(knightOnly, [JobCode.Wizard]), Is.False, "other class gear");
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([], [JobCode.Wizard]), Is.True, "items for every class");
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([JobCode.None], [JobCode.Wizard]), Is.True);
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([JobCode.Archer, JobCode.Knight], [JobCode.Knight]), Is.True);
+    }
+
+    [Test]
     public void TestKit_ShippedKnightKitIsComplete() {
         string path = Path.Combine(Paths.SOLUTION_DIR, "offline-testkit.json");
         Assume.That(File.Exists(path), "offline-testkit.json missing");

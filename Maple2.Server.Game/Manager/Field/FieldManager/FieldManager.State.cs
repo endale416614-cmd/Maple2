@@ -5,6 +5,7 @@ using System.Numerics;
 using DotRecast.Core.Numerics;
 using DotRecast.Detour.Crowd;
 using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -319,6 +320,12 @@ public partial class FieldManager {
     }
 
     public void DropItem(Vector3 position, Vector3 rotation, Item item, IFieldEntity? owner = null, long characterId = 0, bool fixedPosition = false) {
+        // Offline edition: gear that only other classes can wear is not dropped (items players drop themselves are kept).
+        if (owner is not FieldPlayer && !OfflineClassDrops.Allowed(item, Players.Values
+                .Where(player => characterId == 0 || player.Value.Character.Id == characterId)
+                .Select(player => player.Value.Character.Job.Code()))) {
+            return;
+        }
         FieldItem fieldItem = SpawnItem(position, rotation, item, owner, characterId, fixedPosition);
         Broadcast(FieldPacket.DropItem(fieldItem));
     }
