@@ -1,11 +1,25 @@
 {
   // Offline edition economy. Meret (the former cash-shop currency) is bought with Mesos earned in play:
-  // the town potion shops (shops 116, 117, 122: Erin, Vivian, Hana, Emily, ... in every town) sell the
-  // game's own "N-Meret Pouch" items. Opening a pouch credits that much Meret.
+  // every NPC shop that sells for Mesos also sells the game's own "N-Meret Pouch" items, listed under the
+  // Consumables tab (Category). Opening a pouch credits that much Meret.
   // Price of each pouch = Meret * MesosPerMeret. Restart the servers after editing.
   "MesosPerMeret": 200,
   "MeretExchange": {
-    "ShopIds": [116, 117, 122],
+    "ShopIds": [
+      // General stores (Maya, Marilyn, Laurie, ... in every town) and the Amherst/Lith Harbor/Hushwood shops
+      101, 102, 103, 104, 105, 115,
+      // Potions: Cathy Mart clerks (116); 117 and 122 have no NPC placed on any map
+      116, 117, 122,
+      // Food and cooking/alchemy ingredients (Renette, Margaretta, Gia, ... in every town)
+      123,
+      // Weapons and armor: Bonin, Duke, Verza, Surmony, Surnuny, Watt, Lester, Zankel, Surangy; Morgan (Nerman Forge)
+      106, 107, 109, 111, 113, 139, 158, 126,
+      // Crafting: Rachael (Nerman Craft Shop)
+      178,
+      // Mounts, music, fishing, drinks and the small special shops
+      119, 120, 121, 130, 160, 161, 169, 213, 230, 128, 129, 171, 172, 173, 175, 261, 963
+    ],
+    "Category": "PS",
     "Pouches": [
       { "ItemId": 20300055, "Meret": 10 },
       { "ItemId": 20300066, "Meret": 100 },

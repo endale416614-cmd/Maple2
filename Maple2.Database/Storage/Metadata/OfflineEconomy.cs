@@ -16,7 +16,8 @@ public static class OfflineEconomy {
     private const int FIRST_ENTRY_ID = 900000; // shop item ids no shipped shop uses
 
     public sealed record Config(int MesosPerMeret, MeretExchangeConfig MeretExchange);
-    public sealed record MeretExchangeConfig(int[] ShopIds, Pouch[] Pouches);
+    // Category = the shop tab the pouches are listed under ("PS" = Consumables; shops without it show them under All).
+    public sealed record MeretExchangeConfig(int[] ShopIds, Pouch[] Pouches, string? Category = null);
     public sealed record Pouch(int ItemId, int Meret);
 
     private static readonly ILogger Logger = Log.Logger.ForContext(typeof(OfflineEconomy));
@@ -183,6 +184,8 @@ public static class OfflineEconomy {
             return table;
         }
 
+        string category = string.IsNullOrEmpty(config.MeretExchange.Category) ? "PS" : config.MeretExchange.Category;
+        var noRequirements = new ShopItemMetadata.Requirement(0, new(0, 0), new(0, 0), new(default, 0), new(default, 0));
         foreach (int shopId in config.MeretExchange.ShopIds) {
             if (!table.Entries.TryGetValue(shopId, out Dictionary<int, ShopItemMetadata>? items) || items.Count == 0) {
                 Logger.Warning("Offline economy: shop {ShopId} not found, skipped", shopId);
@@ -205,6 +208,8 @@ public static class OfflineEconomy {
                     Rarity = 1,
                     Cost = new ShopCost { Type = ShopCurrencyType.Meso, Amount = (int) price },
                     SellCount = 0,
+                    Category = category,
+                    Requirements = noRequirements, // the template may need an achievement or reputation
                     RestrictedBuyData = null,
                     Label = ShopItemLabel.None,
                     IconTag = "",
