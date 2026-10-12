@@ -115,12 +115,16 @@ public sealed class MailManager {
             }
 
             MailError error = CollectInternal(mail);
-            if (error != MailError.none) {
-                return error;
-            }
-
+            // Collect works on a copy: the inbox mail (sent again whenever the mailbox opens) must lose the collected items
+            // too, also after a partial collect, or they keep showing although they are already in the inventory.
             inboxMail.Update(mail);
-            return MailError.none;
+            lock (inbox) {
+                inboxMail.Items.Clear();
+                foreach (Item item in mail.Items) {
+                    inboxMail.Items.Add(item);
+                }
+            }
+            return error;
         }
     }
 
