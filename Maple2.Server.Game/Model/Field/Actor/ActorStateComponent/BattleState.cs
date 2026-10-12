@@ -233,6 +233,8 @@ public class BattleState {
             target = targetPlayer;
         } else if (actor.Field.Npcs.TryGetValue(TargetId, out FieldNpc? targetNpc)) {
             target = targetNpc;
+        } else if (actor.Field.Mobs.TryGetValue(TargetId, out FieldNpc? targetMob)) {
+            target = targetMob;
         }
 
 
@@ -285,7 +287,9 @@ public class BattleState {
         }
 
         if (friendlyType == 1) {
-            foreach (FieldNpc npc in actor.Field.Npcs.Values) {
+            // Hostile NPCs live in Field.Mobs; Field.Npcs only holds friendly ones, so searching it found nothing and
+            // friendly NPCs never fought (e.g. the Bastei Peak guardians never started the battle AI that jumps).
+            foreach (FieldNpc npc in actor.Field.Mobs.Values) {
                 if (npc.Value.Metadata.Basic.Friendly != 0) {
                     continue;
                 }

@@ -236,7 +236,8 @@ public partial class TriggerContext {
                 continue; // (was "SpawnPointId > 0 ||", which skipped every trigger-spawned mob)
             }
 
-            if (mob.BattleState.InBattle) {
+            // A monster a friendly NPC is fighting counts too (monsters here only target players).
+            if (mob.BattleState.InBattle || mob.HitByFriendlyNpc) {
                 return !negate;
             }
         }

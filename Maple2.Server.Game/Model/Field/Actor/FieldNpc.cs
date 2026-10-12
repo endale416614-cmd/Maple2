@@ -91,6 +91,8 @@ public class FieldNpc : Actor<Npc> {
     private long lastCorpseBroadcastTick;
     public Action<FieldNpc>? WorldBossDeathCallback { get; set; }
     public long LastDamageTick { get; private set; }
+    /// <summary>Hit by a friendly NPC. Monsters only pick players as targets, so this stands in for "fighting an NPC".</summary>
+    public bool HitByFriendlyNpc { get; private set; }
     private int lastAttackerObjectId;
     // The first player to attack this mob; used to assign drop ownership for regular mobs.
     // TODO: If the mob loses aggro on all players it should heal to full and clear firstAttackerObjectId and DamageDealers,
@@ -400,6 +402,9 @@ public class FieldNpc : Actor<Npc> {
             SequenceCounter++;
             Field.Broadcast(NpcControlPacket.CorpseHit(this));
             return;
+        }
+        if (caster is FieldNpc { Value.Metadata.Basic.Friendly: > 0 }) {
+            HitByFriendlyNpc = true;
         }
         base.ApplyDamage(caster, damage, attack);
     }
