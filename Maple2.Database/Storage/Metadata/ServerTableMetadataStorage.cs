@@ -72,8 +72,7 @@ public class ServerTableMetadataStorage {
         gameEventTable = Retrieve<GameEventTable>(context, ServerTableNames.GAME_EVENT);
         oxQuizTable = Retrieve<OxQuizTable>(context, ServerTableNames.OX_QUIZ);
         itemMergeTable = Retrieve<ItemMergeTable>(context, ServerTableNames.ITEM_MERGE);
-        Lazy<ShopTable> shippedShops = Retrieve<ShopTable>(context, ServerTableNames.SHOP);
-        shopTable = new Lazy<ShopTable>(() => OfflineEconomy.Apply(shippedShops.Value));
+        shopTable = Retrieve<ShopTable>(context, ServerTableNames.SHOP);
         Lazy<ShopItemTable> shippedShopItems = Retrieve<ShopItemTable>(context, ServerTableNames.SHOP_ITEM);
         shopItemTable = new Lazy<ShopItemTable>(() => OfflineEconomy.Apply(shippedShopItems.Value));
         beautyShopTable = Retrieve<BeautyShopTable>(context, ServerTableNames.BEAUTY_SHOP);
