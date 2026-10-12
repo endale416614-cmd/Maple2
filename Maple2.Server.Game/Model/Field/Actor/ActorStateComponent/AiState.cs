@@ -429,7 +429,18 @@ public class AiState {
         Push(passed);
     }
 
-    private void ProcessNode(JumpNode node) { }
+    private void ProcessNode(JumpNode node) {
+        string sequence = node.Type == NodeJumpType.JumpB ? "Jump_B" : "Jump_A";
+        NpcTask task = actor.MovementState.TryJumpTo(node.Pos, actor.BattleState.InBattle, node.Speed, node.HeightMultiplier, sequence);
+
+        if (node.IsKeepBattle) {
+            actor.BattleState.KeepBattle = true;
+        }
+
+        // Airtime plus slack; if the jump never finishes, the AI cancels it and the NPC lands at the target.
+        float distance = Vector2.Distance(new Vector2(actor.Position.X, actor.Position.Y), new Vector2(node.Pos.X, node.Pos.Y));
+        SetNodeTask(task, (long) (distance / Math.Max(node.Speed, 1) * 1000) + 2000);
+    }
 
     private void ProcessNode(SelectNode node) {
         var weightedEntries = new WeightedSet<(Entry, int)>();
