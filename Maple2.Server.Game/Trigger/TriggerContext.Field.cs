@@ -259,6 +259,15 @@ public partial class TriggerContext {
             return;
         }
 
+        // The dungeon party-wait template (CheckUserCount) shuts portal 2 on every map it was pasted into. Where the map's
+        // own scripts never reopen it and it leads on to another map, that is the only way forward, shut for good:
+        // Palace Undercroft (02000252, Devilina dungeon) -> Undercroft Corridor. Keep such portals as the map placed them.
+        if (!enabled && portal.Value.TargetMapId > 0 && portal.Value.TargetMapId != Field.MapId
+            && Field.TriggerCache.IsTemplateLockedPortal(Field.Metadata.XBlock, portalId)) {
+            DebugLog("[SetPortal] portalId:{Id} kept open: leads to map {MapId}, only the party-wait template shuts it", portalId, portal.Value.TargetMapId);
+            return;
+        }
+
         portal.Visible = visible;
         portal.Enabled = enabled;
         portal.MinimapVisible = minimapVisible;

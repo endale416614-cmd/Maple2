@@ -54,6 +54,9 @@ public class TriggerCache : LRUCache<(string, string), Trigger.Helpers.Trigger> 
         return false;
     }
 
+    /// <summary>Whether the map's scripts only shut this portal in the dungeon party-wait template and never reopen it.</summary>
+    public bool IsTemplateLockedPortal(string mapXBlock, int portalId) => triggerMetadata.GetTemplateLockedPortalIds(mapXBlock).Contains(portalId);
+
     public static Trigger.Helpers.Trigger ParseTrigger(string xBlock, string triggerName, XmlDocument doc) {
         XmlElement? root = doc.DocumentElement;
         if (root is null || root.Name != "ms2") {
