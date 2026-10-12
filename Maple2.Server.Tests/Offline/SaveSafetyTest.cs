@@ -103,6 +103,31 @@ public class SaveSafetyTest {
     }
 
     [Test]
+    public void MailNeverExpires_KeepsMailAndRevivesExpiredMail() {
+        Assume.That(DbProvider.IsSqlite, "runs with DB_PROVIDER=sqlite");
+        long id;
+        using (GameStorage.Request db = NewRequest()) {
+            id = db.CreateMail(new Mail { ReceiverId = accountId, Meso = 10 })!.Id; // normal 30-day expiry
+        }
+        using (var context = new Ms2Context(options)) {
+            // Already expired yesterday.
+            context.Database.ExecuteSqlRaw("UPDATE `mail` SET ExpiryTime = {0}", DateTime.Now.AddDays(-1));
+        }
+
+        GameStorage.MailNeverExpires = true;
+        try {
+            long farAhead = DateTimeOffset.UtcNow.AddDays(GameStorage.NeverExpiresDays - 1).ToUnixTimeSeconds();
+            using GameStorage.Request db = NewRequest();
+            Assert.That(db.GetAllMail(accountId).Single(m => m.Id == id).ExpiryTime, Is.GreaterThan(farAhead), "expired mail comes back");
+            long created = db.CreateMail(new Mail(30) { ReceiverId = accountId, Meso = 20 })!.Id;
+            Assert.That(db.GetMail(created, accountId)!.ExpiryTime, Is.GreaterThan(farAhead), "a sender's own expiry is extended");
+            Assert.That(farAhead + 2L * 86400, Is.LessThan(int.MaxValue), "stays inside 32-bit time");
+        } finally {
+            GameStorage.MailNeverExpires = false;
+        }
+    }
+
+    [Test]
     public void Dispose_WithoutCommit_AfterException_RollsBack() {
         try {
             using GameStorage.Request db = NewRequest();

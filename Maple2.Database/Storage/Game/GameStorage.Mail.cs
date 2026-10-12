@@ -10,6 +10,12 @@ public partial class GameStorage {
     // expiry of 0 has passed, so every stored mail needs one. The game server sets this from the server constants.
     public static int MailExpiryDays { get; set; } = 30;
 
+    // Offline edition (OFFLINE_MAIL_NEVER_EXPIRES=true, launcher.ini MailNeverExpires): mail stays until the player deletes
+    // it. Its expiry is kept about five years ahead (inside the 32-bit time range) and moved forward when mail is loaded.
+    public static bool MailNeverExpires { get; set; } =
+        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_MAIL_NEVER_EXPIRES"), "true", StringComparison.OrdinalIgnoreCase);
+    public const int NeverExpiresDays = 1825;
+
     public partial class Request {
         public Mail? GetMail(long mailId, long characterId) {
             Model.Mail? model = Context.Mail.Find(characterId, mailId);
@@ -92,17 +98,23 @@ public partial class GameStorage {
         }
 
         // Mails stored without an expiry (every sender but one stopped setting it upstream) were invisible in the mailbox,
-        // together with their items. They get a fresh expiry, counted from now since the player never saw them.
+        // together with their items. They get a fresh expiry, counted from now since the player never saw them. With
+        // MailNeverExpires every mail whose expiry is less than half the never-expires span away is moved forward again,
+        // which also brings back mail that had already expired.
         private void RepairMailExpiry(long characterId) {
-            DateTime missing = DateTime.UnixEpoch.AddDays(1);
-            DateTime expiry = DateTimeOffset.UtcNow.AddDays(MailExpiryDays).ToUnixTimeSeconds().FromEpochSeconds();
-            Context.Mail.Where(mail => mail.ReceiverId == characterId && mail.ExpiryTime < missing)
+            DateTime cutoff = MailNeverExpires ? DateTime.Now.AddDays(NeverExpiresDays / 2) : DateTime.UnixEpoch.AddDays(1);
+            DateTime expiry = NewExpiry().FromEpochSeconds();
+            Context.Mail.Where(mail => mail.ReceiverId == characterId && mail.ExpiryTime < cutoff)
                 .ExecuteUpdate(setters => setters.SetProperty(mail => mail.ExpiryTime, expiry));
         }
 
+        private static long NewExpiry() {
+            return DateTimeOffset.UtcNow.AddDays(MailNeverExpires ? NeverExpiresDays : MailExpiryDays).ToUnixTimeSeconds();
+        }
+
         public Mail? CreateMail(Mail mail) {
-            if (mail.ExpiryTime <= 0) {
-                mail.ExpiryTime = DateTimeOffset.UtcNow.AddDays(MailExpiryDays).ToUnixTimeSeconds();
+            if (mail.ExpiryTime <= 0 || MailNeverExpires) {
+                mail.ExpiryTime = Math.Max(mail.ExpiryTime, NewExpiry());
             }
             Model.Mail model = mail;
             // SQLite cannot auto-number a column inside a composite key (ReceiverId, Id): assign the next id here.
