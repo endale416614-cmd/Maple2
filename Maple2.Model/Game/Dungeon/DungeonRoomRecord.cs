@@ -10,6 +10,10 @@ public class DungeonRoomRecord {
     public long StartTick { get; set; }
     public long EndTick { get; set; }
     public DungeonState State { get; set; } = DungeonState.None;
+    // Trigger dungeon variables (dungeon_variable): one set per dungeon run, shared by the lobby and every room map
+    public readonly ConcurrentDictionary<int, int> Variables = [];
+    // Dark Stream (Dark Descent): the number of rounds the run has (dark_stream_start_game); 0 = not a Dark Stream run
+    public int DarkStreamRounds { get; set; }
 
     public DungeonRoomRecord(DungeonRoomMetadata metadata) {
         Metadata = metadata;

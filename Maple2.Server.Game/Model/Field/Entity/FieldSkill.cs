@@ -16,6 +16,11 @@ public enum SkillSource {
 }
 
 public class FieldSkill : FieldEntity<SkillMetadata> {
+    // Scene skills that clear the monsters of a cutscene. Their ApplyTarget (5) means players for every other
+    // region skill (traps, pushes, buffs), so these would kill the player instead: Soul Binder intro 63000029
+    // "GroundSplitMobKill" and 63000028 "KillAll" (skill 70000096, 999x damage).
+    private static readonly HashSet<int> MonsterOnlySkills = [70000096];
+
     public IActor Caster { get; init; }
     public SkillSource Source { get; init; } = SkillSource.Region;
     public int Interval { get; }
@@ -95,7 +100,9 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Prism[] prisms = Points
                         .Select(point => attack.Range.GetPrism(point, skillAngle, attack.Range.ApplyTarget))
                         .ToArray();
-                    if (Field.GetTargets(Caster, prisms, attack.Range, attack.TargetCount).Any()) {
+                    if ((MonsterOnlySkills.Contains(Value.Id)
+                            ? prisms.Filter<IActor>(Field.Mobs.Values, attack.TargetCount)
+                            : Field.GetTargets(Caster, prisms, attack.Range, attack.TargetCount)).Any()) {
                         Active = true;
                         goto activated;
                     }
@@ -185,7 +192,9 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Prism[] prisms = Points
                         .Select(point => attack.Range.GetPrism(point, skillAngle, attack.Range.ApplyTarget))
                         .ToArray();
-                    IActor[] targets = Field.GetTargets(Caster, prisms, attack.Range, attack.TargetCount).ToArray();
+                    IActor[] targets = (MonsterOnlySkills.Contains(Value.Id)
+                        ? prisms.Filter<IActor>(Field.Mobs.Values, attack.TargetCount)
+                        : Field.GetTargets(Caster, prisms, attack.Range, attack.TargetCount)).ToArray();
                     // if (targets.Length > 0) {
                     //     logger.Debug("[{Tick}] {ObjectId}:{AttackPoint} Targeting: {Count}/{Limit} {Type}",
                     //         NextTick, ObjectId, attack.Point, targets.Length, attack.TargetCount, attack.Range.ApplyTarget);
