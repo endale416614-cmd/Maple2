@@ -758,6 +758,7 @@ public class HousingManager {
             { FurnishingCurrencyType.Meso, 0 },
             { FurnishingCurrencyType.Meret, 0 },
         };
+        long priceFactor = OfflineCheats.IsFreebies(session.CharacterId) ? 0 : 1; // missing cubes are bought for free
 
         foreach ((int id, int amount) in groupedCubes) {
             tableMetadata.FurnishingShopTable.Entries.TryGetValue(id, out FurnishingShopTable.Entry? shopEntry);
@@ -767,7 +768,7 @@ public class HousingManager {
                 if (shopEntry is null) {
                     continue;
                 }
-                cubeCosts[shopEntry.FurnishingTokenType] += shopEntry.Price * amount;
+                cubeCosts[shopEntry.FurnishingTokenType] += shopEntry.Price * amount * priceFactor;
                 cubeCount += amount;
                 continue;
             }
@@ -781,7 +782,7 @@ public class HousingManager {
             }
 
             int missingCubes = amount - item.Amount;
-            cubeCosts[shopEntry.FurnishingTokenType] += shopEntry.Price * missingCubes;
+            cubeCosts[shopEntry.FurnishingTokenType] += shopEntry.Price * missingCubes * priceFactor;
             cubeCount += missingCubes;
         }
 

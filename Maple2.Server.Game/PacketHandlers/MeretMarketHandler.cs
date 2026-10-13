@@ -262,7 +262,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         int totalItems = entries.Count;
         entries = TakeLimit(entries, meretMarketSearch.StartPage, meretMarketSearch.ItemsPerPage);
 
-        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.StartPage));
+        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.StartPage, OfflineCheats.IsFreebies(session.CharacterId)));
     }
 
     private void HandlePurchase(GameSession session, IByteReader packet) {
@@ -427,7 +427,7 @@ public class MeretMarketHandler : FieldPacketHandler {
 
         // Featured page needs a multiple of 2 slots. Add to the entries total if odd number.
         byte marketSlots = (byte) (entries.Count % 2 == 0 ? entries.Count : (byte) (entries.Count + 1));
-        session.Send(MeretMarketPacket.FeaturedPremium(section, tabId, marketSlots, entries));
+        session.Send(MeretMarketPacket.FeaturedPremium(section, tabId, marketSlots, entries, OfflineCheats.IsFreebies(session.CharacterId)));
     }
 
     private void HandleOpenUgcShop(GameSession session) {
@@ -446,7 +446,7 @@ public class MeretMarketHandler : FieldPacketHandler {
             if (marketItem is null) {
                 return;
             }
-            session.Send(MeretMarketPacket.LoadItems([marketItem], 1, 1));
+            session.Send(MeretMarketPacket.LoadItems([marketItem], 1, 1, OfflineCheats.IsFreebies(session.CharacterId)));
             return;
         }
 
@@ -470,7 +470,7 @@ public class MeretMarketHandler : FieldPacketHandler {
         int totalItems = entries.Count;
         entries = TakeLimit(entries, meretMarketSearch.StartPage, meretMarketSearch.ItemsPerPage);
 
-        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.StartPage));
+        session.Send(MeretMarketPacket.LoadItems(entries, totalItems, meretMarketSearch.StartPage, OfflineCheats.IsFreebies(session.CharacterId)));
     }
 
     private void HandleBlueprintSearch(GameSession session, IByteReader packet) {
