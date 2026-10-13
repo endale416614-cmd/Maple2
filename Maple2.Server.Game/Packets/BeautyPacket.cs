@@ -32,7 +32,7 @@ public static class BeautyPacket {
         var pWriter = Packet.Of(SendOp.Beauty);
         pWriter.Write<Command>(Command.BeautyShop);
         pWriter.WriteClass<BeautyShop>(shop);
-        pWriter.WriteBeautyShopItems(shop.Items);
+        pWriter.WriteBeautyShopItems(shop);
 
         return pWriter;
     }
@@ -158,7 +158,8 @@ public static class BeautyPacket {
         return pWriter;
     }
 
-    private static void WriteBeautyShopItems(this IByteWriter pWriter, BeautyShopItem[] items) {
+    private static void WriteBeautyShopItems(this IByteWriter pWriter, BeautyShop shop) {
+        BeautyShopItem[] items = shop.Items;
         pWriter.WriteByte(); // Unknown1
         pWriter.WriteByte(); // Unknown2
         pWriter.WriteShort((short) items.Length);
@@ -168,7 +169,7 @@ public static class BeautyPacket {
             pWriter.WriteShort(item.RequiredLevel);
             pWriter.WriteInt(item.AchievementId);
             pWriter.WriteByte(item.AchievementRank);
-            pWriter.WriteClass<BeautyShopCost>(item.Cost);
+            pWriter.WriteClass<BeautyShopCost>(shop.ShownCost(item.Cost));
         }
     }
 }

@@ -11,6 +11,8 @@ public class BeautyShop : IByteSerializable {
     public readonly BeautyShopMetadata Metadata;
     public BeautyShopType Type { get; init; }
     public BeautyShopItem[] Items { get; init; }
+    /// <summary>Sends every price as 0 (offline /freebies), so the client does not refuse for a missing currency.</summary>
+    public bool ShowFree { get; set; }
 
     public BeautyShop(BeautyShopMetadata metadata, BeautyShopItem[] items) {
         Metadata = metadata;
@@ -27,7 +29,11 @@ public class BeautyShop : IByteSerializable {
         writer.WriteInt(Metadata.ReturnCouponId);
         writer.WriteInt(Metadata.SubType);
         writer.WriteByte();
-        writer.WriteClass<BeautyShopCost>(Metadata.StyleCostMetadata);
-        writer.WriteClass<BeautyShopCost>(Metadata.ColorCostMetadata);
+        writer.WriteClass<BeautyShopCost>(ShownCost(Metadata.StyleCostMetadata));
+        writer.WriteClass<BeautyShopCost>(ShownCost(Metadata.ColorCostMetadata));
+    }
+
+    public BeautyShopCostMetadata ShownCost(BeautyShopCostMetadata cost) {
+        return ShowFree ? cost with { Price = 0 } : cost;
     }
 }
