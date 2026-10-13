@@ -130,6 +130,7 @@ public class BeautyHandler : FieldPacketHandler {
 
         session.BeautyShop = new BeautyShop(shopMetadata, entries.ToArray()) {
             Type = shopType,
+            ShowFree = OfflineCheats.IsFreebies(session.CharacterId),
         };
 
         switch (session.BeautyShop.Type) {
@@ -488,7 +489,9 @@ public class BeautyHandler : FieldPacketHandler {
             return;
         }
 
-        var shop = new BeautyShop(shopMetadata, shopMetadata.Items);
+        var shop = new BeautyShop(shopMetadata, shopMetadata.Items) {
+            ShowFree = OfflineCheats.IsFreebies(session.CharacterId),
+        };
 
         session.BeautyShop = shop;
         session.Send(BeautyPacket.BeautyShop(shop));
