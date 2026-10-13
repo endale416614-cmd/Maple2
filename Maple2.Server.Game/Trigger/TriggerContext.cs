@@ -89,8 +89,9 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool DungeonVariable(int id, int value) {
-        if (TraceEnabled) ErrorLog("[GetDungeonVariable] id:{Id}", id);
-        return false;
+        if (TraceEnabled) DebugLog("[GetDungeonVariable] id:{Id}, value:{Value}", id, value);
+        // unset variables read as 0, so scripts can also wait for value="0"
+        return Field is DungeonFieldManager dungeonField && dungeonField.DungeonRoomRecord.Variables.GetValueOrDefault(id) == value;
     }
 
     public bool NpcDamage(int spawnPointId, float damage, OperatorType operatorType) {

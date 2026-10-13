@@ -283,6 +283,13 @@ public class DungeonManager {
             size = Party.Members.Count;
         }
 
+        // Rooms built for a party wait for that many players (e.g. Cathy Mart Part-Time Job needs 3 others in place):
+        // refuse a smaller group at the door like the game does, instead of letting it in to wait forever.
+        if (metadata.Limit.MinUserCount > 1 && size < metadata.Limit.MinUserCount) {
+            session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_UnderMinUserCount, metadata.Limit.MinUserCount));
+            return;
+        }
+
         try {
             FieldResponse response = session.World.Field(new FieldRequest {
                 CreateDungeon = new FieldRequest.Types.CreateDungeon {

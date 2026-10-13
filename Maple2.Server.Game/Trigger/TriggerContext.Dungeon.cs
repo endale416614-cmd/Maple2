@@ -100,7 +100,10 @@ public partial class TriggerContext {
     }
 
     public void SetDungeonVariable(int varId, int value) {
-        if (TraceEnabled) ErrorLog("[SetDungeonVariable] varId:{VarId}, value:{Value}", varId, value);
+        if (TraceEnabled) DebugLog("[SetDungeonVariable] varId:{VarId}, value:{Value}", varId, value);
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.DungeonRoomRecord.Variables[varId] = value;
+        }
     }
 
     public void SetUserValueFromDungeonRewardCount(string key, int dungeonRewardId) {
@@ -117,7 +120,10 @@ public partial class TriggerContext {
     }
 
     public void DarkStreamStartGame(int round) {
-        if (TraceEnabled) ErrorLog("[DarkStreamStartGame]");
+        if (TraceEnabled) DebugLog("[DarkStreamStartGame] rounds:{Round}", round);
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.DungeonRoomRecord.DarkStreamRounds = round;
+        }
     }
 
     public void DarkStreamStartRound(int round, int uiDuration, int damagePenalty) {
@@ -125,7 +131,13 @@ public partial class TriggerContext {
     }
 
     public void DarkStreamClearRound(int round) {
-        if (TraceEnabled) ErrorLog("[DarkStreamClearRound]");
+        if (TraceEnabled) DebugLog("[DarkStreamClearRound] round:{Round}", round);
+        DungeonClearRound(round);
+        // The Dark Stream scripts have no dungeon_clear: the run is cleared with its last round (offline edition)
+        if (Field is DungeonFieldManager dungeonField && dungeonField.DungeonRoomRecord.DarkStreamRounds > 0
+            && round >= dungeonField.DungeonRoomRecord.DarkStreamRounds && dungeonField.DungeonRoomRecord.State != Maple2.Model.Enum.DungeonState.Clear) {
+            dungeonField.ChangeState(Maple2.Model.Enum.DungeonState.Clear);
+        }
     }
     #endregion
 

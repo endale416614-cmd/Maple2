@@ -67,6 +67,8 @@ public static class TriggerFunctionMapping {
         { "dungeon_set_lap_time", attrs => new Trigger.DungeonSetLapTime(ParseInt(attrs?["id"]?.Value), ParseInt(attrs?["lap_time"]?.Value)) },
         { "dungeon_stop_timer", _ => new Trigger.DungeonStopTimer() },
         { "set_dungeon_variable", attrs => new Trigger.SetDungeonVariable(ParseInt(attrs?["var_id"]?.Value), ParseInt(attrs?["value"]?.Value)) },
+        // the XML spells the action like the condition (Muros Studio: the round maps set what the hub waits for)
+        { "dungeon_variable", attrs => new Trigger.SetDungeonVariable(ParseInt(attrs?["var_id"]?.Value), ParseInt(attrs?["value"]?.Value)) },
         { "enable_local_camera", attrs => new Trigger.EnableLocalCamera(ParseBool(attrs?["is_enable"]?.Value)) },
         { "enable_spawn_point_pc", attrs => new Trigger.EnableSpawnPointPc(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_enable"]?.Value)) },
         { "end_mini_game", attrs => new Trigger.EndMiniGame(ParseInt(attrs?["winner_box_id"]?.Value), attrs?["game_name"]?.Value ?? string.Empty, ParseBool(attrs?["is_only_winner"]?.Value)) },
