@@ -22,7 +22,10 @@ public class PremiumMarketItem : MarketItem {
         Price = Metadata.Price;
     }
 
-    public override void WriteTo(IByteWriter writer) {
+    public override void WriteTo(IByteWriter writer) => WriteTo(writer, false);
+
+    /// <summary>free: prices sent as 0 (offline /freebies), so the client does not refuse for a missing currency.</summary>
+    public void WriteTo(IByteWriter writer, bool free) {
         writer.WriteInt(Id);
         writer.WriteByte();
         writer.WriteUnicodeString(Name);
@@ -33,8 +36,8 @@ public class PremiumMarketItem : MarketItem {
         writer.WriteByte();
         writer.Write<MeretMarketItemSaleTag>(Metadata.SaleTag);
         writer.Write<MeretMarketCurrencyType>(Metadata.CurrencyType);
-        writer.WriteLong(Price);
-        writer.WriteLong(Metadata.SalePrice);
+        writer.WriteLong(free ? 0 : Price);
+        writer.WriteLong(free ? 0 : Metadata.SalePrice);
         writer.WriteBool(Metadata.Giftable);
         writer.WriteLong(Metadata.SaleStartTime);
         writer.WriteLong(Metadata.SaleEndTime);

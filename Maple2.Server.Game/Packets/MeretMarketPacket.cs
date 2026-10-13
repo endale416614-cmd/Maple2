@@ -159,7 +159,7 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter LoadItems(ICollection<MarketItem> marketItems, int totalItems, int startPage) {
+    public static ByteWriter LoadItems(ICollection<MarketItem> marketItems, int totalItems, int startPage, bool free = false) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.LoadItems);
         pWriter.WriteInt(marketItems.Count);
@@ -167,7 +167,7 @@ public static class MeretMarketPacket {
         pWriter.WriteInt(startPage);
         foreach (MarketItem entry in marketItems) {
             pWriter.WriteBool(true);
-            pWriter.WriteMarketItem(entry);
+            pWriter.WriteMarketItem(entry, free);
         }
 
         return pWriter;
@@ -213,7 +213,7 @@ public static class MeretMarketPacket {
         return pWriter;
     }
 
-    public static ByteWriter FeaturedPremium(byte section, byte tabId, byte marketSlots, IList<MarketItem> marketItems) {
+    public static ByteWriter FeaturedPremium(byte section, byte tabId, byte marketSlots, IList<MarketItem> marketItems, bool free = false) {
         var pWriter = Packet.Of(SendOp.MeretMarket);
         pWriter.Write<Command>(Command.FeaturedPremium);
         pWriter.WriteByte(section);
@@ -226,7 +226,7 @@ public static class MeretMarketPacket {
             if (item == null) {
                 break;
             }
-            pWriter.WriteMarketItem(item);
+            pWriter.WriteMarketItem(item, free);
         }
         return pWriter;
     }
@@ -247,13 +247,13 @@ public static class MeretMarketPacket {
     }
 
     #region Helper
-    private static void WriteMarketItem(this IByteWriter pWriter, MarketItem item) {
+    private static void WriteMarketItem(this IByteWriter pWriter, MarketItem item, bool free = false) {
         pWriter.WriteBool(item is UgcMarketItem);
         switch (item) {
             case PremiumMarketItem premium:
                 pWriter.WriteInt(premium.Id);
                 pWriter.WriteLong();
-                pWriter.WriteClass<PremiumMarketItem>(premium);
+                premium.WriteTo(pWriter, free);
                 pWriter.WriteBool(premium.PromoData != null);
                 if (premium.PromoData != null) {
                     pWriter.WriteClass<PremiumMarketPromoData>(premium.PromoData);
@@ -264,7 +264,7 @@ public static class MeretMarketPacket {
                 pWriter.WriteByte((byte) premium.AdditionalQuantities.Count);
                 foreach (PremiumMarketItem addEntry in premium.AdditionalQuantities) {
                     pWriter.WriteBool(true);
-                    pWriter.WriteClass<PremiumMarketItem>(addEntry);
+                    addEntry.WriteTo(pWriter, free);
                     bool unk = false;
                     pWriter.WriteBool(unk);
                     if (unk) {
