@@ -492,7 +492,8 @@ public class AiState {
             return;
         }
 
-        float distance = float.MaxValue;
+        // till = how far from the target to run (every runaway node has a till or a skill)
+        float distance = node.Till;
 
         if (node.SkillIdx != 0) {
             SkillMetadata? skill = TryGetSkill(node.SkillIdx);
@@ -502,6 +503,10 @@ public class AiState {
             }
 
             distance = skill.Data.Detect.Distance; // naive impl, might need to revisit
+        }
+
+        if (distance <= 0) {
+            return;
         }
 
         NpcTask task = actor.MovementState.TryMoveTargetDistance(actor.BattleState.Target!, distance, true, node.Animation, 1);

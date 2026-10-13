@@ -40,12 +40,12 @@ public sealed class AgentNavigation {
         DtNavMesh navMesh = crowd.GetNavMesh();
         DtNavMeshQuery navMeshQuery = crowd.GetNavMeshQuery();
         IDtQueryFilter filter = crowd.GetFilter(0);
-        if (!field.FindNearestPoly(startVec, out long pos1Ref, out RcVec3f _)) {
+        if (!TryFindPoly(startVec, out long pos1Ref, out RcVec3f _)) {
             Logger.Error("Failed to find nearest poly at {StartVec}", startVec);
             return null;
         }
 
-        if (!field.FindNearestPoly(targetVec, out long posRef2, out RcVec3f _)) {
+        if (!TryFindPoly(targetVec, out long posRef2, out RcVec3f _)) {
             Logger.Error("Failed to find nearest poly at {TargetVec}", targetVec);
             return null;
         }
@@ -279,12 +279,25 @@ public sealed class AgentNavigation {
         return FindRandomPointAround(point, maxDistance, DotRecastHelper.FromNavMeshSpace(agent.npos));
     }
 
+    /// <summary>
+    /// Nearest navmesh polygon to <paramref name="point"/>. Detour's FindNearestPoly reports success with ref 0 (and hands
+    /// the query point back unchanged) when no polygon is inside the search box, so a point off the navmesh, such as a
+    /// player standing on scenery the mesh does not cover, has to be rejected here or FindPath fails on it.
+    /// </summary>
+    private bool TryFindPoly(RcVec3f point, out long polyRef, out RcVec3f position) {
+        return field.FindNearestPoly(point, out polyRef, out position) && polyRef != 0;
+    }
+
+    private bool TryFindPoly(Vector3 point, out long polyRef, out RcVec3f position) {
+        return field.FindNearestPoly(point, out polyRef, out position) && polyRef != 0;
+    }
+
     public bool PathTo(Vector3 goal) {
-        if (!field.FindNearestPoly(agent.npos, out _, out _)) {
+        if (!TryFindPoly(agent.npos, out _, out _)) {
             return false;
         }
 
-        if (!field.FindNearestPoly(goal, out _, out RcVec3f end)) {
+        if (!TryFindPoly(goal, out _, out RcVec3f end)) {
             return false;
         }
 
@@ -304,29 +317,56 @@ public sealed class AgentNavigation {
         return currentPath is not null;
     }
 
-    public bool PathAwayFrom(Vector3 goal, int distance) {
-        if (!field.FindNearestPoly(agent.npos, out _, out RcVec3f position)) {
+    /// <summary>
+    /// Paths to a point <paramref name="distance"/> away from <paramref name="goal"/>, on the far side from the goal, or as
+    /// far toward it as the navmesh allows (walls and ledges stop the NPC).
+    /// </summary>
+    public bool PathAwayFrom(Vector3 goal, float distance) {
+        if (!TryFindPoly(agent.npos, out long startRef, out RcVec3f position)) {
             return false;
         }
 
-        // get target in navmesh space
+        // get target and distance in navmesh space
         RcVec3f target = DotRecastHelper.ToNavMeshSpace(goal);
-
-        // get distance in navmesh space
         float fDistance = distance * DotRecastHelper.MapRotation.GetRightAxis().Length();
 
-        // get direction from agent to target
-        RcVec3f direction = RcVec3f.Normalize(RcVec3f.Subtract(target, position));
+        if (!FindPointAway(crowd.GetNavMeshQuery(), crowd.GetFilter(0), startRef, position, target, fDistance, out RcVec3f reachable)) {
+            return false;
+        }
 
-        // get the point that is fDistance away from the target in the opposite direction
-        RcVec3f positionAway = RcVec3f.Add(position, RcVec3f.Normalize(direction) * -fDistance);
-
-        // find the nearest poly to the positionAway
-        if (!field.FindNearestPoly(positionAway, out _, out RcVec3f positionAwayNavMesh)) {
+        if (!TryFindPoly(reachable, out _, out RcVec3f positionAwayNavMesh)) {
             return false;
         }
 
         return SetPathAway(positionAwayNavMesh);
+    }
+
+    /// <summary>
+    /// The point the agent at <paramref name="position"/> reaches running away from <paramref name="target"/> until it is
+    /// <paramref name="distance"/> from it, all in navmesh space. False when it cannot move (cornered) or the input is bad.
+    /// </summary>
+    public static bool FindPointAway(DtNavMeshQuery query, IDtQueryFilter filter, long startRef, RcVec3f position, RcVec3f target, float distance, out RcVec3f reachable) {
+        reachable = position;
+        if (!float.IsFinite(distance) || distance <= 0 || !position.IsFinite() || !target.IsFinite()) {
+            return false;
+        }
+
+        // flee across the ground (Y is up in navmesh space); standing on the target, any direction will do
+        RcVec3f away = new RcVec3f(position.X - target.X, 0, position.Z - target.Z);
+        float length = MathF.Sqrt(away.X * away.X + away.Z * away.Z);
+        if (length < DotRecastHelper.MIN_TARGET_DIST) {
+            float angle = Random.Shared.NextSingle() * MathF.PI * 2;
+            away = new RcVec3f(MathF.Cos(angle), 0, MathF.Sin(angle));
+        } else {
+            away = away * (1 / length);
+        }
+
+        RcVec3f positionAway = new RcVec3f(target.X + away.X * distance, position.Y, target.Z + away.Z * distance);
+
+        // the point itself is often off the navmesh (behind a wall, over a ledge): run as far toward it as the surface goes
+        Span<long> visited = stackalloc long[16];
+        DtStatus status = query.MoveAlongSurface(startRef, position, positionAway, filter, out reachable, visited, out _, visited.Length);
+        return status.Succeeded() && RcVec3f.Distance(position, reachable) >= DotRecastHelper.MIN_TARGET_DIST;
     }
 
     private bool SetPathAway(RcVec3f target) {
