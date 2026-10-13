@@ -3,5 +3,7 @@
        not the folders of the PC that built them. Debug keeps full paths for local debugging. -->
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <PathMap>$(MSBuildThisFileDirectory)=Maple2</PathMap>
+    <!-- No Source Link: its PDB entry maps the build PC's repo folder to GitHub (the folder path would ship). -->
+    <EnableSourceLink>false</EnableSourceLink>
   </PropertyGroup>
 </Project>
