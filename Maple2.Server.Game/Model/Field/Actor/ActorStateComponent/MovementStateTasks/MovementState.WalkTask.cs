@@ -245,7 +245,7 @@ public partial class MovementState {
 
         if (currentDistance < fromDistance * fromDistance) {
             actor.AppendDebugMessage($"> Pathing away target\n");
-            foundPath = actor.Navigation.PathAwayFrom(target.Position, (int) distance);
+            foundPath = actor.Navigation.PathAwayFrom(target.Position, distance);
             type = WalkType.FromTarget;
         } else if (currentDistance > toDistance * toDistance) {
             actor.AppendDebugMessage($"> Pathing to target\n");
