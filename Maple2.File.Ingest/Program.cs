@@ -29,6 +29,7 @@ string? copyGameFromSqlite = null;
 string? rebuildDataFromSqlite = null;
 string? dumpXml = null;
 string? probeXBlock = null;
+string? probeAll = null;
 string? exportedOverride = null;
 bool mapEntitiesOnly = false;
 bool listOnly = false;
@@ -57,6 +58,9 @@ for (int i = 0; i < args.Length; i++) {
             break;
         case "--probe-xblock" when i + 1 < args.Length:
             probeXBlock = args[++i].ToLower();
+            break;
+        case "--probe-all" when i + 1 < args.Length:
+            probeAll = args[++i];
             break;
         case "--exported" when i + 1 < args.Length:
             exportedOverride = args[++i];
@@ -131,6 +135,39 @@ if (dumpXml != null) {
             }
         }
     }
+    return;
+}
+
+// Writes the id-carrying map entities of every xblock as TSV (xblock, name, type, ids) in one pass: lets the test tools
+// tell "the NA map lacks this id" (original data) from "ingest dropped it" (research aid, read-only).
+if (probeAll != null) {
+    using var probeReader = new M2dReader(exportedOverride ?? exportedPath);
+    var probeParser = new XBlockParser(probeReader, new FlatTypeIndex(probeReader));
+    string[] idProperties = ["TriggerObjectID", "interactID", "SpawnPointID", "PortalID", "TargetFieldSN"];
+    var getters = new System.Collections.Concurrent.ConcurrentDictionary<Type, (string Name, System.Reflection.PropertyInfo Property)[]>();
+    var lines = new System.Collections.Concurrent.ConcurrentBag<string>();
+    foreach (var map in probeParser.Parallel()) {
+        foreach (var entity in map.entities) {
+            Type type = entity.GetType();
+            // The id properties are declared on the IMS2* interfaces the flat types implement.
+            var properties = getters.GetOrAdd(type, t => idProperties
+                .Select(name => (name, property: t.GetProperty(name) ?? t.GetInterfaces().Select(i => i.GetProperty(name)).FirstOrDefault(p => p != null)))
+                .Where(pair => pair.property != null)
+                .Select(pair => (pair.name, pair.property!))
+                .ToArray());
+            if (properties.Length == 0) {
+                continue;
+            }
+            string ids = string.Join(" ", properties.Select(pair => $"{pair.Name}={pair.Property.GetValue(entity)}"));
+            if (entity is Maple2.File.Flat.maplestory2library.ISpawnPointNPC npcSpawn) {
+                // ingest drops NPC spawns whose count is 0 or whose NPC ids are unknown: keep what the map lists
+                ids += $" NpcCount={npcSpawn.NpcCount} NpcList={string.Join(",", npcSpawn.NpcList.Select(pair => $"{pair.Key}:{pair.Value}"))}";
+            }
+            lines.Add($"{map.xblock.ToLower()}\t{entity.EntityName}\t{type.Name}\t{ids}");
+        }
+    }
+    System.IO.File.WriteAllLines(probeAll, lines.OrderBy(line => line, StringComparer.Ordinal));
+    Console.WriteLine($"{lines.Count} entities -> {probeAll}");
     return;
 }
 

@@ -41,6 +41,16 @@ public static class Target {
         if (ushort.TryParse(Environment.GetEnvironmentVariable("LOGIN_PORT"), out ushort loginPortOverride)) {
             LoginPort = loginPortOverride;
         }
+        // Port overrides let a second server set (test servers) run next to the player's own on this PC.
+        if (ushort.TryParse(Environment.GetEnvironmentVariable("GRPC_LOGIN_PORT"), out ushort grpcLoginPortOverride)) {
+            GrpcLoginPort = grpcLoginPortOverride;
+        }
+        if (ushort.TryParse(Environment.GetEnvironmentVariable("GAME_PORT"), out ushort gamePortOverride)) {
+            BaseGamePort = gamePortOverride;
+        }
+        if (ushort.TryParse(Environment.GetEnvironmentVariable("GRPC_CHANNEL_PORT"), out ushort grpcChannelPortOverride)) {
+            BaseGrpcChannelPort = grpcChannelPortOverride;
+        }
 
         if (IPAddress.TryParse(Environment.GetEnvironmentVariable("GAME_IP"), out IPAddress? gameIpAddress)) {
             GameIp = gameIpAddress;
