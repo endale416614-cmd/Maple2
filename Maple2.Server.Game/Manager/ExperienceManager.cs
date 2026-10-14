@@ -143,6 +143,8 @@ public sealed class ExperienceManager {
             case ExpType.mapHidden:
             case ExpType.telescope:
             case ExpType.rareChestFirst:
+            case ExpType.rareChest:
+            case ExpType.normalChest:
                 int fieldLevel = session.Field.Metadata.Drop.Level;
                 int correctedLevel = fieldLevel > Level ? Level : fieldLevel;
                 if (!expBase.TryGetValue(correctedLevel, out expValue)) {

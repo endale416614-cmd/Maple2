@@ -26,5 +26,45 @@
     { "ItemId": 40100026, "Name": "Metacell",           "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 },
     { "ItemId": 40300001, "Name": "Blue Gem Dust",      "MinLevel": 30, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.05 },
     { "ItemId": 40300002, "Name": "Purple Gem Dust",    "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 }
-  ]
+  ],
+
+  // Extra loot from treasure chests, on top of their original mesos/items. Each drop rolls once per chest opened
+  // (Chance 0..1) and gives one random item of ItemIds; amount = Amount + AmountPerLevel * your level.
+  // MinLevel/MaxLevel are your character level. Enchant scrolls only work on gear of their level range, so each
+  // tier matches the gear you wear at that level. Rare chests multiply chance and amount by RareMultiplier.
+  "Chests": {
+    // Wooden chests (field timer chests, map chests, Shadow World chests, Mushking Royale and bonus map chests)
+    "InteractIds": [ 11000004, 11000006, 11000008, 11000037, 11000038, 11000039, 10002108, 10002169, 10002173 ],
+    // Rare/golden chests (Shadow World rare chests, golden map chests, bonus map golden chests)
+    "RareInteractIds": [ 11000009, 11000001, 11000011, 11000012, 13000007,
+                         11000097, 11000098, 11000099, 11000100, 11000101, 11000102, 11000103, 11000104, 11000105, 11000106, 11000107, 11000108 ],
+    "RareMultiplier": 3,
+    "Drops": [
+      // Upgrade materials
+      { "Name": "Crystal Fragment",          "ItemIds": [ 40100001 ], "MinLevel": 1,  "Chance": 0.80, "Amount": 3, "AmountPerLevel": 0.20 },
+      { "Name": "Onyx Crystal",              "ItemIds": [ 40100023 ], "MinLevel": 20, "Chance": 0.60, "Amount": 2, "AmountPerLevel": 0.10 },
+      { "Name": "Chaos Onyx Crystal",        "ItemIds": [ 40100024 ], "MinLevel": 40, "Chance": 0.20, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Red/Blue/Green Crystal",    "ItemIds": [ 40100002, 40100003, 40100021 ], "MinLevel": 30, "Chance": 0.25, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Metacell",                  "ItemIds": [ 40100026 ], "MinLevel": 50, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Gem Dust (any color)",      "ItemIds": [ 40300001, 40300002, 40300003, 40300004, 40300005 ], "MinLevel": 30, "Chance": 0.20, "Amount": 1, "AmountPerLevel": 0.02 },
+
+      // Enchant scrolls (set the gear to +N; all weapons and armor of the scroll's level range)
+      { "Name": "Basic +3..+9 Enchant Scroll (Lv. 20-29 gear)",      "ItemIds": [ 31000111, 31000112, 31000113, 31000114, 31000115, 31000116, 31000117 ], "MinLevel": 20, "MaxLevel": 29, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Standard +3..+9 Enchant Scroll (Lv. 20-39 gear)",   "ItemIds": [ 31000120, 31000121, 31000122, 31000123, 31000124, 31000125, 31000126 ], "MinLevel": 30, "MaxLevel": 39, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Remarkable +4..+9 Enchant Scroll (Lv. 20-49 gear)", "ItemIds": [ 31000130, 31000131, 31000132, 31000133, 31000134, 31000135 ], "MinLevel": 40, "MaxLevel": 49, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Fantastic/Superior +5..+9 Enchant Scroll",          "ItemIds": [ 31000140, 31000141, 31000142, 31000215, 31000216 ], "MinLevel": 50, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Superior/Ascendant +10..+12, Random/Perplexing/Goldus's Enchant Scroll",
+        "ItemIds": [ 31000751, 31000965, 31000966, 31000967, 31000159, 31000203, 31000198 ], "MinLevel": 50, "Chance": 0.06, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Epic +9..+12 Enchant Scroll (Lv. 70 headgear, top/bottoms, gloves/shoes)",
+        "ItemIds": [ 31002041, 31001742, 31001743, 31001744, 31002047, 31001748, 31001749, 31001750, 31002053, 31001754, 31001755, 31001756 ], "MinLevel": 70, "Chance": 0.10, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "+10 Protection Scroll / Gear Restoration Scroll",   "ItemIds": [ 31000165, 31000158 ], "MinLevel": 50, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
+
+      // Bonus attribute re-rollers (Epic gear) and their Legendary versions
+      { "Name": "Epic Bonus Re-roller (weapon, armor, accessory)",      "ItemIds": [ 31000763, 31000764, 31000766, 31000780 ], "MinLevel": 50, "Chance": 0.08, "Amount": 1, "AmountPerLevel": 0 },
+      { "Name": "Legendary Bonus Re-roller (weapon, armor, accessory)", "ItemIds": [ 31000790, 31000791, 31000792, 31000781 ], "MinLevel": 50, "Chance": 0.02, "Amount": 1, "AmountPerLevel": 0 },
+
+      // Socket conversion scrolls (Lv. 50 earrings, rings, necklace)
+      { "Name": "Socket Conversion Scroll", "ItemIds": [ 31000365, 31000366, 31000398, 31000399, 31000955, 31000956, 31000957 ], "MinLevel": 50, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 }
+    ]
+  }
 }

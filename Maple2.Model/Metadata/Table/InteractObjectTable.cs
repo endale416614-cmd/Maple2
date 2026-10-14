@@ -16,7 +16,11 @@ public record InteractObjectMetadata(
     InteractObjectMetadataTime Time,
     InteractObjectMetadataDrop Drop,
     InteractObjectMetadataEffect AdditionalEffect,
-    InteractObjectMetadataSpawn[] Spawn);
+    InteractObjectMetadataSpawn[] Spawn,
+    InteractObjectMetadataReward? Reward = null);
+
+// FirstExpType is given once per character per object id (golden chests, telescopes), ExpType on every use.
+public record InteractObjectMetadataReward(ExpType ExpType, float ExpRate, ExpType FirstExpType, float FirstExpRate);
 
 public record InteractObjectMetadataItem(int Id, int Amount, int Rarity, int CheckAmount, int RecipeId);
 

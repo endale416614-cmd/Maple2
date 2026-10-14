@@ -390,7 +390,6 @@ public partial class FieldManager {
             Rotation = interactData.Rotation,
         };
 
-        //TODO: Add treasure chests
         switch (interactObject) {
             case InteractBillBoardObject billboard:
                 fieldAdBalloons[billboard.EntityId] = fieldInteract;
@@ -542,22 +541,28 @@ public partial class FieldManager {
     }
 
     public void SpawnInteractObject(SpawnInteractObjectMetadata metadata) {
-        if (!Entities.RegionSpawns.TryGetValue(metadata.RegionSpawnId, out Ms2RegionSpawn? boxSpawn) ||
-            !TableMetadata.InteractObjectTable.Entries.TryGetValue(metadata.InteractId, out InteractObjectMetadata? interactObjectMetadata)) {
-            return;
+        SpawnChest(metadata.RegionSpawnId, metadata.InteractId, metadata.Model, metadata.Asset, metadata.Normal, metadata.Reactable, metadata.Scale);
+    }
+
+    private FieldInteract? SpawnChest(int regionSpawnId, int interactId, string model, string asset, string normal, string reactable, float scale = 1f) {
+        if (!Entities.RegionSpawns.TryGetValue(regionSpawnId, out Ms2RegionSpawn? boxSpawn) ||
+            !TableMetadata.InteractObjectTable.Entries.TryGetValue(interactId, out InteractObjectMetadata? interactObjectMetadata)) {
+            return null;
         }
         Vector3B position = boxSpawn.Position;
+        int objectId = NextLocalId();
 
-        var interactObject = new InteractMeshObject($"EventCreate_{position.ConvertToInt()}", new Ms2InteractMesh(
-            metadata.InteractId, boxSpawn.Position, boxSpawn.Rotation)) {
-            Asset = metadata.Asset,
-            Model = metadata.Model,
-            NormalState = metadata.Normal,
-            Reactable = metadata.Reactable,
-            Scale = metadata.Scale,
+        // Unique per spawn: a removal scheduled for an earlier chest on this spot must not hit its replacement.
+        var interactObject = new InteractMeshObject($"EventCreate_{position.ConvertToInt()}_{objectId}", new Ms2InteractMesh(
+            interactId, boxSpawn.Position, boxSpawn.Rotation)) {
+            Asset = asset,
+            Model = model,
+            NormalState = normal,
+            Reactable = reactable,
+            Scale = scale > 0 ? scale : 1f,
         };
 
-        var fieldInteract = new FieldInteract(this, NextLocalId(), interactObject.EntityId, interactObjectMetadata, interactObject) {
+        var fieldInteract = new FieldInteract(this, objectId, interactObject.EntityId, interactObjectMetadata, interactObject) {
             Transform = new Transform {
                 Position = boxSpawn.Position,
                 RotationAnglesDegrees = boxSpawn.Rotation,
@@ -566,6 +571,59 @@ public partial class FieldManager {
         };
         fieldChests[interactObject.EntityId] = fieldInteract;
         Broadcast(InteractObjectPacket.Add(fieldInteract.Object));
+        return fieldInteract;
+    }
+
+    private void StartFieldInteractEvents() {
+        IReadOnlyDictionary<int, FieldInteractEventMetadata>? events = ServerTableMetadata.TimeEventTable.FieldInteract;
+        if (events == null) {
+            return; // metadata ingested before field chest events were added
+        }
+
+        DateTime now = DateTime.Now;
+        foreach (FieldInteractEventMetadata metadata in events.Values) {
+            if (!metadata.TargetMapIds.Contains(MapId) || metadata.EndTime < now || metadata.CycleTime <= TimeSpan.Zero) {
+                continue;
+            }
+
+            int[] spawnIds = metadata.SpawnPointIds.Length > 0 ? metadata.SpawnPointIds
+                : Metadata.Spawns.Where(spawn => spawn.Tags.Any(metadata.SpawnTags.Contains)).Select(spawn => spawn.Id).ToArray();
+            spawnIds = spawnIds.Where(Entities.RegionSpawns.ContainsKey).ToArray();
+            if (spawnIds.Length == 0) {
+                continue;
+            }
+
+            DateTime nextTime = NextCycleTime(metadata.StartTime, metadata.CycleTime, now);
+            Scheduler.Schedule(() => FieldInteractEvent(metadata, spawnIds, nextTime), nextTime - now);
+        }
+    }
+
+    // Same alignment as the world events: StartTime + n * CycleTime, the first one not before now.
+    private static DateTime NextCycleTime(DateTime time, TimeSpan cycle, DateTime now) {
+        return time >= now ? time : time + cycle * Math.Ceiling((now - time) / cycle);
+    }
+
+    private void FieldInteractEvent(FieldInteractEventMetadata metadata, int[] spawnIds, DateTime spawnTime) {
+        if (metadata.Probability >= 100 || Random.Shared.Next(100) < metadata.Probability) {
+            int[] freeSpawnIds = spawnIds.Where(spawnId => !GetInteractObjectsBySpawnId(spawnId).Any()).ToArray();
+            foreach (int spawnId in freeSpawnIds.OrderBy(_ => Random.Shared.Next()).Take(metadata.Count)) {
+                FieldInteract? chest = SpawnChest(spawnId, metadata.InteractId, metadata.Model, metadata.Asset, metadata.Normal, metadata.Reactable);
+                if (chest != null && metadata.LifeTime > TimeSpan.Zero) {
+                    RemoveInteract(chest.Object, metadata.LifeTime);
+                }
+            }
+        }
+
+        // The scheduler pauses while the field is empty, so this can run late: skip the missed cycles.
+        DateTime now = DateTime.Now;
+        DateTime nextTime = NextCycleTime(spawnTime + metadata.CycleTime, metadata.CycleTime, now);
+        if (metadata.RandomTime > TimeSpan.Zero) {
+            nextTime += TimeSpan.FromMilliseconds(Random.Shared.Next((int) metadata.RandomTime.TotalMilliseconds));
+        }
+        if (nextTime > metadata.EndTime) {
+            return;
+        }
+        Scheduler.Schedule(() => FieldInteractEvent(metadata, spawnIds, nextTime), nextTime - now);
     }
 
     public void AddSkill(Ms2TriggerSkill triggerSkill, int interval, in Vector3 position, in Vector3 rotation = default, int triggerId = 0) {
@@ -939,22 +997,18 @@ public partial class FieldManager {
     }
 
     public bool RemoveInteract(IInteractObject interactObject, TimeSpan removeDelay = default) {
-        if (!fieldAdBalloons.ContainsKey(interactObject.EntityId) && !fieldInteracts.ContainsKey(interactObject.EntityId)) {
+        string entityId = interactObject.EntityId;
+        if (!fieldAdBalloons.ContainsKey(entityId) && !fieldInteracts.ContainsKey(entityId) && !fieldChests.ContainsKey(entityId)) {
             return false;
         }
 
         Scheduler.Schedule(() => {
-            switch (interactObject) {
-                case InteractBillBoardObject billboard:
-                    fieldAdBalloons.TryRemove(billboard.EntityId, out _);
-                    break;
-                default:
-                    fieldInteracts.TryRemove(interactObject.EntityId, out _);
-                    fieldAdBalloons.TryRemove(interactObject.EntityId, out _);
-                    break;
+            // A spawned chest can be scheduled twice (opened, then its event lifetime ends).
+            bool removed = fieldInteracts.TryRemove(entityId, out _) | fieldAdBalloons.TryRemove(entityId, out _)
+                           | fieldChests.TryRemove(entityId, out _);
+            if (removed) {
+                Broadcast(InteractObjectPacket.Remove(entityId));
             }
-
-            Broadcast(InteractObjectPacket.Remove(interactObject.EntityId));
         }, removeDelay);
         return true;
     }
@@ -1031,6 +1085,10 @@ public partial class FieldManager {
         }
         foreach (FieldInteract fieldInteract in fieldChests.Values) {
             added.Session.Send(InteractObjectPacket.Add(fieldInteract.Object));
+            // Add always shows the object as reactable; correct it for chests already opened.
+            if (fieldInteract.State != InteractState.Reactable) {
+                added.Session.Send(InteractObjectPacket.Update(fieldInteract));
+            }
         }
         foreach (FieldInstrument fieldInstrument in fieldInstruments.Values) {
             if (fieldInstrument.Score != null) {

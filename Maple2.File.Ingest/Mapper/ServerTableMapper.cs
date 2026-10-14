@@ -796,6 +796,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
     private TimeEventTable ParseTimeEventTable() {
         var globalPortals = new Dictionary<int, GlobalPortalMetadata>();
         var worldBosses = new Dictionary<int, WorldBossMetadata>();
+        var fieldInteracts = new Dictionary<int, FieldInteractEventMetadata>();
         foreach ((int id, TimeEventData data) in parser.ParseTimeEventData()) {
             switch (data.type) {
                 case TimeEventType.GlobalEvent: {
@@ -855,9 +856,37 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                             ChatNotice: data.chatNotice));
                         break;
                     }
+                case TimeEventType.FieldInteractObject: {
+                        if (data.interactID == 0 || string.IsNullOrEmpty(data.cycleTime)) {
+                            break;
+                        }
+                        int[] startTimeArray = ParseTimeToArray(data.startTime);
+                        int[] endTimeArray = ParseTimeToArray(data.endTime);
+                        int[] cycleArray = ParseTimeToArray(data.cycleTime);
+                        int[] randomArray = string.IsNullOrEmpty(data.randomTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.randomTime);
+                        int[] lifeArray = string.IsNullOrEmpty(data.lifeTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.lifeTime);
+                        fieldInteracts[id] = new FieldInteractEventMetadata(
+                            Id: id,
+                            Probability: data.prob,
+                            StartTime: new DateTime(startTimeArray[0], startTimeArray[1], startTimeArray[2], startTimeArray[3], startTimeArray[4], startTimeArray[5]),
+                            EndTime: new DateTime(endTimeArray[0], endTimeArray[1], endTimeArray[2], endTimeArray[3], endTimeArray[4], endTimeArray[5]),
+                            CycleTime: new TimeSpan(cycleArray[2], cycleArray[3], cycleArray[4], cycleArray[5]),
+                            RandomTime: new TimeSpan(randomArray[2], randomArray[3], randomArray[4], randomArray[5]),
+                            LifeTime: new TimeSpan(lifeArray[2], lifeArray[3], lifeArray[4], lifeArray[5]),
+                            TargetMapIds: data.targetFields,
+                            SpawnPointIds: data.targetSpawnPointIDs,
+                            SpawnTags: data.targetSpawnTags,
+                            Count: Math.Max(1, data.interactCount),
+                            InteractId: data.interactID,
+                            Model: data.interactModel,
+                            Asset: data.interactAsset,
+                            Normal: data.interactNormal,
+                            Reactable: data.interactReactable);
+                        break;
+                    }
             }
         }
-        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses);
+        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses, FieldInteract: fieldInteracts);
 
         int[] ParseTimeToArray(string time) {
             string[] timeArray = time.Split('-');

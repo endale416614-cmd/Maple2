@@ -97,6 +97,33 @@ public class OfflineEditionTest {
         Assert.That(Maple2.Server.Game.Util.OfflineGrind.ScaledMeso(int.MaxValue / 2, 6f), Is.EqualTo(int.MaxValue), "no overflow");
         var old = Maple2.Server.Game.Util.OfflineGrind.Parse("""{ "TargetKillsPerLevel": 200, "UpgradeDrops": [] }""");
         Assert.That(old!.MesoMultiplier, Is.EqualTo(1f), "a grind file without the setting keeps the original mesos");
+        Assert.That(old.Chests, Is.Null, "a grind file without chest drops adds nothing to chests");
+    }
+
+    [Test]
+    public void Grind_ChestDrops() {
+        string path = Path.Combine(Paths.SOLUTION_DIR, "offline-grind.json");
+        Assume.That(File.Exists(path), "offline-grind.json missing");
+        Maple2.Server.Game.Util.OfflineGrind.ChestBonus? chests = Maple2.Server.Game.Util.OfflineGrind.Parse(File.ReadAllText(path))!.Chests;
+        Assert.That(chests, Is.Not.Null);
+        Assert.That(chests!.InteractIds, Does.Contain(11000004), "wooden field chest");
+        Assert.That(chests.RareInteractIds, Does.Contain(11000009), "shadow rare chest");
+        Assert.That(chests.Drops.Select(drop => drop.Chance), Is.All.InRange(0f, 1f));
+
+        var random = new Random(1);
+        List<(int ItemId, int Amount)> lv25 = Enumerable.Range(0, 500)
+            .SelectMany(_ => Maple2.Server.Game.Util.OfflineGrind.RollChestDrops(chests, 11000004, 25, random)).ToList();
+        Assert.That(lv25.Select(drop => drop.ItemId), Does.Contain(40100001), "Crystal Fragment");
+        Assert.That(lv25.Select(drop => drop.ItemId), Has.Some.InRange(31000111, 31000117), "Basic enchant scrolls at Lv25");
+        Assert.That(lv25.Select(drop => drop.ItemId), Has.None.InRange(31000120, 31000126), "no Standard scrolls below Lv30");
+        Assert.That(lv25.Select(drop => drop.ItemId), Has.None.EqualTo(40100026), "no Metacell below Lv50");
+
+        List<int> lv55 = Enumerable.Range(0, 500)
+            .SelectMany(_ => Maple2.Server.Game.Util.OfflineGrind.RollChestDrops(chests, 11000009, 55, random)).Select(drop => drop.ItemId).ToList();
+        Assert.That(lv55.Any(id => id is 31000763 or 31000764 or 31000766 or 31000780), "Epic re-rollers");
+        Assert.That(lv55.Any(id => id is 31000365 or 31000366 or 31000398 or 31000399 or >= 31000955 and <= 31000957), "socket scrolls");
+
+        Assert.That(Maple2.Server.Game.Util.OfflineGrind.RollChestDrops(chests, 20000001, 55, random), Is.Empty, "telescopes are not chests");
     }
 
     [Test]
