@@ -337,6 +337,7 @@ public partial class TriggerContext {
             }
 
             fieldNpc.SpawnPointId = spawnId;
+            Field.OnTriggerSpawnNpc(npcId);
 
             Field.Broadcast(FieldPacket.AddNpc(fieldNpc));
             Field.Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
