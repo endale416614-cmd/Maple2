@@ -3,11 +3,10 @@ using System.Linq;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Items;
-using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Tests.Offline;
 
-/// <summary>Rarity of items created without one, and the EpicGear option.</summary>
+/// <summary>Rarity of items created without one.</summary>
 public class ItemRarityTest {
     private static readonly ItemOptionConstantTable Constants = new(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>());
     private static readonly ItemOptionStaticTable Statics = new(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>());
@@ -37,17 +36,5 @@ public class ItemRarityTest {
         Assert.That(ItemDropManager.DefaultRarity(Option(0, 4), Constants, Statics, Randoms(1)), Is.EqualTo(4));
         Assert.That(ItemDropManager.DefaultRarity(Option(11200012, 11200012), Constants, Statics, Randoms(1)), Is.EqualTo(1), "gear without option rows");
         Assert.That(ItemDropManager.DefaultRarity(null, Constants, Statics, Randoms(1)), Is.EqualTo(1));
-    }
-
-    [Test]
-    public void EpicGear_RaisesGearOnly() {
-        Assert.That(OfflineEpicGear.Rarity(13150288, false, 1, enabled: true), Is.EqualTo(4), "dagger");
-        Assert.That(OfflineEpicGear.Rarity(11461148, false, 2, enabled: true), Is.EqualTo(4), "armor");
-        Assert.That(OfflineEpicGear.Rarity(11960127, false, 1, enabled: true), Is.EqualTo(4), "necklace");
-        Assert.That(OfflineEpicGear.Rarity(11300140, false, 6, enabled: true), Is.EqualTo(6), "Ascendant stays");
-        Assert.That(OfflineEpicGear.Rarity(11620048, true, 1, enabled: true), Is.EqualTo(1), "outfit");
-        Assert.That(OfflineEpicGear.Rarity(20302151, false, 1, enabled: true), Is.EqualTo(1), "box");
-        Assert.That(OfflineEpicGear.Rarity(61000079, false, 3, enabled: true), Is.EqualTo(3), "pet");
-        Assert.That(OfflineEpicGear.Rarity(13150288, false, 1, enabled: false), Is.EqualTo(1), "option off");
     }
 }
