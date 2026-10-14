@@ -57,6 +57,7 @@ public class WorldServer {
         using GameStorage.Request db = gameStorage.Context();
         db.SetAllCharacterToOffline();
         db.DeleteUnownedItems();
+        db.DeleteOrphanedMailItems();
 
         StartDailyReset();
         StartWeeklyReset();

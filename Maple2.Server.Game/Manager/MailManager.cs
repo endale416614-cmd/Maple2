@@ -52,12 +52,17 @@ public sealed class MailManager {
     }
 
     public bool Delete(long mailId) {
-        if (!inbox.ContainsKey(mailId)) {
+        if (!inbox.TryGetValue(mailId, out Mail? inboxMail)) {
             return false;
         }
 
+        // The inbox mail lost its collected items, so these are exactly the attachments that go with the mail.
+        long[] attached;
+        lock (inbox) {
+            attached = inboxMail.Items.Select(item => item.Uid).Where(uid => uid != 0).ToArray();
+        }
         using GameStorage.Request db = session.GameStorage.Context();
-        if (!db.DeleteMail(mailId, session.CharacterId)) {
+        if (!db.DeleteMail(mailId, session.CharacterId, attached)) {
             return false;
         }
 
