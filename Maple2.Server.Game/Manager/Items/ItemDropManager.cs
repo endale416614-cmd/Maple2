@@ -21,6 +21,9 @@ public class ItemDropManager {
     /// <summary>Offline option: drops in this field give every item of their table (see <see cref="OfflineDrops"/>).</summary>
     public bool AllDrops => OfflineDrops.DungeonAllDrops && field is DungeonFieldManager;
 
+    /// <summary>Offline option: gear from drop tables in this field is at least Epic where it has Epic stats (see <see cref="OfflineDungeonGear"/>).</summary>
+    public bool EpicGear => OfflineDungeonGear.Enabled && field is DungeonFieldManager;
+
     // level is the NPC's level. It gates both group-level and item-level min/max level checks within
     // globalDropItemBox/globalDropItemSet (e.g. meso amounts in group 103 scale with NPC level).
     // all: every eligible item of every eligible group drops once, instead of the weighted roll.
@@ -88,7 +91,7 @@ public class ItemDropManager {
                 if (all) {
                     foreach (GlobalDropItemBoxTable.Item eligible in eligibleItems) {
                         int eligibleAmount = Random.Shared.Next(eligible.DropCount.Min, eligible.DropCount.Max + 1);
-                        Item? eligibleItem = CreateItem(eligible.Id, eligible.Rarity, Math.Max(1, eligibleAmount));
+                        Item? eligibleItem = CreateDropItem(eligible.Id, eligible.Rarity, Math.Max(1, eligibleAmount));
                         if (eligibleItem != null) {
                             results.Add(eligibleItem);
                         }
@@ -104,7 +107,7 @@ public class ItemDropManager {
                     GlobalDropItemBoxTable.Item selectedItem = weightedItems.Get();
 
                     int itemAmount = Random.Shared.Next(selectedItem.DropCount.Min, selectedItem.DropCount.Max + 1);
-                    Item? createdItem = CreateItem(selectedItem.Id, selectedItem.Rarity, itemAmount);
+                    Item? createdItem = CreateDropItem(selectedItem.Id, selectedItem.Rarity, itemAmount);
                     if (createdItem == null) {
                         continue;
                     }
@@ -268,7 +271,7 @@ public class ItemDropManager {
         }
 
         foreach (int itemId in selectedItem.Ids) {
-            Item? createdItem = CreateItem(itemId, rarity, itemAmount);
+            Item? createdItem = CreateDropItem(itemId, rarity, itemAmount);
             if (createdItem == null) {
                 continue;
             }
@@ -336,6 +339,17 @@ public class ItemDropManager {
         }
 
         return itemMetadata.Limit.JobRecommends.Contains(job) || itemMetadata.Limit.JobRecommends.Contains(JobCode.None);
+    }
+
+    private Item? CreateDropItem(int itemId, int rarity, int amount) {
+        if (EpicGear && field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemMetadata)) {
+            TableMetadataStorage tables = field.TableMetadata;
+            if (rarity <= 0) {
+                rarity = DefaultRarity(itemMetadata.Option, tables.ItemOptionConstantTable, tables.ItemOptionStaticTable, tables.ItemOptionRandomTable);
+            }
+            rarity = OfflineDungeonGear.Rarity(itemMetadata, rarity, tables.ItemOptionConstantTable, tables.ItemOptionPickTable);
+        }
+        return CreateItem(itemId, rarity, amount);
     }
 
     public Item? CreateItem(int itemId, int rarity = -1, int amount = 1, bool rollMax = false) {
