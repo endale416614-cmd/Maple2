@@ -134,6 +134,16 @@ public sealed partial class GameSession : Core.Network.Session {
         return field is not null;
     }
 
+    // EpicGear (1.1.5, removed) created gear without base stats; repaired before the item managers load the items.
+    private void RepairGearWithoutStats() {
+        try {
+            using GameStorage.Request repairDb = GameStorage.Context();
+            OfflineGearRepair.RepairOwners(repairDb, ItemStatsCalc, TableMetadata, Logger, CharacterId, AccountId);
+        } catch (Exception ex) {
+            Logger.Warning(ex, "Gear repair failed for character {CharacterId}", CharacterId);
+        }
+    }
+
     public bool EnterServer(long accountId, Guid machineId, MigrateInResponse migrateResponse) {
         long characterId = migrateResponse.CharacterId;
         int channel = migrateResponse.Channel;
@@ -168,6 +178,7 @@ public sealed partial class GameSession : Core.Network.Session {
             return false;
         }
 
+        RepairGearWithoutStats();
         Player = new FieldPlayer(this, player);
         Animation = new AnimationManager(this);
         Currency = new CurrencyManager(this);
