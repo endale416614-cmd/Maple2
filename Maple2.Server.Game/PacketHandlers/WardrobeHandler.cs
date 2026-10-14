@@ -88,6 +88,11 @@ public class WardrobeHandler : FieldPacketHandler {
         }
 
         foreach (Wardrobe.Equip equip in wardrobe.Equips.Values) {
+            // Pieces shared with what is worn now are already in place. Equipping them again found nothing in the
+            // inventory and opened a "you don't have this item" box for each one.
+            if (session.Item.Equips.Get(equip.ItemUid) != null) {
+                continue;
+            }
             session.Item.Equips.Equip(equip.ItemUid, equip.EquipSlot, isOutfit);
         }
     }

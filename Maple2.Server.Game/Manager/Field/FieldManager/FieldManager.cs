@@ -52,6 +52,7 @@ public partial class FieldManager : IField {
     public FunctionCubeMetadataStorage FunctionCubeMetadata { get; init; } = null!;
     public ServerTableMetadataStorage ServerTableMetadata { get; init; } = null!;
     public RideMetadataStorage RideMetadata { get; init; } = null!;
+    public QuestMetadataStorage QuestMetadata { get; init; } = null!;
     public ItemStatsCalculator ItemStatsCalc { get; init; } = null!;
     public TriggerCache TriggerCache { get; init; } = null!;
     public Factory FieldFactory { get; init; } = null!;
@@ -176,6 +177,7 @@ public partial class FieldManager : IField {
         foreach (SpawnPointNPC spawnPointNpc in Entities.NpcSpawns) {
             AddSpawnPointNpc(spawnPointNpc);
         }
+        InitQuestNpcFallback();
 
         foreach (SpawnPointPC spawnPoint in Entities.PlayerSpawns) {
             int fieldId = spawnPoint.SpawnPointId;
@@ -341,6 +343,7 @@ public partial class FieldManager : IField {
 
         FieldTick = Environment.TickCount64;
         foreach (FieldTrigger trigger in fieldTriggers.Values) trigger.Update(FieldTick);
+        UpdateQuestNpcFallback();
 
         foreach (FieldPlayer player in Players.Values) player.Update(FieldTick);
         foreach (FieldNpc npc in Npcs.Values) npc.Update(FieldTick);
