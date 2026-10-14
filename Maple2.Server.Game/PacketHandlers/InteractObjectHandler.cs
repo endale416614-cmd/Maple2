@@ -7,6 +7,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -78,6 +79,15 @@ public class InteractObjectHandler : FieldPacketHandler {
                     break;
             }
 
+            // Telescopes give their first-time exp in the switch above.
+            if (interact.Value.Reward is { } reward && interact.Value.Type != InteractType.Telescope) {
+                if (reward.FirstExpType != ExpType.none && session.Player.Value.Unlock.InteractedObjects.Add(interact.Object.Id)) {
+                    session.Exp.AddExp(reward.FirstExpType, reward.FirstExpRate);
+                } else if (reward.ExpType != ExpType.none) {
+                    session.Exp.AddExp(reward.ExpType, reward.ExpRate);
+                }
+            }
+
             ICollection<Item> items = new List<Item>();
             if (interact.Value.Drop.IndividualDropBoxIds.Length > 0) {
                 foreach (int individualDropBoxId in interact.Value.Drop.IndividualDropBoxIds) {
@@ -98,6 +108,14 @@ public class InteractObjectHandler : FieldPacketHandler {
                 session.Field.DropItem(interact.Position with {
                     Z = interact.Position.Z + interact.Value.Drop.DropHeight,
                 }, interact.Rotation, item, owner: interact, characterId: session.CharacterId);
+            }
+
+            // Offline grind rates: upgrade materials and scrolls from treasure chests, see offline-grind.json.
+            foreach ((int itemId, int amount) in OfflineGrind.RollChestDrops(interact.Value.Id, session.Player.Value.Character.Level, Random.Shared)) {
+                Item? bonusItem = session.Field.ItemDrop.CreateItem(itemId, amount: amount);
+                if (bonusItem != null) {
+                    items.Add(bonusItem);
+                }
             }
 
             foreach (Item item in items) {

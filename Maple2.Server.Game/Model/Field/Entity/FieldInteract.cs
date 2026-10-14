@@ -34,6 +34,14 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
         }
 
         reactTick = Environment.TickCount64;
+        if (SpawnId > 0) {
+            // Spawned chests open once, then vanish after the hide time so their spawn point can refill.
+            SetState(InteractState.Normal);
+            nextTick = 0;
+            Field.RemoveInteract(Object, TimeSpan.FromMilliseconds(Value.Time.Hide));
+            return true;
+        }
+
         reactLimit--;
         if (reactLimit > 0) {
             SetState(InteractState.Normal);
@@ -62,7 +70,6 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
     }
 
     public override void Update(long tickCount) {
-        // TODO: Include treasure chests
         if (Object is InteractBillBoardObject billboard && DateTime.Now.ToEpochSeconds() > billboard.ExpirationTime) {
             SetState(InteractState.Hidden);
             Field.RemoveInteract(Object);

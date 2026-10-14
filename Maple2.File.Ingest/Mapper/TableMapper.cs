@@ -347,7 +347,12 @@ public class TableMapper : TypeMapper<TableMetadata> {
                     Invoke: ParseInvoke(info.additionalEffect),
                     ModifyCode: info.additionalEffect.modify.code,
                     ModifyTime: info.additionalEffect.modify.modifyTime),
-                Spawn: spawn
+                Spawn: spawn,
+                Reward: new InteractObjectMetadataReward(
+                    ExpType: ToExpType(info.reward.expType),
+                    ExpRate: info.reward.relativeExpRate,
+                    FirstExpType: ToExpType(info.reward.firstExpType),
+                    FirstExpRate: info.reward.firstRelativeExpRate)
             );
         }
         return results;
@@ -1252,6 +1257,10 @@ public class TableMapper : TypeMapper<TableMetadata> {
             results.Add(ToExpType(type), new CommonExpTable.Entry(ExpTableId: exp.expTableID, Factor: exp.factor));
         }
         return new CommonExpTable(results);
+    }
+
+    private static ExpType ToExpType(Enum parserExpType) {
+        return Enum.TryParse(parserExpType.ToString(), out ExpType expType) ? expType : ExpType.none;
     }
 
     private static ExpType ToExpType(CommonExpType commonExpType) {

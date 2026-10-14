@@ -16,7 +16,12 @@ namespace Maple2.Server.Game.Util;
 public static class OfflineGrind {
     public sealed record UpgradeDrop(int ItemId, string Name, int MinLevel, int MaxLevel, float Chance, int Amount, float AmountPerLevel);
     public sealed record Config(int TargetKillsPerLevel, float MaxExpMultiplier, float DropRateMultiplier, float BossMultiplier, UpgradeDrop[] UpgradeDrops,
-        float MesoMultiplier = 1);
+        float MesoMultiplier = 1, ChestBonus? Chests = null);
+
+    // Extra loot for treasure chests: each drop rolls once per chest and gives one random item of ItemIds.
+    // Rare chests multiply both the chance and the amount.
+    public sealed record ChestDrop(string Name, int[] ItemIds, int MinLevel, int MaxLevel, float Chance, int Amount, float AmountPerLevel);
+    public sealed record ChestBonus(int[] InteractIds, int[] RareInteractIds, float RareMultiplier, ChestDrop[] Drops);
 
     public static readonly bool Enabled =
         string.Equals(Environment.GetEnvironmentVariable("OFFLINE_GRIND"), "true", StringComparison.OrdinalIgnoreCase);
@@ -91,6 +96,34 @@ public static class OfflineGrind {
         }
     }
 
+    /// <summary>The bonus items a treasure chest gives a player of this level (item id, amount); none for other objects.</summary>
+    public static IEnumerable<(int ItemId, int Amount)> RollChestDrops(int interactId, int playerLevel, Random random) =>
+        RollChestDrops(Settings?.Chests, interactId, playerLevel, random);
+
+    public static IEnumerable<(int ItemId, int Amount)> RollChestDrops(ChestBonus? chests, int interactId, int playerLevel, Random random) {
+        if (chests == null) {
+            yield break;
+        }
+
+        bool rare = chests.RareInteractIds?.Contains(interactId) == true;
+        if (!rare && chests.InteractIds?.Contains(interactId) != true) {
+            yield break;
+        }
+
+        float multiplier = rare ? Math.Max(1f, chests.RareMultiplier) : 1f;
+        foreach (ChestDrop drop in chests.Drops ?? []) {
+            if (drop.ItemIds is not { Length: > 0 } || playerLevel < drop.MinLevel || (drop.MaxLevel > 0 && playerLevel > drop.MaxLevel)) {
+                continue;
+            }
+            if (random.NextSingle() >= drop.Chance * multiplier) {
+                continue;
+            }
+
+            int amount = Math.Max(1, (int) ((drop.Amount + drop.AmountPerLevel * playerLevel) * multiplier));
+            yield return (drop.ItemIds[random.Next(drop.ItemIds.Length)], amount);
+        }
+    }
+
     public static Config? Parse(string json) => JsonSerializer.Deserialize<Config>(json, new JsonSerializerOptions {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
@@ -106,8 +139,8 @@ public static class OfflineGrind {
         try {
             Config? config = Parse(File.ReadAllText(path));
             if (config != null) {
-                Log.Logger.Information("Offline grind rates: {Kills} kills/level target, loot x{Drop}, meso x{Meso}, {Count} upgrade drops",
-                    config.TargetKillsPerLevel, config.DropRateMultiplier, config.MesoMultiplier, config.UpgradeDrops?.Length ?? 0);
+                Log.Logger.Information("Offline grind rates: {Kills} kills/level target, loot x{Drop}, meso x{Meso}, {Count} upgrade drops, {Chest} chest drops",
+                    config.TargetKillsPerLevel, config.DropRateMultiplier, config.MesoMultiplier, config.UpgradeDrops?.Length ?? 0, config.Chests?.Drops?.Length ?? 0);
             }
             return config == null ? null : config with { UpgradeDrops = config.UpgradeDrops ?? [] };
         } catch (JsonException ex) {

@@ -224,6 +224,7 @@ public partial class FieldManager : IField {
                 Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, regionSpawn), delay);
             }
         }
+        StartFieldInteractEvents();
 
         foreach (Ms2RegionSkill regionSkill in Entities.RegionSkills) {
             if (!SkillMetadata.TryGet(regionSkill.SkillId, regionSkill.Level, out SkillMetadata? skill)) {
@@ -350,6 +351,8 @@ public partial class FieldManager : IField {
         foreach (FieldInteract interact in fieldInteracts.Values) interact.Update(FieldTick);
         foreach (FieldFunctionInteract interact in fieldFunctionInteracts.Values) interact.Update(FieldTick);
         foreach (FieldInteract interact in fieldAdBalloons.Values) interact.Update(FieldTick);
+        foreach (FieldInteract interact in fieldChests.Values) interact.Update(FieldTick);
+        foreach (FieldSpawnGroup spawnGroup in fieldSpawnGroups.Values) spawnGroup.Update(FieldTick);
         foreach (FieldItem item in fieldItems.Values) item.Update(FieldTick);
         foreach (FieldMobSpawn mobSpawn in fieldMobSpawns.Values) mobSpawn.Update(FieldTick);
         foreach (FieldSpawnPointNpc spawnPointNpc in fieldSpawnPointNpcs.Values) spawnPointNpc.Update(FieldTick);
