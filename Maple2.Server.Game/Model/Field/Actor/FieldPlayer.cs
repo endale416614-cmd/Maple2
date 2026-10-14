@@ -707,6 +707,11 @@ public class FieldPlayer : Actor<Player> {
                 Logger.Error("Failed to consume item {itemId} for skill: {SkillId},{Level}", item.Id, metadata.Id, metadata.Level);
                 return false;
             }
+        } else if (record.ItemUid != 0 && Session.Item.Inventory.Get(record.ItemUid) is { } tamingItem && OfflinePets.ConsumesOnCast(tamingItem, metadata.Id)) {
+            if (!Session.Item.Inventory.Consume(tamingItem.Uid, 1)) {
+                Logger.Error("Failed to consume item {itemId} for skill: {SkillId},{Level}", tamingItem.Id, metadata.Id, metadata.Level);
+                return false;
+            }
         }
 
         return true;
