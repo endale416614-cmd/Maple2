@@ -51,8 +51,9 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
                 SetState(InteractState.Normal);
                 nextTick = reactTick + Value.Time.Hide;
             } else {
-                // Immediately hide if no delay.
-                SetState(InteractState.Hidden);
+                // No hide time: stay used up in Normal. Triggers wait for state 0, and doors only drop their
+                // collision in Normal (Abandoned Apartment 52000071: Hidden left the true door blocking its portal).
+                SetState(InteractState.Normal);
                 nextTick = 0;
             }
         }
