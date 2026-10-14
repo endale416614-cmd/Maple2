@@ -1,4 +1,5 @@
-﻿using Maple2.Model;
+﻿using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Common;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -343,12 +344,10 @@ public class ItemDropManager {
         }
 
         if (rarity <= 0) {
-            if (itemMetadata.Option != null && itemMetadata.Option.ConstantId is < 7 and > 0) {
-                rarity = itemMetadata.Option.ConstantId;
-            } else {
-                rarity = 1;
-            }
+            TableMetadataStorage tables = field.TableMetadata;
+            rarity = DefaultRarity(itemMetadata.Option, tables.ItemOptionConstantTable, tables.ItemOptionStaticTable, tables.ItemOptionRandomTable);
         }
+        rarity = OfflineEpicGear.Rarity(itemMetadata, rarity);
 
         var item = new Item(itemMetadata, rarity, amount);
         item.Stats = field.ItemStatsCalc.GetStats(item, rollMax);
@@ -359,6 +358,29 @@ public class ItemDropManager {
         }
 
         return item;
+    }
+
+    // Rarity of an item created without one. Boxes and consumables keep theirs in Option.ConstantId (1-6). For gear
+    // ConstantId is an option table id, and drop tables leave the grade out for gear that exists at one rarity only
+    // (raid gear is Epic, Legendary or Ascendant), so gear takes the lowest rarity its option tables define.
+    public static int DefaultRarity(ItemMetadataOption? option, ItemOptionConstantTable constants, ItemOptionStaticTable statics, ItemOptionRandomTable randoms) {
+        if (option == null) {
+            return 1;
+        }
+        if (option.ConstantId is > 0 and < 7) {
+            return option.ConstantId;
+        }
+
+        return OptionRarities(constants.Options, option.ConstantId)
+            .Concat(OptionRarities(statics.Options, option.StaticId))
+            .Concat(OptionRarities(randoms.Options, option.RandomId))
+            .Where(rarity => rarity is > 0 and < 7)
+            .DefaultIfEmpty(1)
+            .Min();
+    }
+
+    private static IEnumerable<int> OptionRarities<T>(IReadOnlyDictionary<int, IReadOnlyDictionary<int, T>> options, int id) {
+        return id > 0 && options.TryGetValue(id, out IReadOnlyDictionary<int, T>? byRarity) ? byRarity.Keys : [];
     }
 
     private EquipColor GetColor(ItemMetadataCustomize metadata) {
