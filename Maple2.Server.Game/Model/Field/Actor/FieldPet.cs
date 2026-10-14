@@ -8,6 +8,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Model;
 
@@ -61,7 +62,8 @@ public sealed class FieldPet : FieldNpc {
     }
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
-        if (attack.Pet == null) {
+        // A captured pet stays in the field until removed; it must not be captured twice.
+        if (attack.Pet == null || IsDead) {
             return;
         }
 
@@ -75,16 +77,10 @@ public sealed class FieldPet : FieldNpc {
         TamingPoint -= damageAmount;
         targetRecord.AddDamage(damageAmount == 0 ? DamageType.Miss : DamageType.Normal, damageAmount);
 
-        if (attack.Pet.TrapLevel > 0) {
-            if (attack.Pet.ForcedTaming) {
-                IsDead = true;
-                OnDeath();
-                DropItem(caster);
-            } else if (TamingPoint >= Constants.TamingPetMaxPoint) { // trap has chance to fail
-                IsDead = true;
-                OnDeath();
-                DropItem(caster);
-            }
+        if (OfflinePets.Captures(attack.Pet.TrapLevel, attack.Pet.ForcedTaming, TamingPoint, Constants.TamingPetMaxPoint)) {
+            IsDead = true;
+            OnDeath();
+            DropItem(caster);
         }
 
         damage.Targets.TryAdd(ObjectId, targetRecord);
@@ -98,7 +94,7 @@ public sealed class FieldPet : FieldNpc {
 
     private void DropItem(IActor capturer) {
         // TODO: Determine rarity of pet drop
-        int rarity = TamingRank / 25 + 1;
+        int rarity = OfflinePets.CaptureRarity(TamingRank);
 
         using GameStorage.Request db = Field.GameStorage.Context();
         Item? pet = Pet.Mutate(Pet.Metadata, rarity);

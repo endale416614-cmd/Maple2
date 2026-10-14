@@ -5,6 +5,7 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Serilog;
 
@@ -138,7 +139,8 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         spawnTick = long.MaxValue;
 
         int spawnMobCount = Value.Population - spawnedMobs.Count;
-        bool doSpawnPet = Random.Shared.Next(PET_SPAWN_RATE_TOTAL) < Value.PetSpawnRate;
+        int petSpawnRate = OfflinePets.SpawnRate(Value.PetSpawnRate);
+        bool doSpawnPet = Random.Shared.Next(PET_SPAWN_RATE_TOTAL) < petSpawnRate;
 
         if (doSpawnPet) {
             ++spawnMobCount;
@@ -158,7 +160,7 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
             Field.Broadcast(ProxyObjectPacket.AddNpc(fieldNpc));
         }
 
-        if (Value.PetSpawnRate <= 0 || pets.Count <= 0 || spawnedPets.Count >= Value.PetPopulation) {
+        if (petSpawnRate <= 0 || pets.Count <= 0 || spawnedPets.Count >= Value.PetPopulation) {
             return;
         }
 
