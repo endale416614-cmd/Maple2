@@ -632,7 +632,11 @@ public partial class FieldManager {
             return;
         }
 
-        var fieldSkill = new FieldSkill(this, NextLocalId(), FieldActor, skillMetadata, interval, triggerSkill.Count, position) {
+        // Most trigger skills leave count at the flat default 0. Passed as-is, FireCount 0 made the skill disabled on its
+        // first update, so it was removed without firing (Root of Darkness 52000076: the root walls on Lennon's way down
+        // never broke). One cast per set_skill.
+        int fireCount = Math.Max(1, triggerSkill.Count);
+        var fieldSkill = new FieldSkill(this, NextLocalId(), FieldActor, skillMetadata, interval, fireCount, position) {
             Position = position,
             Rotation = rotation,
             TriggerId = triggerId,
