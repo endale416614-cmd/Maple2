@@ -347,7 +347,6 @@ public class ItemDropManager {
             TableMetadataStorage tables = field.TableMetadata;
             rarity = DefaultRarity(itemMetadata.Option, tables.ItemOptionConstantTable, tables.ItemOptionStaticTable, tables.ItemOptionRandomTable);
         }
-        rarity = OfflineEpicGear.Rarity(itemMetadata, rarity);
 
         var item = new Item(itemMetadata, rarity, amount);
         item.Stats = field.ItemStatsCalc.GetStats(item, rollMax);
