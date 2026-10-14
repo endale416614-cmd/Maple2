@@ -274,9 +274,10 @@ public abstract class Session : IDisposable {
                 ReadOnlySequence<byte> buffer = result.Buffer;
                 while ((bytesRead = recvCipher.TryDecrypt(buffer, out PoolByteReader packet)) > 0) {
                     try {
-#if DEBUG
-                        LogRecv(packet.Buffer);
-#endif
+                        // Release builds too, when appsettings.json raises this logger to Verbose (packet traces for bug reports).
+                        if (Logger.IsEnabled(Serilog.Events.LogEventLevel.Verbose)) {
+                            LogRecv(packet.Buffer);
+                        }
                         OnPacket?.Invoke(this, packet); // handle packet
                     } finally {
                         packet.Dispose();
