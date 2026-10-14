@@ -1,5 +1,6 @@
 ﻿using Maple2.Database.Extensions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Mail = Maple2.Model.Game.Mail;
 using Item = Maple2.Model.Game.Item;
 
@@ -15,6 +16,10 @@ public partial class GameStorage {
     public static bool MailNeverExpires { get; set; } =
         string.Equals(Environment.GetEnvironmentVariable("OFFLINE_MAIL_NEVER_EXPIRES"), "true", StringComparison.OrdinalIgnoreCase);
     public const int NeverExpiresDays = 1825;
+
+    // Mail ids start at 100000 and stay below the first account id, so an item owned by an id in this range is a mail attachment.
+    public const long FirstMailId = 100000;
+    public const long MailIdLimit = 10000000000;
 
     public partial class Request {
         public Mail? GetMail(long mailId, long characterId) {
@@ -93,8 +98,12 @@ public partial class GameStorage {
         }
 
         private long NextSqliteMailId() {
-            // Same numbering as the MySQL schema (mail ids start at 100000).
-            return Math.Max(100000, (Context.Mail.Max(existing => (long?) existing.Id) ?? 0) + 1);
+            // Same numbering as the MySQL schema (mail ids start at 100000). Ids that still own items are skipped: a collected
+            // item keeps the mail id as owner until the inventory is saved, and a new mail with that id would show it again.
+            long maxMail = Context.Mail.Max(existing => (long?) existing.Id) ?? 0;
+            long maxOwner = Context.Item.Where(item => item.OwnerId >= FirstMailId && item.OwnerId < MailIdLimit)
+                .Max(item => (long?) item.OwnerId) ?? 0;
+            return Math.Max(FirstMailId, Math.Max(maxMail, maxOwner) + 1);
         }
 
         // Mails stored without an expiry (every sender but one stopped setting it upstream) were invisible in the mailbox,
@@ -158,7 +167,9 @@ public partial class GameStorage {
             return SaveChanges() ? mail : null;
         }
 
-        public bool DeleteMail(long mailId, long characterId) {
+        // Deletes the mail together with the attachments still on it. Only the given items go: a collected item stays stored
+        // under the mail id until the inventory is saved, so deleting every item the mail owns would destroy it.
+        public bool DeleteMail(long mailId, long characterId, ICollection<long> attachedItemUids) {
             Context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.TrackAll;
 
             Model.Mail? mail = Context.Mail.Find(characterId, mailId);
@@ -166,8 +177,29 @@ public partial class GameStorage {
                 return false;
             }
 
+            BeginTransaction();
             Context.Mail.Remove(mail);
-            return SaveChanges();
+            if (!SaveChanges()) {
+                Rollback();
+                return false;
+            }
+            if (attachedItemUids.Count > 0) {
+                Context.Item.Where(item => item.OwnerId == mailId && attachedItemUids.Contains(item.Id)).ExecuteDelete();
+            }
+            return Commit();
+        }
+
+        // Attachments of mail that no longer exists (mail used to be deleted without its items). Run at world start, when no
+        // player holds a collected item that is still stored under its mail id.
+        public void DeleteOrphanedMailItems() {
+            int deletedCount = Context.Item
+                .Where(item => item.OwnerId >= FirstMailId && item.OwnerId < MailIdLimit && !Context.Mail.Any(mail => mail.Id == item.OwnerId))
+                .ExecuteDelete();
+            if (deletedCount == 0) {
+                return;
+            }
+
+            Logger.LogInformation("Deleted {Count} items of deleted mail.", deletedCount);
         }
 
         public Mail? UpdateMail(Mail mail) {
