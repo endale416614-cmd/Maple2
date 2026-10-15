@@ -15,6 +15,7 @@ public class AiState {
     public AiMetadata? AiMetadata { get; private set; }
     private Node? battle;
     private Node? battleEnd;
+    private bool scriptedEvent;
 
     private List<StackEntry> aiStack = new List<StackEntry>();
     private NpcTask? currentTask = null;
@@ -53,6 +54,7 @@ public class AiState {
 
         if (AiMetadata.Battle.Length != 0) {
             battle = new Node("battle", AiMetadata.Battle);
+            scriptedEvent = IsScriptedEvent(AiMetadata.Battle);
         }
 
         if (AiMetadata.BattleEnd.Length != 0) {
@@ -62,6 +64,35 @@ public class AiState {
         if (AiMetadata.Reserved.Length != 0) {
             reservedNodes = AiMetadata.Reserved.Cast<Node>().ToList();
         }
+    }
+
+    /// <summary>
+    /// A cutscene actor: its battle tree drives a trigger (sets user values) and never looks for a target.
+    /// It has to run once spawned; waiting for something to come into sight left e.g. the Tria Battlefield Devlin
+    /// (AI_DevilHugeRed_Quest_event) idle far from the frozen player, so SetSkillA never came and the quest stuck.
+    /// </summary>
+    private static bool IsScriptedEvent(Entry[] entries) {
+        bool setsUserValue = false;
+        bool needsTarget = false;
+        void Walk(Entry entry) {
+            switch (entry) {
+                case TriggerSetUserValueNode:
+                    setsUserValue = true;
+                    break;
+                case TargetNode or TraceNode or ConditionsNode:
+                    needsTarget = true;
+                    break;
+            }
+            if (entry is Node node) {
+                foreach (Entry child in node.Entries) {
+                    Walk(child);
+                }
+            }
+        }
+        foreach (Entry entry in entries) {
+            Walk(entry);
+        }
+        return setsUserValue && !needsTarget;
     }
 
     public bool IsProcessingNodes() {
@@ -104,6 +135,10 @@ public class AiState {
             currentTree = DecisionTreeType.None;
 
             return;
+        }
+
+        if (scriptedEvent) {
+            actor.BattleState.KeepBattle = true;
         }
 
         bool isInBattle = actor.BattleState.InBattle;
