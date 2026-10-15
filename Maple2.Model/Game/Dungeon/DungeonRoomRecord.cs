@@ -8,6 +8,8 @@ public class DungeonRoomRecord {
     public ConcurrentDictionary<long, DungeonUserRecord> UserResults = [];
     public readonly DungeonRoomMetadata Metadata;
     public long StartTick { get; set; }
+    // Set by dungeon_reset_time: dungeon_play_time counts from here instead of StartTick (boss time attacks restart the clock)
+    public long TimerResetTick { get; set; }
     public long EndTick { get; set; }
     public DungeonState State { get; set; } = DungeonState.None;
     // Trigger dungeon variables (dungeon_variable): one set per dungeon run, shared by the lobby and every room map
