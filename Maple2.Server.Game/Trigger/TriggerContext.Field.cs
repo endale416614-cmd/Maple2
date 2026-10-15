@@ -521,7 +521,8 @@ public partial class TriggerContext {
         var state = (InteractState) stateValue;
         if (TraceEnabled) DebugLog("[ObjectInteracted] interactIds:{Ids}, state:{State}", string.Join(", ", interactIds), state);
         foreach (FieldInteract interact in Field.EnumerateInteract()) {
-            if (interactIds.Contains(interact.Value.Id) && interact.State == state) {
+            // Most scripts wait for 0 after use, some for 2 (Tria Battlefield 52000068 waits for 2 on 10001074-10001076).
+            if (interactIds.Contains(interact.Value.Id) && (interact.State == state || state == InteractState.Hidden && interact.Reacted)) {
                 return true;
             }
         }
