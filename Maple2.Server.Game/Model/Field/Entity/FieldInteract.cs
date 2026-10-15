@@ -18,6 +18,11 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
 
     private int reactLimit;
     public InteractState State { get; private set; }
+    /// <summary>
+    /// Used since it was last made reactable. Used objects stay in Normal (triggers mostly wait for 0, doors only
+    /// open in Normal), but count as Hidden for the scripts that wait for 2 after use.
+    /// </summary>
+    public bool Reacted { get; private set; }
     public int SpawnId { get; init; }
 
     public FieldInteract(FieldManager field, int objectId, string entityId, InteractObjectMetadata value, IInteractObject interactObject) : base(field, objectId, value) {
@@ -43,6 +48,7 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
         }
 
         reactLimit--;
+        Reacted = true;
         if (reactLimit > 0) {
             SetState(InteractState.Normal);
             nextTick = reactTick + Value.Time.Reset;
@@ -62,6 +68,9 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
     }
 
     public void SetState(InteractState state) {
+        if (state == InteractState.Reactable) {
+            Reacted = false;
+        }
         if (State == state) {
             return;
         }
