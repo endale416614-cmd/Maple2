@@ -233,7 +233,7 @@ public static class TriggerFunctionMapping {
         { "count_users", attrs => new Trigger.CountUsers(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["user_tag_id"]?.Value), ParseInt(attrs?["min_users"]?.Value), ParseOperatorType(attrs?["operator"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "day_of_week", attrs => new Trigger.DayOfWeek(ParseIntArray(attrs?["day_of_weeks"]?.Value), attrs?["desc"]?.Value ?? string.Empty, ParseBool(attrs?["negate"]?.Value)) },
         { "detect_liftable_object", attrs => new Trigger.DetectLiftableObject(ParseIntArray(attrs?["box_ids"]?.Value), ParseInt(attrs?["item_id"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
-        { "dungeon_play_time", attrs => new Trigger.DungeonPlayTime(ParseInt(attrs?["play_seconds"]?.Value)) },
+        { "dungeon_play_time", attrs => new Trigger.DungeonPlayTime(ParseInt(attrs?["play_seconds"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "dungeon_state", attrs => new Trigger.DungeonState(attrs?["check_state"]?.Value ?? string.Empty) },
         { "dungeon_first_user_mission_score", attrs => new Trigger.DungeonFirstUserMissionScore(ParseInt(attrs?["score"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "dungeon_id", attrs => new Trigger.DungeonId(ParseInt(attrs?["dungeon_id"]?.Value)) },

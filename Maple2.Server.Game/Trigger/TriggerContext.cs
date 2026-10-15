@@ -1,6 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
@@ -189,9 +190,31 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
-    public bool DungeonPlayTime(int playSeconds) {
-        if (TraceEnabled) ErrorLog("[GetDungeonPlayTime]");
-        return playSeconds == 0;
+    public bool DungeonPlayTime(int playSeconds, OperatorType operatorType) {
+        if (TraceEnabled) DebugLog("[GetDungeonPlayTime] playSeconds:{PlaySeconds}, operator:{Operator}", playSeconds, operatorType);
+        if (Field is not DungeonFieldManager dungeonField) {
+            return false;
+        }
+        return DungeonPlayTimeMatches(dungeonField.DungeonRoomRecord, Field.FieldTick, playSeconds, operatorType);
+    }
+
+    // Seconds since the last dungeon_reset_time, or since the run started. "Equal" only appears as the time-up branch
+    // (02020101/02020111 "Equal 420" next to "Less 420"), so it means "reached": an exact-second match could be missed.
+    public static bool DungeonPlayTimeMatches(DungeonRoomRecord record, long fieldTick, int playSeconds, OperatorType operatorType) {
+        long startTick = record.TimerResetTick > 0 ? record.TimerResetTick : record.StartTick;
+        if (startTick <= 0) {
+            return false;
+        }
+
+        long elapsed = (fieldTick - startTick) / 1000;
+        return operatorType switch {
+            OperatorType.Greater => elapsed > playSeconds,
+            OperatorType.GreaterEqual => elapsed >= playSeconds,
+            OperatorType.Equal => elapsed >= playSeconds,
+            OperatorType.LessEqual => elapsed <= playSeconds,
+            OperatorType.Less => elapsed < playSeconds,
+            _ => false,
+        };
     }
 
     // Scripts seem to just check if this is "Fail"
