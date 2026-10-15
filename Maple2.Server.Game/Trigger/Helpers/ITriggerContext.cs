@@ -223,7 +223,7 @@ public interface ITriggerContext {
     public bool CountUsers(int boxId, int userTagId, int minUsers, OperatorType operatorType, bool negate);
     public bool DayOfWeek(int[] dayOfWeeks, string desc, bool negate);
     public bool DetectLiftableObject(int[] boxIds, int itemId, bool negate);
-    public bool DungeonPlayTime(int playSeconds);
+    public bool DungeonPlayTime(int playSeconds, OperatorType operatorType);
     public bool DungeonState(string checkState);
     public bool DungeonFirstUserMissionScore(int score, OperatorType operatorType);
     public bool DungeonId(int dungeonId);

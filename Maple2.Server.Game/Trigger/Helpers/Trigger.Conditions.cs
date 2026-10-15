@@ -94,11 +94,13 @@ public partial class Trigger {
         public bool Evaluate(TriggerContext context) => context.DetectLiftableObject(boxIds, itemId, negate);
     }
 
-    public class DungeonPlayTime(int playSeconds) : ICondition {
+    public class DungeonPlayTime(int playSeconds, OperatorType operatorType) : ICondition {
         public string Name => "dungeon_play_time";
+        public int PlaySeconds => playSeconds;
+        public OperatorType OperatorType => operatorType;
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
-        public bool Evaluate(TriggerContext context) => context.DungeonPlayTime(playSeconds);
+        public bool Evaluate(TriggerContext context) => context.DungeonPlayTime(playSeconds, operatorType);
     }
 
     public class DungeonState(string checkState) : ICondition {

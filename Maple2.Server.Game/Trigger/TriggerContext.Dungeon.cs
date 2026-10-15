@@ -70,7 +70,10 @@ public partial class TriggerContext {
     }
 
     public void DungeonResetTime(int seconds) {
-        if (TraceEnabled) ErrorLog("[DungeonResetTime] seconds:{Seconds}", seconds);
+        if (TraceEnabled) DebugLog("[DungeonResetTime] seconds:{Seconds}", seconds);
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.DungeonRoomRecord.TimerResetTick = Field.FieldTick;
+        }
     }
 
     public void DungeonSetEndTime() {
