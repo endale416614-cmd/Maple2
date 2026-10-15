@@ -101,6 +101,9 @@ public class FieldNpc : Actor<Npc> {
 
     public MS2PatrolData? Patrol { get; private set; }
     private int currentWaypointIndex;
+    // Waypoint whose ledge the NPC already walked to; the next try jumps instead of walking there again.
+    private int ledgeWaypointIndex = -1;
+    private const float LedgeJumpSpeed = 400f;
 
     private bool hasBeenBattling;
     private NpcTask? idleTask;
@@ -302,8 +305,22 @@ public class FieldNpc : Actor<Npc> {
             } else {
                 Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
             }
+        } else if (!Navigation!.CanWalkTo(currentWaypoint.Position, out Vector3 ledge) && currentWaypoint.Position.Z < ledge.Z) {
+            // The navmesh has no links down ledges, so walk to the edge and drop the rest. Trigger walks rely on these drops
+            // (Root of Darkness 52000076: the trigger waits for Lennon in boxes below the ledges he leads the player down).
+            string? sequence = Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? ledgeSequence)
+                ? ledgeSequence.Name
+                : WalkSequence?.Name;
+            if (ledgeWaypointIndex != currentWaypointIndex && sequence is not null
+                    && Vector2.Distance(new Vector2(Position.X, Position.Y), new Vector2(ledge.X, ledge.Y)) > Constant.BlockSize / 2f) {
+                ledgeWaypointIndex = currentWaypointIndex;
+                return MovementState.TryMoveTo(ledge, false, sequence: sequence, speed: 1);
+            }
+
+            ledgeWaypointIndex = -1;
+            approachTask = MovementState.TryJumpTo(currentWaypoint.Position, false, LedgeJumpSpeed, 0.5f, "Jump_A");
         } else {
-            if (Navigation!.PathTo(currentWaypoint.Position)) {
+            if (Navigation.PathTo(currentWaypoint.Position)) {
                 if (Value.Animations.TryGetValue(currentWaypoint.ApproachAnimation, out AnimationSequenceMetadata? patrolSequence)) {
                     approachTask = MovementState.TryMoveTo(currentWaypoint.Position, false, sequence: patrolSequence.Name, speed: 1);
                 } else if (WalkSequence is not null) {
@@ -636,6 +653,7 @@ public class FieldNpc : Actor<Npc> {
     public void SetPatrolData(MS2PatrolData newPatrolData) {
         Patrol = newPatrolData;
         currentWaypointIndex = 0;
+        ledgeWaypointIndex = -1;
     }
 
     public void ClearPatrolData() {

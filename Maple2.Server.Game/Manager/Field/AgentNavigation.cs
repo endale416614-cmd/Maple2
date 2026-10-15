@@ -304,6 +304,31 @@ public sealed class AgentNavigation {
         return SetPathTo(end);
     }
 
+    /// <summary>
+    /// False when the navmesh does not connect the agent to <paramref name="goal"/>, e.g. a ledge it would drop down from.
+    /// <paramref name="closest"/> is then the point nearest the goal that it can walk to.
+    /// </summary>
+    public bool CanWalkTo(Vector3 goal, out Vector3 closest) {
+        closest = npc.Position;
+        if (!TryFindPoly(agent.npos, out long startRef, out _) || !TryFindPoly(goal, out long goalRef, out RcVec3f goalPosition)) {
+            return true; // off the mesh: leave it to PathTo
+        }
+
+        DtNavMeshQuery query = crowd.GetNavMeshQuery();
+        List<long> polys = [];
+        query.FindPath(startRef, goalRef, agent.npos, goalPosition, crowd.GetFilter(0), ref polys, new DtFindPathOption(0, float.MaxValue));
+        if (polys.Count == 0) {
+            return false;
+        }
+        if (polys[^1] == goalRef) {
+            return true;
+        }
+
+        query.ClosestPointOnPoly(polys[^1], goalPosition, out RcVec3f end, out _);
+        closest = DotRecastHelper.FromNavMeshSpace(end);
+        return false;
+    }
+
     private bool SetPathTo(RcVec3f target) {
         currentPath = [];
         currentPathIndex = 0;
