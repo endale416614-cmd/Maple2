@@ -74,13 +74,15 @@ public static class OfflineEconomy {
 
     private const int PREMIUM_SECTION = 100000;
     private const int RED_MERET_SECTION = 100001;
-    private const int OUTFITS_TAB = 40100;
-    private const int CRATE_SPOTLIGHT_TAB = 40110;
+    // Tabs added by tools/organize_meret_market.py (same ids in the client mod offline-shop).
+    private const int DESIGN_TEMPLATES_TAB = 40700;
+    private const int FURNITURE_TAB = 40800;
 
     /// <summary>
     /// The NA final client enables "MeratMarketNewBM"/"MeratMarketClosing" (end of service), which cut the
     /// premium section down to Functional + Lifestyle. The offline client mod turns those features off again,
-    /// so the server must also know the full original tab list: Outfits (incl. Crate Spotlight), Summons, ...
+    /// so the server must also know the full original tab list: Outfits, Summons, ... plus the offline Design Templates
+    /// and Furniture tabs. Capsules are listed under Featured.
     /// </summary>
     public static MeretMarketCategoryTable Apply(MeretMarketCategoryTable table) {
         if (!File.Exists(Environment.GetEnvironmentVariable("OFFLINE_MERET_CATALOG_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json")) ||
@@ -93,10 +95,8 @@ public static class OfflineEconomy {
         foreach ((int tabId, MeretMarketCategoryTable.Tab tab) in full) {
             tabs.TryAdd(tabId, tab);
         }
-        if (tabs.TryGetValue(OUTFITS_TAB, out MeretMarketCategoryTable.Tab? outfits) && !outfits.SubTabIds.Contains(CRATE_SPOTLIGHT_TAB)) {
-            tabs[OUTFITS_TAB] = outfits with { SubTabIds = [CRATE_SPOTLIGHT_TAB, .. outfits.SubTabIds] };
-            tabs.TryAdd(CRATE_SPOTLIGHT_TAB, new MeretMarketCategoryTable.Tab([], true, false, []));
-        }
+        tabs.TryAdd(DESIGN_TEMPLATES_TAB, new MeretMarketCategoryTable.Tab([], SortGender: true, SortJob: false, []));
+        tabs.TryAdd(FURNITURE_TAB, new MeretMarketCategoryTable.Tab([], SortGender: false, SortJob: false, []));
 
         var entries = new Dictionary<int, IReadOnlyDictionary<int, MeretMarketCategoryTable.Tab>>(table.Entries) {
             [PREMIUM_SECTION] = tabs,

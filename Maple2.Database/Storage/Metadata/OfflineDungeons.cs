@@ -19,7 +19,7 @@ public static class OfflineDungeons {
     public static readonly bool PartyDungeonsOpen = OfflineProfile.Flag("OFFLINE_PARTY_DUNGEONS", true);
 
     // Its map scripts wait for the full group with no timeout, so a smaller group would wait forever. The other party-size
-    // dungeons in the data (Legion raids L1-L5, Ludibrium Clock Tower) start after a 30-second wait or do not count players.
+    // dungeons in the data (guild raids L1-L5, Ludibrium Clock Tower) start after a 30-second wait or do not count players.
     private static readonly HashSet<int> NeedsFullGroup = [29003001]; // Cathy Mart Part-Time Job
 
     /// <summary>True when a group of <paramref name="size"/> players must be refused at the door.</summary>
