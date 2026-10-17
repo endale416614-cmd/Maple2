@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
@@ -169,9 +170,25 @@ public class OfflineEditionTest {
         MeretMarketCategoryTable table = OfflineEconomy.Apply(shipped);
 
         IReadOnlyDictionary<int, MeretMarketCategoryTable.Tab> premium = table.Entries[100000];
-        Assert.That(premium.Keys, Is.SupersetOf(new[] { 40100, 40101, 40102, 40110, 40200, 40203, 40300, 40600 }));
-        Assert.That(premium[40100].SubTabIds, Does.Contain(40110), "Crate Spotlight sits under Outfits");
+        Assert.That(premium.Keys, Is.SupersetOf(new[] { 40100, 40101, 40102, 40200, 40203, 40300, 40600, 40700, 40800 }));
+        Assert.That(premium[40700].SortGender, Is.True, "Design Templates come in (M) and (F) versions");
+        Assert.That(premium.Keys, Does.Not.Contain(40110), "capsules are listed under Featured, not Crate Spotlight");
         Assert.That(table.Entries[100001], Is.SameAs(shipped.Entries[100001]));
+    }
+
+    [Test]
+    public void MeretCatalog_EveryEntrySitsInAKnownTab() {
+        string path = Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json");
+        Assume.That(File.Exists(path), "offline-meret-catalog.json not generated");
+
+        using JsonDocument catalog = JsonDocument.Parse(File.ReadAllText(path));
+        int[] tabs = catalog.RootElement.GetProperty("Entries").EnumerateArray().Select(entry => entry.GetProperty("TabId").GetInt32()).ToArray();
+        // Featured, Packages, Outfits and its sub-tabs, Summons sub-tabs, Functional, Expression, Badges, Lifestyle, Design Templates, Furniture
+        int[] known = [10, 40000, 40101, 40102, 40103, 40104, 40105, 40106, 40107, 40108, 40109, 40201, 40202, 40203, 40300, 40400, 40500, 40600, 40700, 40800];
+        Assert.That(tabs.Except(known), Is.Empty);
+        Assert.That(tabs.Count(tab => tab == 10), Is.LessThan(255 - 6), "the Featured page is one packet with a byte slot count (6 shipped entries too)");
+        Assert.That(tabs.Count(tab => tab == 40700), Is.GreaterThan(0));
+        Assert.That(tabs.Count(tab => tab == 40800), Is.GreaterThan(0));
     }
 
     [Test]

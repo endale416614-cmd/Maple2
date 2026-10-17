@@ -29,8 +29,8 @@ public class OfflineProfileTest {
         Assert.That(OfflineProfile.ResolveOption(flag, defaultValue), Is.EqualTo(expected));
     }
 
-    [TestCase(26001001, 4, 1, false, true, TestName = "Legacy: a solo player is refused at a Legion raid")]
-    [TestCase(26001001, 4, 1, true, false, TestName = "Adapted: a solo player may enter a Legion raid")]
+    [TestCase(26001001, 4, 1, false, true, TestName = "Legacy: a solo player is refused at a guild raid")]
+    [TestCase(26001001, 4, 1, true, false, TestName = "Adapted: a solo player may enter a guild raid")]
     [TestCase(29006001, 4, 2, true, false, TestName = "Adapted: two players may enter Ludibrium Clock Tower")]
     [TestCase(29003001, 4, 1, true, true, TestName = "Adapted: Cathy Mart still needs the full group")]
     [TestCase(29003001, 4, 4, true, false, TestName = "A full group enters Cathy Mart")]
