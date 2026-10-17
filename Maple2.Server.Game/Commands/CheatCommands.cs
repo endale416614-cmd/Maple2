@@ -1,10 +1,14 @@
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
+using System.Text;
+using Maple2.Database.Storage;
+using Maple2.Model;
 using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -136,6 +140,58 @@ public class FreebiesCommand : GameCommand {
             ctx.Console.Out.WriteLine("Freebies ON: everything you buy is free, whatever the currency. Reopen any shop that is already open. Type /freebies again to turn it off.");
         } else {
             ctx.Console.Out.WriteLine("Freebies OFF.");
+        }
+    }
+}
+
+/// <summary>/give: gives an item by its English name, e.g. /give Red Potion 5.</summary>
+public class GiveCommand : GameCommand {
+    private readonly GameSession session;
+    private readonly ItemMetadataStorage itemStorage;
+
+    public GiveCommand(GameSession session, ItemMetadataStorage itemStorage) : base(AdminPermissions.None, "give", "Give an item by name: /give <item name> [count].") {
+        this.session = session;
+        this.itemStorage = itemStorage;
+
+        var words = new Argument<string[]>("name", "Item name, optionally followed by a count.");
+        var rarity = new Option<int>(["--rarity", "-r"], () => -1, "Rarity of the item (default: from item data).");
+        var rollMax = new Option<bool>(["--roll-max"], () => false, "Max roll stats.");
+
+        AddArgument(words);
+        AddOption(rarity);
+        AddOption(rollMax);
+        this.SetHandler<InvocationContext, string[], int, bool>(Handle, words, rarity, rollMax);
+    }
+
+    private void Handle(InvocationContext ctx, string[] words, int rarity, bool rollMax) {
+        if (!OfflineCheats.Enabled) {
+            ctx.Console.Error.WriteLine("Cheats are off. Set CheatCommands=true in launcher.ini and restart the game.");
+            return;
+        }
+        if (session.Field is null) {
+            return;
+        }
+
+        try {
+            ItemNameResolver.Result result = ItemNameResolver.Resolve(words, session.Player.Value.Character.Job.Code(),
+                name => itemStorage.Search(name).Select(item => new ItemNameResolver.Entry(item.Id, item.Name ?? "", item.Limit.JobRecommends)));
+            if (result.Id != 0) {
+                ctx.ExitCode = ItemGrant.Give(session, result.Id, result.Count, rarity, drop: false, rollMax, ctx.Console) ? 0 : 1;
+                return;
+            }
+
+            if (result.Options.Count == 0) {
+                ctx.Console.Error.WriteLine($"No item named '{result.Name}'");
+                return;
+            }
+            var builder = new StringBuilder($"<b>Several items match '{result.Name}'. Use /item <id>:</b>");
+            foreach (ItemNameResolver.Entry entry in result.Options) {
+                builder.Append($"\n• {entry.Id}: {entry.Name}");
+            }
+            session.Send(NoticePacket.Message(builder.ToString(), true));
+        } catch (SystemException ex) {
+            ctx.Console.Error.WriteLine(ex.Message);
+            ctx.ExitCode = 1;
         }
     }
 }

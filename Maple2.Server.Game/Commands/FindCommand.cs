@@ -7,6 +7,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -17,7 +18,7 @@ public class FindCommand : GameCommand {
                        MapMetadataStorage mapStorage,
                        NpcMetadataStorage npcStorage,
                        QuestMetadataStorage questStorage,
-                       SkillMetadataStorage skillStorage) : base(AdminPermissions.Find, "find", "Search database for ids.") {
+                       SkillMetadataStorage skillStorage) : base(AdminPermissions.None, "find", "Search database for ids.") {
         AddCommand(new FindSubCommand<AchievementMetadata>(["achievement"], session, achievementStorage));
         AddCommand(new FindSubCommand<ItemMetadata>(["item"], session, itemStorage));
         AddCommand(new FindSubCommand<MapMetadata>(["map"], session, mapStorage));
@@ -51,6 +52,10 @@ public class FindCommand : GameCommand {
         }
 
         private void Handle(InvocationContext ctx, string[] args, int page) {
+            if (!OfflineCheats.Enabled) {
+                ctx.Console.Error.WriteLine("Cheats are off. Set CheatCommands=true in launcher.ini and restart the game.");
+                return;
+            }
             try {
                 string query = string.Join(' ', args);
                 List<T> results = storage.Search(query);
