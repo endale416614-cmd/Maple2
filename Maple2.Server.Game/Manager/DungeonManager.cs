@@ -285,7 +285,8 @@ public class DungeonManager {
 
         // Rooms built for a party wait for that many players (e.g. Cathy Mart Part-Time Job needs 3 others in place):
         // refuse a smaller group at the door like the game does, instead of letting it in to wait forever.
-        if (metadata.Limit.MinUserCount > 1 && size < metadata.Limit.MinUserCount) {
+        // Offline (Adapted): smaller groups may enter the party-size dungeons whose scripts start without a full group.
+        if (OfflineDungeons.TooFewPlayers(dungeonId, metadata.Limit.MinUserCount, size, OfflineDungeons.PartyDungeonsOpen)) {
             session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_UnderMinUserCount, metadata.Limit.MinUserCount));
             return;
         }

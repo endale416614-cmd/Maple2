@@ -17,4 +17,9 @@ public static class OfflineProfile {
 
     public static bool Flag(string envVar, bool adaptedDefault) =>
         Resolve(Environment.GetEnvironmentVariable("OFFLINE_PROFILE"), Environment.GetEnvironmentVariable(envVar), adaptedDefault);
+
+    /// <summary>An option that is the same in both modes: its own value when it parses as a bool, else the default.</summary>
+    public static bool ResolveOption(string? flagValue, bool defaultValue) => bool.TryParse(flagValue, out bool value) ? value : defaultValue;
+
+    public static bool Option(string envVar, bool defaultValue) => ResolveOption(Environment.GetEnvironmentVariable(envVar), defaultValue);
 }

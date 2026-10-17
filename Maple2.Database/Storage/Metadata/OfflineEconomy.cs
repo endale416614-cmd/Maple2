@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using Maple2.Database.Context;
 using Maple2.Model.Enum;
 using Maple2.Model.Game.Shop;
 using Maple2.Model.Metadata;
@@ -11,8 +10,8 @@ namespace Maple2.Database.Storage;
 /// <summary>
 /// Offline edition economy: makes Meret (the former cash currency) obtainable with Mesos earned in play.
 /// Reads offline-economy.json (path: OFFLINE_ECONOMY_FILE, default next to the solution) and adds the
-/// game's own "N-Meret Pouch" items to ordinary meso NPC shops. Without the file nothing changes; under the Legacy
-/// profile (OFFLINE_PROFILE=Legacy) the files are ignored and the Meret Market and shops stay original.
+/// game's own "N-Meret Pouch" items to ordinary meso NPC shops. Without the file nothing changes. Applies in both
+/// game modes (Legacy and Adapted).
 /// </summary>
 public static class OfflineEconomy {
     private const int FIRST_ENTRY_ID = 900000; // shop item ids no shipped shop uses
@@ -25,9 +24,6 @@ public static class OfflineEconomy {
     private static readonly ILogger Logger = Log.Logger.ForContext(typeof(OfflineEconomy));
 
     public static Config? Load() {
-        if (!OfflineProfile.Adapted) {
-            return null;
-        }
         string path = Environment.GetEnvironmentVariable("OFFLINE_ECONOMY_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-economy.json");
         if (!File.Exists(path)) {
             return null;
@@ -52,10 +48,6 @@ public static class OfflineEconomy {
     /// original shop_merat.xml and the gacha prize pools) to the Meret Market. Shipped entries keep priority.
     /// </summary>
     public static MeretMarketTable Apply(MeretMarketTable table) {
-        if (!OfflineProfile.Adapted) {
-            Logger.Information("Legacy profile: offline Meret catalog and Meso-for-Meret pouches not applied");
-            return table;
-        }
         string path = Environment.GetEnvironmentVariable("OFFLINE_MERET_CATALOG_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json");
         if (!File.Exists(path)) {
             return table;
@@ -91,7 +83,7 @@ public static class OfflineEconomy {
     /// so the server must also know the full original tab list: Outfits (incl. Crate Spotlight), Summons, ...
     /// </summary>
     public static MeretMarketCategoryTable Apply(MeretMarketCategoryTable table) {
-        if (!OfflineProfile.Adapted || !File.Exists(Environment.GetEnvironmentVariable("OFFLINE_MERET_CATALOG_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json")) ||
+        if (!File.Exists(Environment.GetEnvironmentVariable("OFFLINE_MERET_CATALOG_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json")) ||
                 !table.Entries.TryGetValue(PREMIUM_SECTION, out IReadOnlyDictionary<int, MeretMarketCategoryTable.Tab>? premium) ||
                 !table.Entries.TryGetValue(RED_MERET_SECTION, out IReadOnlyDictionary<int, MeretMarketCategoryTable.Tab>? full)) {
             return table;
