@@ -1,4 +1,5 @@
-﻿using System.Diagnostics;
+﻿using Maple2.Database.Context;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
@@ -54,7 +55,7 @@ public partial class TriggerContext : ITriggerContext {
     /// (Previously only available in builds compiled with TRIGGER_DEBUG.)
     /// </summary>
     internal static readonly bool TraceEnabled =
-        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_TRIGGER_TRACE"), "true", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_TRIGGER_TRACE", false);
 
     [MessageTemplateFormatMethod("messageTemplate")]
     internal void DebugLog(string messageTemplate, params object[] args) {

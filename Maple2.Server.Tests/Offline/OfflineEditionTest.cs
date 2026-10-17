@@ -138,7 +138,7 @@ public class OfflineEditionTest {
         });
 
         try {
-            Environment.SetEnvironmentVariable("OFFLINE_UNLIMITED_DUNGEON_CLEARS", null);
+            Environment.SetEnvironmentVariable("OFFLINE_UNLIMITED_DUNGEON_CLEARS", "false");
             Assert.That(OfflineDungeons.Apply(shipped), Is.SameAs(shipped));
 
             Environment.SetEnvironmentVariable("OFFLINE_UNLIMITED_DUNGEON_CLEARS", "true");

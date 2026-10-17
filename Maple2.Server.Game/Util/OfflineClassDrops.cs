@@ -1,3 +1,4 @@
+using Maple2.Database.Context;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 
@@ -10,7 +11,7 @@ namespace Maple2.Server.Game.Util;
 /// </summary>
 public static class OfflineClassDrops {
     public static readonly bool Enabled =
-        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_CLASS_DROPS"), "true", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_CLASS_DROPS", true);
 
     /// <summary>True when the item may drop for players of these classes.</summary>
     public static bool Allowed(Item item, IEnumerable<JobCode> jobs) => !Enabled || AllowedFor(item.Metadata.Limit.JobLimits, jobs);

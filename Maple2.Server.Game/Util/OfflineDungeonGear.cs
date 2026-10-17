@@ -1,3 +1,4 @@
+using Maple2.Database.Context;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Server.Game.Util;
@@ -11,7 +12,7 @@ public static class OfflineDungeonGear {
     public const int EPIC = 4;
 
     public static readonly bool Enabled =
-        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_DUNGEON_EPIC_GEAR"), "true", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_DUNGEON_EPIC_GEAR", true);
 
     public static int Rarity(ItemMetadata metadata, int rarity, ItemOptionConstantTable constants, ItemOptionPickTable picks) {
         if (rarity >= EPIC || !OfflineGearRepair.IsGear(metadata)) {

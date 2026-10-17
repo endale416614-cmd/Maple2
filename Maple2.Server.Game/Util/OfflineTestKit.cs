@@ -1,4 +1,5 @@
-﻿using System.Text.Json;
+﻿using Maple2.Database.Context;
+using System.Text.Json;
 using Maple2.Tools;
 using Serilog;
 
@@ -17,7 +18,7 @@ public static class OfflineTestKit {
     private static readonly Lazy<HashSet<int>> LazyItems = new(() => LazyKits.Value.Values.SelectMany(kit => kit.Items).ToHashSet());
 
     public static readonly bool Enabled =
-        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_TESTKIT"), "true", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_TESTKIT", false);
 
     public static IReadOnlyDictionary<string, Kit> Kits => Enabled ? LazyKits.Value : new Dictionary<string, Kit>();
 

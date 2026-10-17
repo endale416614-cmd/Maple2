@@ -1,3 +1,4 @@
+using Maple2.Database.Context;
 using Maple2.Model.Metadata;
 
 namespace Maple2.Database.Storage;
@@ -11,7 +12,7 @@ public static class OfflineDungeons {
     public const int UnlimitedClears = 9999;
 
     public static bool Enabled =>
-        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_UNLIMITED_DUNGEON_CLEARS"), "true", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_UNLIMITED_DUNGEON_CLEARS", true);
 
     public static DungeonRoomTable Apply(DungeonRoomTable table) {
         if (!Enabled) {

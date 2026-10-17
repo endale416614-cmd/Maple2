@@ -1,3 +1,4 @@
+using Maple2.Database.Context;
 using System.Text.Json;
 using Maple2.Model;
 using Maple2.Model.Game;
@@ -24,7 +25,7 @@ public static class OfflineGrind {
     public sealed record ChestBonus(int[] InteractIds, int[] RareInteractIds, float RareMultiplier, ChestDrop[] Drops);
 
     public static readonly bool Enabled =
-        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_GRIND"), "true", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_GRIND", true);
 
     private static readonly Lazy<Config?> LazyConfig = new(Load);
 
