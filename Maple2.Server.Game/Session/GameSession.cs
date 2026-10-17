@@ -27,6 +27,7 @@ using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.World.Service;
+using Maple2.Tools;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
 using MigrationType = Maple2.Model.Enum.MigrationType;
@@ -310,8 +311,8 @@ public sealed partial class GameSession : Core.Network.Session {
 
         Send(SurvivalPacket.UpdateStats(player.Account));
 
-        Send(TimeSyncPacket.Reset(DateTimeOffset.UtcNow));
-        Send(TimeSyncPacket.Set(DateTimeOffset.UtcNow));
+        Send(TimeSyncPacket.Reset(GameClock.UtcNow));
+        Send(TimeSyncPacket.Set(GameClock.UtcNow));
 
         Stats.Refresh();
 
@@ -853,7 +854,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                     AccountId = AccountId,
                     CharacterId = CharacterId,
-                    LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+                    LastOnlineTime = GameClock.UtcNow.ToUnixTimeSeconds(),
                     MapId = 0,
                     Channel = -1,
                     Async = false,
@@ -906,7 +907,7 @@ public sealed partial class GameSession : Core.Network.Session {
             List<Buff> buffs = Buffs.GetSaveCacheBuffs();
             IList<SkillCooldown> skillCooldowns = Config.GetCurrentSkillCooldowns();
 
-            long stopTime = DateTime.Now.ToEpochSeconds();
+            long stopTime = GameClock.Now.ToEpochSeconds();
             long fieldTick = fieldTickSnapshot;
 
             try {

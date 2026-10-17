@@ -8,6 +8,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Channel.Service;
 using Maple2.Server.World.Containers;
+using Maple2.Tools;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
 using Serilog;
@@ -123,7 +124,7 @@ public class WorldServer {
         playerInfoLookup.Update(new PlayerUpdateRequest {
             AccountId = playerInfo.AccountId,
             CharacterId = playerInfo.CharacterId,
-            LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+            LastOnlineTime = GameClock.UtcNow.ToUnixTimeSeconds(),
             Channel = -1,
             Async = true,
         });
@@ -157,7 +158,7 @@ public class WorldServer {
         DateTime lastReset = db.GetLastDailyReset();
 
         // Get last midnight.
-        DateTime now = DateTime.Now;
+        DateTime now = GameClock.Now;
         var lastMidnight = new DateTime(now.Year, now.Month, now.Day);
         if (lastReset < lastMidnight) {
             db.DailyReset();
@@ -190,7 +191,7 @@ public class WorldServer {
         using GameStorage.Request db = gameStorage.Context();
         DateTime lastReset = db.GetLastWeeklyReset();
 
-        DateTime now = DateTime.Now;
+        DateTime now = GameClock.Now;
         int daysSinceReset = ((int) now.DayOfWeek - (int) Constant.ResetDay + 7) % 7;
         DateTime lastResetMidnight = now.Date.AddDays(-daysSinceReset);
 
@@ -224,7 +225,7 @@ public class WorldServer {
         using GameStorage.Request db = gameStorage.Context();
         DateTime lastReset = db.GetLastMonthlyReset();
 
-        DateTime now = DateTime.Now;
+        DateTime now = GameClock.Now;
         DateTime firstOfMonth = new DateTime(now.Year, now.Month, 1);
 
         if (lastReset < firstOfMonth) {
@@ -238,7 +239,7 @@ public class WorldServer {
 
     private void ScheduleMonthlyReset() {
         MonthlyReset();
-        DateTime now = DateTime.Now;
+        DateTime now = GameClock.Now;
         DateTime nextMonth = new DateTime(now.Year, now.Month, 1).AddMonths(1);
         scheduler.Schedule(ScheduleMonthlyReset, nextMonth - now);
     }
@@ -258,7 +259,7 @@ public class WorldServer {
         // Global Portal
         IReadOnlyDictionary<int, GlobalPortalMetadata> globalEvents = serverTableMetadata.TimeEventTable.GlobalPortal;
         foreach ((int eventId, GlobalPortalMetadata eventData) in globalEvents) {
-            if (eventData.EndTime < DateTime.Now) {
+            if (eventData.EndTime < GameClock.Now) {
                 continue;
             }
 
@@ -267,15 +268,15 @@ public class WorldServer {
                 continue;
             }
             DateTime startTime = eventData.StartTime;
-            if (DateTime.Now > startTime) {
+            if (GameClock.Now > startTime) {
                 // catch up to a time after the start time
-                while (startTime < DateTime.Now) {
+                while (startTime < GameClock.Now) {
                     startTime += eventData.CycleTime;
                 }
                 if (startTime > eventData.EndTime) {
                     continue;
                 }
-                scheduler.Schedule(() => GlobalPortal(eventData, startTime), startTime - DateTime.Now);
+                scheduler.Schedule(() => GlobalPortal(eventData, startTime), startTime - GameClock.Now);
             }
         }
     }
@@ -285,7 +286,7 @@ public class WorldServer {
         bool run = !(data.Probability < 100 && Random.Shared.Next(100) > data.Probability);
 
         if (run) {
-            DateTime now = DateTime.Now;
+            DateTime now = GameClock.Now;
             globalPortalLookup.Create(data, (long) (now.ToEpochSeconds() + data.LifeTime.TotalMilliseconds), out int eventId);
             if (!globalPortalLookup.TryGet(out GlobalPortalManager? manager)) {
                 logger.Error("Failed to create global portal");
@@ -311,13 +312,13 @@ public class WorldServer {
             return;
         }
 
-        scheduler.Schedule(() => GlobalPortal(data, nextRunTime), nextRunTime - DateTime.Now);
+        scheduler.Schedule(() => GlobalPortal(data, nextRunTime), nextRunTime - GameClock.Now);
     }
 
     private void StartWorldBossEvents() {
         int scheduled = 0;
         foreach ((int _, WorldBossMetadata boss) in serverTableMetadata.TimeEventTable.WorldBoss) {
-            if (boss.EndTime < DateTime.Now) {
+            if (boss.EndTime < GameClock.Now) {
                 continue;
             }
             if (boss.CycleTime == TimeSpan.Zero) {
@@ -325,9 +326,9 @@ public class WorldServer {
             }
 
             DateTime startTime = boss.StartTime;
-            if (DateTime.Now > startTime) {
+            if (GameClock.Now > startTime) {
                 // Catch up to the next scheduled spawn after now
-                while (startTime < DateTime.Now) {
+                while (startTime < GameClock.Now) {
                     startTime += boss.CycleTime;
                 }
                 if (startTime > boss.EndTime) {
@@ -335,7 +336,7 @@ public class WorldServer {
                 }
             }
 
-            TimeSpan delay = startTime - DateTime.Now;
+            TimeSpan delay = startTime - GameClock.Now;
             scheduler.Schedule(() => SpawnWorldBoss(boss, startTime), delay);
             scheduled++;
         }
@@ -358,8 +359,8 @@ public class WorldServer {
         } else if (worldBossLookup.TryGet(metadata.Id, out _)) {
             logger.Debug("WorldBoss {Id} still active from previous cycle — skipping spawn", metadata.Id);
         } else {
-            long spawnTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-            long endTick = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() + (long) metadata.LifeTime.TotalMilliseconds;
+            long spawnTimestamp = GameClock.UtcNow.ToUnixTimeSeconds();
+            long endTick = GameClock.UtcNow.ToUnixTimeMilliseconds() + (long) metadata.LifeTime.TotalMilliseconds;
             if (worldBossLookup.Create(metadata, endTick, nextSpawnTimestamp, out int eventId)) {
                 if (worldBossLookup.TryGet(metadata.Id, out WorldBossManager? manager)) {
                     manager.Boss.SpawnTimestamp = spawnTimestamp;
@@ -378,7 +379,7 @@ public class WorldServer {
             return;
         }
 
-        scheduler.Schedule(() => SpawnWorldBoss(metadata, nextSpawn), nextSpawn - DateTime.Now);
+        scheduler.Schedule(() => SpawnWorldBoss(metadata, nextSpawn), nextSpawn - GameClock.Now);
     }
 
     private async Task MonitorWorldBossLifetimeAsync(int metadataId, TimeSpan warnDelay, TimeSpan lifeTime, CancellationToken token) {
@@ -405,13 +406,13 @@ public class WorldServer {
         IEnumerable<GameEvent> events = serverTableMetadata.GetGameEvents().ToList();
         // Add Events
         // Get only events that havent been started. Started events already get loaded on game/login servers on start up
-        foreach (GameEvent data in events.Where(gameEvent => gameEvent.StartTime > DateTimeOffset.Now.ToUnixTimeSeconds())) {
-            scheduler.Schedule(() => AddGameEvent(data.Id), TimeSpan.FromSeconds(data.StartTime - DateTimeOffset.Now.ToUnixTimeSeconds()));
+        foreach (GameEvent data in events.Where(gameEvent => gameEvent.StartTime > GameClock.UtcNow.ToUnixTimeSeconds())) {
+            scheduler.Schedule(() => AddGameEvent(data.Id), TimeSpan.FromSeconds(data.StartTime - GameClock.UtcNow.ToUnixTimeSeconds()));
         }
 
         // Remove Events
-        foreach (GameEvent data in events.Where(gameEvent => gameEvent.EndTime > DateTimeOffset.Now.ToUnixTimeSeconds())) {
-            scheduler.Schedule(() => RemoveGameEvent(data.Id), TimeSpan.FromSeconds(data.EndTime - DateTimeOffset.Now.ToUnixTimeSeconds()));
+        foreach (GameEvent data in events.Where(gameEvent => gameEvent.EndTime > GameClock.UtcNow.ToUnixTimeSeconds())) {
+            scheduler.Schedule(() => RemoveGameEvent(data.Id), TimeSpan.FromSeconds(data.EndTime - GameClock.UtcNow.ToUnixTimeSeconds()));
         }
     }
 
@@ -423,11 +424,11 @@ public class WorldServer {
             foreach (PlotInfo plot in expiredPlots) {
                 bool forfeit = false;
                 try {
-                    if (plot.OwnerId > 0 && plot.ExpiryTime < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+                    if (plot.OwnerId > 0 && plot.ExpiryTime < GameClock.UtcNow.ToUnixTimeSeconds()) {
                         SetPlotAsPending(db, plot);
                         forfeit = true;
                         // mark as open when 3 days has passed since the expiry time
-                    } else if (plot.OwnerId == 0 && plot.ExpiryTime + Constants.UgcHomeSaleWaitingTime.TotalSeconds < DateTimeOffset.UtcNow.ToUnixTimeSeconds()) {
+                    } else if (plot.OwnerId == 0 && plot.ExpiryTime + Constants.UgcHomeSaleWaitingTime.TotalSeconds < GameClock.UtcNow.ToUnixTimeSeconds()) {
                         logger.Information("Marking plot {PlotId} as open (no owner)", plot.Id);
                         db.SetPlotOpen(plot.Id); // Mark as open
                     } else {
@@ -458,7 +459,7 @@ public class WorldServer {
         TimeSpan delay;
         if (nextPlot is not null) {
             DateTimeOffset nextExpiry = DateTimeOffset.FromUnixTimeSeconds(nextPlot.ExpiryTime);
-            delay = nextExpiry - DateTimeOffset.UtcNow;
+            delay = nextExpiry - GameClock.UtcNow;
             if (delay < TimeSpan.Zero) {
                 delay = TimeSpan.Zero;
             }

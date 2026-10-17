@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Model;
+using Maple2.Tools;
 using Microsoft.EntityFrameworkCore;
 
 namespace Maple2.Database.Storage;
@@ -23,7 +24,7 @@ public partial class GameStorage {
         private DateTime CreateServerInfo(string key) {
             var model = new ServerInfo {
                 Key = key,
-                LastModified = DateTime.Now,
+                LastModified = GameClock.Now,
             };
             Context.ServerInfo.Add(model);
             Context.SaveChanges();
@@ -34,7 +35,7 @@ public partial class GameStorage {
         public void DailyReset() {
             lock (Context) {
                 ServerInfo serverInfo = Context.ServerInfo.Find("DailyReset")!;
-                serverInfo.LastModified = DateTime.Now;
+                serverInfo.LastModified = GameClock.Now;
                 Context.Update(serverInfo);
                 Context.SaveChanges();
 
@@ -58,10 +59,10 @@ public partial class GameStorage {
             lock (Context) {
                 ServerInfo? serverInfo = Context.ServerInfo.Find("WeeklyReset");
                 if (serverInfo == null) {
-                    serverInfo = new ServerInfo { Key = "WeeklyReset", LastModified = DateTime.Now };
+                    serverInfo = new ServerInfo { Key = "WeeklyReset", LastModified = GameClock.Now };
                     Context.ServerInfo.Add(serverInfo);
                 } else {
-                    serverInfo.LastModified = DateTime.Now;
+                    serverInfo.LastModified = GameClock.Now;
                     Context.Update(serverInfo);
                 }
                 Context.SaveChanges();
@@ -80,10 +81,10 @@ public partial class GameStorage {
             lock (Context) {
                 ServerInfo? serverInfo = Context.ServerInfo.Find("MonthlyReset");
                 if (serverInfo == null) {
-                    serverInfo = new ServerInfo { Key = "MonthlyReset", LastModified = DateTime.Now };
+                    serverInfo = new ServerInfo { Key = "MonthlyReset", LastModified = GameClock.Now };
                     Context.ServerInfo.Add(serverInfo);
                 } else {
-                    serverInfo.LastModified = DateTime.Now;
+                    serverInfo.LastModified = GameClock.Now;
                     Context.Update(serverInfo);
                 }
                 Context.SaveChanges();
