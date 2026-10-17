@@ -1,3 +1,4 @@
+using Maple2.Database.Context;
 using System.Collections.Concurrent;
 
 namespace Maple2.Server.Game.Util;
@@ -12,7 +13,7 @@ public static class OfflineCheats {
     public const int UnstuckMapId = 2000076;
 
     public static readonly bool Enabled =
-        !string.Equals(Environment.GetEnvironmentVariable("OFFLINE_CHEATS"), "false", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_CHEATS", true);
 
     // By character id, so cheats survive map changes and dungeon migrations (new session) until the servers stop.
     private static readonly ConcurrentDictionary<long, byte> GodModeCharacters = new();

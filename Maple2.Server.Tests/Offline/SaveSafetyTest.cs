@@ -23,6 +23,7 @@ public class SaveSafetyTest {
 
     [SetUp]
     public void SetUp() {
+        GameStorage.MailNeverExpires = false; // the Adapted default is on; these tests start from the 30-day rule
         connection = new SqliteConnection("Data Source=:memory:");
         connection.Open();
         options = new DbContextOptionsBuilder().UseSqlite(connection).Options;

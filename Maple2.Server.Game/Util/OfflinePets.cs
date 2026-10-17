@@ -1,3 +1,4 @@
+using Maple2.Database.Context;
 using Maple2.Model.Game;
 
 namespace Maple2.Server.Game.Util;
@@ -13,7 +14,7 @@ public static class OfflinePets {
     private static readonly string[] TamingCategories = ["PetTaming", "PetTrap", "PetEx"]; // candy, G1-G3 snares
 
     public static readonly bool Enabled =
-        string.Equals(Environment.GetEnvironmentVariable("OFFLINE_PET_TAMING"), "true", StringComparison.OrdinalIgnoreCase);
+        OfflineProfile.Flag("OFFLINE_PET_TAMING", true);
 
     /// <summary>Wild-pet spawn chance per spawn cycle, out of <see cref="SPAWN_RATE_TOTAL"/>.</summary>
     public static int SpawnRate(int rate) => Enabled ? ScaledSpawnRate(rate) : rate;
