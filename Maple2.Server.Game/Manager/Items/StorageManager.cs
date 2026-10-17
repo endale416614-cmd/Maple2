@@ -12,7 +12,7 @@ using static Maple2.Model.Error.StorageInventoryError;
 
 namespace Maple2.Server.Game.Manager.Items;
 
-public sealed class StorageManager : IDisposable {
+public sealed class StorageManager {
     private const int BATCH_SIZE = 10;
 
     private readonly GameSession session;
@@ -42,14 +42,10 @@ public sealed class StorageManager : IDisposable {
         }
     }
 
-    public void Dispose() {
-        using GameStorage.Request db = session.GameStorage.Context();
-        lock (session.Item) {
-            db.SaveStorageInfo(session.AccountId, mesos, expand);
-            db.SaveItems(session.AccountId, items.ToArray());
-
-            session.Storage = null;
-        }
+    // Part of the session's atomic save; the caller holds the item lock.
+    public void Save(GameStorage.Request db) {
+        db.Ensure(db.SaveStorageInfo(session.AccountId, mesos, expand), "storage info");
+        db.Ensure(db.SaveItems(session.AccountId, items.ToArray()), "storage items");
     }
 
     public void Delete(long uid) {

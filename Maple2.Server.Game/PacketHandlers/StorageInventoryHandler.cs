@@ -49,7 +49,6 @@ public class StorageInventoryHandler : FieldPacketHandler {
                 HandleLoad(session);
                 return;
             case Command.Close:
-                HandleClose(session);
                 return;
         }
     }
@@ -110,16 +109,9 @@ public class StorageInventoryHandler : FieldPacketHandler {
         session.Storage?.Delete(uid);
     }
 
+    // The vault stays loaded until the session ends, so every session save (autosave, map change, leave) includes it.
     private static void HandleLoad(GameSession session) {
-        if (session.Storage != null) {
-            return;
-        }
-
-        session.Storage = new StorageManager(session);
+        session.Storage ??= new StorageManager(session);
         session.Storage.Load();
-    }
-
-    private static void HandleClose(GameSession session) {
-        session.Storage?.Dispose();
     }
 }
