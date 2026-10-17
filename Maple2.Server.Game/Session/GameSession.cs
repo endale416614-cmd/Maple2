@@ -53,6 +53,8 @@ public sealed partial class GameSession : Core.Network.Session {
     public Guid MachineId { get; private set; }
     private bool preMigrationSaved;
     private bool activeStatusWritten;
+    private bool autosaveScheduled;
+    private static readonly ConcurrentDictionary<long, byte> GearRepaired = new();
     private long statusSession;
     private string? lastSaveError;
 
@@ -134,8 +136,17 @@ public sealed partial class GameSession : Core.Network.Session {
         return field is not null;
     }
 
+    // Scheduler.Stop on map change only pauses events, so the repeated save survives map changes and is added once.
+    private void ScheduleAutosave() {
+        if (autosaveScheduled) return;
+        autosaveScheduled = true;
+        Scheduler.ScheduleRepeated(() => SessionSave(), TimeSpan.FromMinutes(5), skipFirst: true);
+    }
+
     // EpicGear (1.1.5, removed) created gear without base stats; repaired before the item managers load the items.
+    // Once per character per server process: every migration (channel, instance) starts a new session.
     private void RepairGearWithoutStats() {
+        if (!GearRepaired.TryAdd(CharacterId, 0)) return;
         try {
             using GameStorage.Request repairDb = GameStorage.Context();
             OfflineGearRepair.RepairOwners(repairDb, ItemStatsCalc, TableMetadata, Logger, CharacterId, AccountId);
@@ -393,7 +404,6 @@ public sealed partial class GameSession : Core.Network.Session {
         Array.Clear(DismantleStaging);
         DismantleOpened = false;
         Trade?.Dispose();
-        Storage?.Dispose();
         Pet?.Dispose();
         Instrument = null;
         GuideObject = null;
@@ -471,6 +481,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Player.Value.Unlock.Maps.Add(Player.Value.Character.MapId);
         Config.LoadHotBars();
         Field.OnAddPlayer(Player);
+        ScheduleAutosave();
         Scheduler.Start();
         State = SessionState.Connected;
 
@@ -777,9 +788,16 @@ public sealed partial class GameSession : Core.Network.Session {
         const int backoffMs = 500;
 
         while (retryCount < maxRetries) {
-            LockResponse? response = World.AcquireLock(new LockRequest {
-                AccountId = accountId,
-            });
+            LockResponse? response;
+            try {
+                response = World.AcquireLock(new LockRequest {
+                    AccountId = accountId,
+                });
+            } catch (RpcException ex) {
+                // Single player on SQLite: saving without the lock beats failing the save.
+                Logger.Error(ex, "Failed to acquire lock for account {AccountId}, continuing without it", accountId);
+                return;
+            }
 
             if (string.IsNullOrEmpty(response.Error)) {
                 return;
@@ -820,36 +838,41 @@ public sealed partial class GameSession : Core.Network.Session {
         bool leaveSaved = false;
         string? leaveError = null;
 
-        if (State == SessionState.Connected) {
-            PlayerInfo.SendUpdate(new PlayerUpdateRequest {
-                AccountId = AccountId,
-                CharacterId = CharacterId,
-                LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
-                MapId = 0,
-                Channel = -1,
-                Async = false,
-            });
-
-            Party.CheckDisband();
+        // Save first: a failure in the cleanup below must not skip the save, which is never retried.
+        try {
+            Player.Value.Character.Channel = -1;
+            Player.Value.Account.Online = false;
+            leaveSaved = MigrationSave();
+        } catch (Exception ex) {
+            leaveError = ex.Message;
+            Logger.Error(ex, "Error saving {Player} on session end", PlayerName);
         }
 
         try {
+            if (leavingGame) {
+                PlayerInfo.SendUpdate(new PlayerUpdateRequest {
+                    AccountId = AccountId,
+                    CharacterId = CharacterId,
+                    LastOnlineTime = DateTime.UtcNow.ToEpochSeconds(),
+                    MapId = 0,
+                    Channel = -1,
+                    Async = false,
+                });
+
+                try { Party.CheckDisband(); } catch (Exception ex) { Logger.Error(ex, "Error disbanding party for {Player}", PlayerName); }
+            }
+
             Scheduler.Stop();
             if (OnLoop != null) OnLoop -= Scheduler.InvokeAll;
             server.OnDisconnected(this);
             LeaveField();
-            Player.Value.Character.Channel = -1;
-            Player.Value.Account.Online = false;
             State = SessionState.Disconnected;
 
             // Early base dispose to stop further network sends
             base.Dispose(disposing);
 
-            // Cache config & persistence
             SaveCacheConfig();
-            leaveSaved = MigrationSave();
         } catch (Exception ex) {
-            leaveError = ex.Message;
             Logger.Error(ex, "Error during session cleanup for {Player}", PlayerName);
         } finally {
             // Also after a migration: if the client never reaches the next session (closed or crashed while changing
@@ -982,6 +1005,7 @@ public sealed partial class GameSession : Core.Network.Session {
                 ("quests", request => Quest.Save(request)),
                 ("dungeons", request => Dungeon.Save(request)),
                 ("mail", request => Mail.Save(request)),
+                ("storage", request => Storage?.Save(request)),
             };
 
             if (!db.SaveAtomic(components, out string? failedComponent, out Exception? error)) {

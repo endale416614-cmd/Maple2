@@ -23,12 +23,17 @@ public class PacketRouter<T> where T : Session {
         PacketHandler<T>? handler = handlers.GetValueOrDefault(op);
         if (sender is not T session) return;
 
-        // Let another system schedule when to call Handle
-        if (handler?.TryHandleDeferred(session, reader) ?? false) {
-            return;
-        }
+        // One failing handler must not disconnect the session.
+        try {
+            // Let another system schedule when to call Handle
+            if (handler?.TryHandleDeferred(session, reader) ?? false) {
+                return;
+            }
 
-        handler?.Handle(session, reader);
+            handler?.Handle(session, reader);
+        } catch (Exception ex) {
+            logger.Error(ex, "Packet handler failed for {OpCode} {Handler}", $"0x{(ushort) op:X4}", handler?.GetType().Name);
+        }
     }
 
     private void Register(ImmutableDictionary<RecvOp, PacketHandler<T>>.Builder builder, PacketHandler<T> packetHandler) {
