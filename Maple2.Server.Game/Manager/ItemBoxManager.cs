@@ -79,25 +79,6 @@ public class ItemBoxManager {
         var keyIngredient = new IngredientInfo(Enum.Parse<ItemTag>(parameters["keyItemTag"]), 1);
         var totalItems = new List<Item>();
         for (int startCount = 0; startCount < count; startCount++) {
-            if (!session.Item.Inventory.Consume([keyIngredient])) {
-                return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
-            }
-
-            if (autoPay) {
-                if (!session.Item.Inventory.Consume([boxIngredient])) {
-                    int.TryParse(parameters["boxPrice"], out int mesoCost);
-                    mesoCost = Math.Max(mesoCost, 0);
-                    if (session.Currency.CanAddMeso(-mesoCost) != -mesoCost) {
-                        return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
-                    }
-                    session.Currency.Meso -= mesoCost;
-                }
-            } else {
-                if (!session.Item.Inventory.Consume([boxIngredient])) {
-                    return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
-                }
-            }
-
             // common dropbox items
             ICollection<Item> items = session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, unCommonBoxId);
 
@@ -105,6 +86,20 @@ public class ItemBoxManager {
             items = items.Concat(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, commonBoxId)).ToList();
             if (items.Count == 0) {
                 return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
+            }
+
+            // Key and box go together or not at all; with autoPay a missing box is bought for meso, checked before the key is taken.
+            if (!session.Item.Inventory.Consume([keyIngredient, boxIngredient])) {
+                if (!autoPay) {
+                    return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                }
+
+                int.TryParse(parameters["boxPrice"], out int mesoCost);
+                mesoCost = Math.Max(mesoCost, 0);
+                if (session.Currency.CanAddMeso(-mesoCost) != -mesoCost || !session.Item.Inventory.Consume([keyIngredient])) {
+                    return ItemBoxError.s_err_cannot_open_multi_itembox_inventory;
+                }
+                session.Currency.Meso -= mesoCost;
             }
 
             foreach (Item newItem in items) {

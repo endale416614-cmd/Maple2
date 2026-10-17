@@ -8,23 +8,47 @@ public static class Shop {
     // Hardcoded values used for items with level >= 57
     private static readonly int[] PRICES = [1541, 1926, 2465, 9256, 11339, 13653];
 
+    /// <summary>Price of one item, 0 when the rarity has no price entry.</summary>
     public static long SellPrice(ItemMetadata metadata, ItemType type, int rarity) {
+        return TryUnitPrice(metadata, type, rarity, out long price) ? price : 0;
+    }
+
+    /// <summary>Total for <paramref name="quantity"/> items. False for quantity &lt;= 0, a rarity without a price entry, or overflow.</summary>
+    public static bool TrySellPrice(ItemMetadata metadata, ItemType type, int rarity, int quantity, out long price) {
+        price = 0;
+        if (quantity <= 0 || !TryUnitPrice(metadata, type, rarity, out long unit) || unit > long.MaxValue / quantity) {
+            return false;
+        }
+
+        price = unit * quantity;
+        return true;
+    }
+
+    private static bool TryUnitPrice(ItemMetadata metadata, ItemType type, int rarity, out long price) {
+        int index = rarity - 1;
+        price = 0;
+        if (index < 0) {
+            return false;
+        }
+
         if (metadata.Limit.Level >= 57) {
-            return PRICES[rarity - 1];
-        }
-
-        if (metadata.Property.CustomSellPrices[rarity - 1] > 0) {
-            if (rarity < 4 && (type.IsArmor || type.IsWeapon)) {
-                return (long) Math.Floor(metadata.Property.CustomSellPrices[rarity - 1] * 0.333);
+            if (index >= PRICES.Length) {
+                return false;
             }
-            return metadata.Property.CustomSellPrices[rarity - 1];
+            price = PRICES[index];
+            return true;
         }
 
-        if (metadata.Limit.Level < 57 && rarity < 4 && (type.IsArmor || type.IsWeapon)) {
-            return (long) Math.Floor(metadata.Property.SellPrices[rarity - 1] * 0.333);
+        long[] sellPrices = metadata.Property.SellPrices;
+        long[] customPrices = metadata.Property.CustomSellPrices;
+        if (index >= sellPrices.Length) {
+            return false;
         }
 
-        return metadata.Property.SellPrices[rarity - 1];
+        bool discounted = rarity < 4 && (type.IsArmor || type.IsWeapon);
+        long basePrice = index < customPrices.Length && customPrices[index] > 0 ? customPrices[index] : sellPrices[index];
+        price = discounted ? (long) Math.Floor(basePrice * 0.333) : basePrice;
+        return true;
     }
 
     public static (ShopCurrencyType CurrencyType, int Cost) ExcessRestockCost(ShopCurrencyType excessCurrencyType, int restockCount) {

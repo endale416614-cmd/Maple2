@@ -478,12 +478,18 @@ public sealed class ShopManager {
             return;
         }
 
+        if (!session.Item.Inventory.Add(item, true)) {
+            logger.Error("Failed to add bought item {ItemId} x{Quantity} for {CharacterId}, refunding", item.Id, quantity, session.CharacterId);
+            Refund(shopItem.Metadata.Cost, price);
+            session.Send(ShopPacket.Error(ShopError.s_err_inventory));
+            return;
+        }
+
         if (activeShop.Metadata.EnableReset && shopItem.StockCount > 0) {
             UpdateStockCount(activeShop.Id, shopItem, quantity);
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.Metadata.SellUnit));
         }
 
-        session.Item.Inventory.Add(item, true);
         session.Send(ShopPacket.Buy(shopItem, shopItem.Metadata.SellUnit * quantity, price));
     }
 
@@ -524,19 +530,28 @@ public sealed class ShopManager {
             return;
         }
 
+        // Inventory.Remove treats an amount <= 0 as the whole stack
+        if (quantity <= 0) {
+            return;
+        }
+
         Item? item = session.Item.Inventory.Get(itemUid);
         if (item == null || !item.Metadata.Limit.ShopSell) {
             return;
         }
 
-        if (!session.Item.Inventory.Remove(item.Uid, out item, quantity)) {
-            logger.Error("Failed to remove item {Uid} from inventory", itemUid);
+        // Price and room for the meso are checked before the item is taken
+        if (!Core.Formulas.Shop.TrySellPrice(item.Metadata, item.Type, item.Rarity, quantity, out long sellPrice)) {
+            logger.Error("No sell price for item {ItemId} rarity {Rarity} quantity {Quantity}", item.Id, item.Rarity, quantity);
+            return;
+        }
+        if (session.Currency.CanAddMeso(sellPrice) != sellPrice) {
+            logger.Error("Could not add {sellPrice} meso(s) to player {CharacterId}", sellPrice, session.CharacterId);
             return;
         }
 
-        long sellPrice = Core.Formulas.Shop.SellPrice(item.Metadata, item.Type, item.Rarity);
-        if (session.Currency.CanAddMeso(sellPrice) != sellPrice) {
-            logger.Error("Could not add {sellPrice} meso(s) to player {CharacterId}", sellPrice, session.CharacterId);
+        if (!session.Item.Inventory.Remove(item.Uid, out item, quantity)) {
+            logger.Error("Failed to remove item {Uid} from inventory", itemUid);
             return;
         }
 
@@ -562,18 +577,7 @@ public sealed class ShopManager {
     /// The balance check and the deduction use the same amount.
     /// </summary>
     public static bool TryPayToken(ShopCurrencyType shopCurrency, int price, Func<CurrencyType, long> getBalance, Action<CurrencyType, long> setBalance) {
-        CurrencyType currencyType = shopCurrency switch {
-            ShopCurrencyType.ValorToken => CurrencyType.ValorToken,
-            ShopCurrencyType.Treva => CurrencyType.Treva,
-            ShopCurrencyType.Rue => CurrencyType.Rue,
-            ShopCurrencyType.HaviFruit => CurrencyType.HaviFruit,
-            ShopCurrencyType.StarPoint => CurrencyType.StarPoint,
-            ShopCurrencyType.MenteeToken => CurrencyType.MenteeToken,
-            ShopCurrencyType.MentorToken => CurrencyType.MentorToken,
-            ShopCurrencyType.MesoToken => CurrencyType.MesoToken,
-            ShopCurrencyType.ReverseCoin => CurrencyType.ReverseCoin,
-            _ => CurrencyType.None,
-        };
+        CurrencyType currencyType = TokenCurrency(shopCurrency);
         if (currencyType == CurrencyType.None || price < 0) {
             return false;
         }
@@ -585,6 +589,62 @@ public sealed class ShopManager {
 
         setBalance(currencyType, balance - price);
         return true;
+    }
+
+    private static CurrencyType TokenCurrency(ShopCurrencyType shopCurrency) {
+        return shopCurrency switch {
+            ShopCurrencyType.ValorToken => CurrencyType.ValorToken,
+            ShopCurrencyType.Treva => CurrencyType.Treva,
+            ShopCurrencyType.Rue => CurrencyType.Rue,
+            ShopCurrencyType.HaviFruit => CurrencyType.HaviFruit,
+            ShopCurrencyType.StarPoint => CurrencyType.StarPoint,
+            ShopCurrencyType.MenteeToken => CurrencyType.MenteeToken,
+            ShopCurrencyType.MentorToken => CurrencyType.MentorToken,
+            ShopCurrencyType.MesoToken => CurrencyType.MesoToken,
+            ShopCurrencyType.ReverseCoin => CurrencyType.ReverseCoin,
+            _ => CurrencyType.None,
+        };
+    }
+
+    /// <summary>Gives back <paramref name="price"/> paid in a token-like currency.</summary>
+    public static bool TryRefundToken(ShopCurrencyType shopCurrency, int price, Func<CurrencyType, long> getBalance, Action<CurrencyType, long> setBalance) {
+        CurrencyType currencyType = TokenCurrency(shopCurrency);
+        if (currencyType == CurrencyType.None || price < 0) {
+            return false;
+        }
+
+        setBalance(currencyType, getBalance(currencyType) + price);
+        return true;
+    }
+
+    // Reverses Pay, for a purchase that failed after the price was taken.
+    private void Refund(ShopCost cost, int price) {
+        switch (cost.Type) {
+            case ShopCurrencyType.Meso:
+                session.Currency.Meso += price;
+                break;
+            case ShopCurrencyType.Meret:
+            case ShopCurrencyType.EventMeret:
+                session.Currency.Meret += price;
+                break;
+            case ShopCurrencyType.GameMeret:
+                session.Currency.GameMeret += price;
+                break;
+            case ShopCurrencyType.Item:
+                if (price > 0 && session.ItemMetadata.TryGet(cost.ItemId, out ItemMetadata? metadata) &&
+                    session.Item.Inventory.Add(new Item(metadata, amount: price), true)) {
+                    break;
+                }
+                if (price > 0) {
+                    logger.Error("Could not refund {Price} of payment item {ItemId} to {CharacterId}", price, cost.ItemId, session.CharacterId);
+                }
+                break;
+            default:
+                if (!TryRefundToken(cost.Type, price, type => session.Currency[type], (type, value) => session.Currency[type] = value)) {
+                    logger.Error("Could not refund {Price} of {Currency} to {CharacterId}", price, cost.Type, session.CharacterId);
+                }
+                break;
+        }
     }
 
     private bool Pay(ShopCost cost, int price) {

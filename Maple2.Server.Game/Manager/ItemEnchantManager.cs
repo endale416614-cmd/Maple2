@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using Maple2.Model;
+using Maple2.Model.Enum;
 using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
@@ -299,8 +300,9 @@ public class ItemEnchantManager {
                 return false;
             }
             foreach ((long fodderUid, _) in fodders) {
+                // Same conditions Consume(uid, 1) fails on, so no fodder consume can fail once the catalysts are gone
                 Item? item = session.Item.Inventory.Get(fodderUid);
-                if (item == null) {
+                if (item == null || item.IsExpired() || item.Amount < 1) {
                     session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
                     return false;
                 }
@@ -515,15 +517,16 @@ public class ItemEnchantManager {
         }
 
         lock (session.Item) {
+            if (session.Currency.CanAddMeso(-mesoCost) != -mesoCost) {
+                session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_meso));
+                return false;
+            }
+
             if (!session.Item.Inventory.Consume(catalysts)) {
                 session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_ingredient));
                 return false;
             }
 
-            if (session.Currency.CanAddMeso(-mesoCost) != -mesoCost) {
-                session.Send(LimitBreakPacket.Error(LimitBreakError.s_unlimited_enchant_err_lack_meso));
-                return false;
-            }
             session.Currency.Meso -= mesoCost;
             return true;
         }
