@@ -17,7 +17,7 @@ public class GameEvent : IByteSerializable {
     }
 
     public bool IsActive() {
-        DateTimeOffset now = DateTimeOffset.UtcNow;
+        DateTimeOffset now = GameClock.UtcNow;
         if (Metadata.StartTime > now) {
             return false;
         }

@@ -7,6 +7,7 @@ using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Tools;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -44,7 +45,7 @@ public sealed class GameEventManager {
         foreach (GameEventUserValue userValue in values) {
             // Remove if the event is no longer active or the value has expired
             if (events.All(gameEvent => gameEvent.Id != userValue.EventId) ||
-                userValue.ExpirationTime < DateTime.Now.ToEpochSeconds()) {
+                userValue.ExpirationTime < GameClock.Now.ToEpochSeconds()) {
                 db.RemoveGameEventUserValue(userValue, session.CharacterId);
                 continue;
             }
@@ -71,7 +72,7 @@ public sealed class GameEventManager {
             if (gameEvent.Metadata.Data is not DTReward dtReward) {
                 continue;
             }
-            DateTime now = DateTime.Now;
+            DateTime now = GameClock.Now;
 
             GameEventUserValue rewardIndexValue = Get(GameEventUserValueType.DTRewardRewardIndex, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
 
@@ -80,7 +81,7 @@ public sealed class GameEventManager {
             }
 
             GameEventUserValue userValue = Get(GameEventUserValueType.DTRewardStartTime, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
-            Set(gameEvent.Id, GameEventUserValueType.DTRewardStartTime, DateTime.Now.ToEpochSeconds());
+            Set(gameEvent.Id, GameEventUserValueType.DTRewardStartTime, GameClock.Now.ToEpochSeconds());
             userValue = Get(GameEventUserValueType.DTRewardCurrentTime, gameEvent.Id, now.AddDays(1).ToEpochSeconds());
             Set(gameEvent.Id, GameEventUserValueType.DTRewardCurrentTime, userValue.Long() + 1);
 
@@ -152,7 +153,7 @@ public sealed class GameEventManager {
             valueDict.Add(type, new GameEventUserValue(type, expirationTime, eventId));
         }
 
-        if (eventValues[eventId][type].ExpirationTime < DateTime.Now.ToEpochSeconds()) {
+        if (eventValues[eventId][type].ExpirationTime < GameClock.Now.ToEpochSeconds()) {
             eventValues[eventId][type] = new GameEventUserValue(type, expirationTime, eventId);
         }
 
@@ -165,7 +166,7 @@ public sealed class GameEventManager {
         IEnumerable<GameEventUserValue> accumulatedTimeValues =
             eventValues.Values.SelectMany(dict => dict.Values.Where(value => value.Type == GameEventUserValueType.AttendanceAccumulatedTime));
         foreach (GameEventUserValue userValue in accumulatedTimeValues) {
-            userValue.SetValue((DateTime.Now.AddSeconds(userValue.Long()) - session.Player.Value.Character.LastModified).Seconds.ToString());
+            userValue.SetValue((GameClock.Now.AddSeconds(userValue.Long()) - session.Player.Value.Character.LastModified).Seconds.ToString());
         }
         db.Ensure(db.SaveGameEventUserValues(session.CharacterId, eventValues.Values.SelectMany(value => value.Values).ToList()), "game event values");
     }
