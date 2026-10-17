@@ -35,7 +35,17 @@ public sealed class BlackMarketManager {
         session.Send(BlackMarketPacket.MyListings(entries));
     }
 
+    /// <summary>A listing needs a positive price and quantity, and a total that fits a long.</summary>
+    public static bool IsValidOffer(long price, int quantity) {
+        return price > 0 && quantity > 0 && price <= long.MaxValue / quantity;
+    }
+
     public void Add(long itemUid, long price, int quantity) {
+        if (!IsValidOffer(price, quantity)) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register));
+            return;
+        }
+
         Item? item = session.Item.Inventory.Get(itemUid);
         if (item == null) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_register_not_exist_in_inven));
@@ -59,11 +69,12 @@ public sealed class BlackMarketManager {
             return;
         }
 
-        session.Currency.Meso -= depositFee;
-
+        // Take the item first: the fee is only charged once it is gone, and the meso was checked above.
         if (!session.Item.Inventory.Remove(itemUid, out item, quantity)) {
             return;
         }
+
+        session.Currency.Meso -= depositFee;
 
         var listing = new BlackMarketListing(item) {
             AccountId = session.AccountId,
@@ -108,18 +119,6 @@ public sealed class BlackMarketManager {
             return;
         }
 
-        BlackMarketResponse response = session.World.BlackMarket(new BlackMarketRequest {
-            Remove = new BlackMarketRequest.Types.Remove {
-                ListingId = listingId,
-            },
-        });
-
-        var error = (BlackMarketError) response.Error;
-        if (error != BlackMarketError.none) {
-            session.Send(BlackMarketPacket.Error(error));
-            return;
-        }
-
         long deposit = listing.ExpiryTime < DateTime.Now.ToEpochSeconds() ? listing.Deposit : 0;
 
         var mail = new Mail {
@@ -145,6 +144,8 @@ public sealed class BlackMarketManager {
         mail.SetContent(StringCode.s_blackmarket_mail_to_cancel_content);
         mail.SetSenderName(StringCode.s_blackmarket_mail_to_sender);
 
+        // The mail (with the item attached, in one transaction) comes first: if it fails the listing is still there.
+        mail.Items.Add(listing.Item);
         mail = db.CreateMail(mail);
         if (mail == null) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_close));
@@ -152,13 +153,29 @@ public sealed class BlackMarketManager {
             return;
         }
 
-        mail.Items.Add(listing.Item);
-        db.SaveItems(mail.Id, listing.Item);
+        BlackMarketResponse response = session.World.BlackMarket(new BlackMarketRequest {
+            Remove = new BlackMarketRequest.Types.Remove {
+                ListingId = listingId,
+            },
+        });
+
+        var error = (BlackMarketError) response.Error;
+        if (error != BlackMarketError.none) {
+            // The item is in the mail now; make sure the listing cannot be bought as well.
+            logger.Error("Black market listing {ListingId} not removed after mailing it back: {Error}", listingId, error);
+            db.DeleteBlackMarketListing(listingId);
+        }
+
         session.Send(BlackMarketPacket.Remove(listingId));
         session.Mail.Notify(true);
     }
 
     public void Purchase(long listingId, int quantity) {
+        if (quantity <= 0) {
+            session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_purchase_count));
+            return;
+        }
+
         using GameStorage.Request db = session.GameStorage.Context();
         BlackMarketListing? listing = db.GetBlackMarketListing(listingId);
         if (listing == null) {

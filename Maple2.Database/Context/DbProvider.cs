@@ -30,7 +30,6 @@ public static class DbProvider {
         ("mail", 100000),
         ("guild", 70000000000),
         ("ugc-market-item", 90000000001),
-        ("premium-market-item", 100000000000),
         ("system-banner", 10000),
         ("black-market-listing", 110000000000),
     ];
@@ -152,7 +151,7 @@ public static class DbProvider {
 
     /// <summary>
     /// Additive save upgrade for SQLite (EnsureCreated never changes an existing database): creates missing tables
-    /// and indexes and adds missing columns (NOT NULL columns get the type's zero value). Never drops or alters
+    /// and indexes and adds missing columns (NOT NULL columns get a default their reader can parse: 0, empty text, {} or [] for JSON, the zero date or Guid). Never drops or alters
     /// existing data. Returns the statements it ran.
     /// </summary>
     public static IReadOnlyList<string> UpgradeSqliteSchema(DbContext context) {
@@ -194,7 +193,7 @@ public static class DbProvider {
                     continue;
                 }
                 string type = property.GetColumnType(store);
-                string definition = property.IsColumnNullable(store) ? type : $"{type} NOT NULL DEFAULT {ZeroValue(type)}";
+                string definition = property.IsColumnNullable(store) ? type : $"{type} NOT NULL DEFAULT {ZeroValue(property, type)}";
                 context.Database.ExecuteSqlRaw(EscapeBraces($"ALTER TABLE \"{table}\" ADD COLUMN \"{column}\" {definition}"));
                 columns.Add(column);
                 applied.Add($"column {table}.{column}");
@@ -218,7 +217,22 @@ public static class DbProvider {
         }
         return applied;
 
-        static string ZeroValue(string type) {
+        // A default the column's reader can parse: '' breaks JSON, DateTime and Guid columns.
+        static string ZeroValue(IProperty property, string type) {
+            Type clr = Nullable.GetUnderlyingType(property.ClrType) ?? property.ClrType;
+            if (clr == typeof(DateTime) || clr == typeof(DateTimeOffset)) {
+                return "'0001-01-01 00:00:00'";
+            }
+            if (clr == typeof(Guid)) {
+                return "'00000000-0000-0000-0000-000000000000'";
+            }
+            // JSON columns are the converted properties of a class or collection type (SQLite stores them as TEXT).
+            if ((property.GetValueConverter() ?? property.FindTypeMapping()?.Converter) != null && !clr.IsPrimitive && !clr.IsEnum && clr != typeof(string)) {
+                bool isDictionary = typeof(System.Collections.IDictionary).IsAssignableFrom(clr) || clr.GetInterfaces().Concat([clr])
+                    .Any(i => i.IsGenericType && i.GetGenericTypeDefinition() is var d && (d == typeof(IDictionary<,>) || d == typeof(IReadOnlyDictionary<,>)));
+                return !isDictionary && typeof(System.Collections.IEnumerable).IsAssignableFrom(clr) ? "'[]'" : "'{}'";
+            }
+
             string upper = type.ToUpperInvariant();
             return upper.Contains("INT") || upper.Contains("REAL") || upper.Contains("NUM") || upper.Contains("FLOA") || upper.Contains("DOUB")
                 ? "0"

@@ -13,7 +13,7 @@ public static class ChatUtil {
         }
 
         // Saving the item to ensure the latest changes can be seen when broadcasted
-        GameStorage.Request db = session.GameStorage.Context();
+        using GameStorage.Request db = session.GameStorage.Context();
         db.SaveItems(session.CharacterId, item);
 
         const int unknownMode = 3;
