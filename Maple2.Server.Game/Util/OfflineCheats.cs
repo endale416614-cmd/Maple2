@@ -13,7 +13,7 @@ public static class OfflineCheats {
     public const int UnstuckMapId = 2000076;
 
     public static readonly bool Enabled =
-        OfflineProfile.Flag("OFFLINE_CHEATS", true);
+        OfflineProfile.Option("OFFLINE_CHEATS", true); // both modes
 
     // By character id, so cheats survive map changes and dungeon migrations (new session) until the servers stop.
     private static readonly ConcurrentDictionary<long, byte> GodModeCharacters = new();

@@ -15,7 +15,7 @@ public partial class GameStorage {
     // Offline edition (OFFLINE_MAIL_NEVER_EXPIRES=true, launcher.ini MailNeverExpires): mail stays until the player deletes
     // it. Its expiry is kept about five years ahead (inside the 32-bit time range) and moved forward when mail is loaded.
     public static bool MailNeverExpires { get; set; } =
-        OfflineProfile.Flag("OFFLINE_MAIL_NEVER_EXPIRES", true);
+        OfflineProfile.Option("OFFLINE_MAIL_NEVER_EXPIRES", true); // both modes
     public const int NeverExpiresDays = 1825;
 
     // Mail ids start at 100000 and stay below the first account id, so an item owned by an id in this range is a mail attachment.
