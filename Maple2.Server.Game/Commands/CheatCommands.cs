@@ -18,16 +18,19 @@ namespace Maple2.Server.Game.Commands;
 
 // Offline edition cheats for every player (see OfflineCheats). AdminPermissions.None = no admin rights needed.
 
-/// <summary>/godmode: toggles taking no damage and killing any NPC in one hit.</summary>
+/// <summary>/godmode [--protect]: toggles taking no damage and killing any NPC in one hit; --protect leaves the player's
+/// damage as it is (play tests that measure it).</summary>
 public class GodModeCommand : GameCommand {
     private readonly GameSession session;
 
     public GodModeCommand(GameSession session) : base(AdminPermissions.None, "godmode", "Toggle god mode: no damage taken, every hit kills.") {
         this.session = session;
-        this.SetHandler<InvocationContext>(Handle);
+        var protect = new Option<bool>(["--protect", "-p"], () => false, "Only take no damage; hits do their normal damage.");
+        AddOption(protect);
+        this.SetHandler<InvocationContext, bool>(Handle, protect);
     }
 
-    private void Handle(InvocationContext ctx) {
+    private void Handle(InvocationContext ctx, bool protect) {
         if (!OfflineCheats.Enabled) {
             ctx.Console.Error.WriteLine("Cheats are off. Set CheatCommands=true in launcher.ini and restart the game.");
             return;
@@ -36,11 +39,13 @@ public class GodModeCommand : GameCommand {
             return;
         }
 
-        bool on = OfflineCheats.ToggleGodMode(session.CharacterId);
+        bool on = OfflineCheats.ToggleGodMode(session.CharacterId, protect);
         if (on) {
             FieldPlayer player = session.Player;
             player.RecoverHp((int) Math.Min(int.MaxValue, player.Stats.Values[BasicAttribute.Health].Total));
-            ctx.Console.Out.WriteLine("God mode ON: you take no damage and every hit kills. Type /godmode again to turn it off.");
+            ctx.Console.Out.WriteLine(protect
+                ? "God mode ON (protect): you take no damage; your hits do their normal damage. Type /godmode again to turn it off."
+                : "God mode ON: you take no damage and every hit kills. Type /godmode again to turn it off.");
         } else {
             ctx.Console.Out.WriteLine("God mode OFF.");
         }
@@ -141,6 +146,64 @@ public class FreebiesCommand : GameCommand {
         } else {
             ctx.Console.Out.WriteLine("Freebies OFF.");
         }
+    }
+}
+
+/// <summary>/allboxes: toggles making map scripts see you inside every trigger box.</summary>
+public class AllBoxesCommand : GameCommand {
+    private readonly GameSession session;
+
+    public AllBoxesCommand(GameSession session) : base(AdminPermissions.None, "allboxes", "Toggle: this map's scripts see you inside every trigger box (scripted play tests).") {
+        this.session = session;
+        this.SetHandler<InvocationContext>(Handle);
+    }
+
+    private void Handle(InvocationContext ctx) {
+        if (!OfflineCheats.Enabled) {
+            ctx.Console.Error.WriteLine("Cheats are off. Set CheatCommands=true in launcher.ini and restart the game.");
+            return;
+        }
+        if (session.Field is null) {
+            return;
+        }
+
+        bool on = OfflineCheats.ToggleAllBoxes(session.CharacterId);
+        if (on) {
+            ctx.Console.Out.WriteLine("All trigger boxes ON: map scripts see you inside every trigger box. Type /allboxes again to turn it off.");
+        } else {
+            ctx.Console.Out.WriteLine("All trigger boxes OFF.");
+        }
+    }
+}
+
+/// <summary>/interactall: Use every interact object on this map that can be used now (scripted play tests).</summary>
+public class InteractAllCommand : GameCommand {
+    private readonly GameSession session;
+
+    public InteractAllCommand(GameSession session) : base(AdminPermissions.None, "interactall", "Use every interact object on this map that can be used now (scripted play tests).") {
+        this.session = session;
+        this.SetHandler<InvocationContext>(Handle);
+    }
+
+    private void Handle(InvocationContext ctx) {
+        if (!OfflineCheats.Enabled) {
+            ctx.Console.Error.WriteLine("Cheats are off. Set CheatCommands=true in launcher.ini and restart the game.");
+            return;
+        }
+        if (session.Field is null) {
+            return;
+        }
+
+        int count = 0;
+        foreach (FieldInteract interact in session.Field.EnumerateInteract().ToList()) {
+            if (interact.React()) {
+                session.ConditionUpdate(ConditionType.interact_object, codeLong: interact.Object.Id);
+                session.ConditionUpdate(ConditionType.interact_object_rep, codeLong: interact.Object.Id);
+                count++;
+            }
+        }
+
+        ctx.Console.Out.WriteLine(count == 0 ? "No usable objects on this map." : $"Used {count} object{(count == 1 ? "" : "s")}.");
     }
 }
 

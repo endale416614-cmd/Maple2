@@ -6,6 +6,7 @@ using Maple2.File.Parser.Xml.Item;
 using Maple2.File.Parser.Xml.Table;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Tools.Extensions;
 using Slot = Maple2.File.Parser.Xml.Item.Slot;
 
 namespace Maple2.File.Ingest.Mapper;
@@ -113,11 +114,14 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 Level: data.skill.skillID != 0 ? data.skill.skillLevel : (short) 0,
                 WeaponId: data.objectWeaponSkill.skillID,
                 WeaponLevel: data.objectWeaponSkill.skillID != 0 ? data.objectWeaponSkill.skillLevel : (short) 0);
-            ItemMetadataFunction? function = string.IsNullOrWhiteSpace(data.function.name) ? null : new ItemMetadataFunction(
-                Type: Enum.Parse<ItemFunction>(data.function.name),
-                Name: data.function.name, // Temp duplicate data makes it easier to read DB
-                Parameters: data.function.parameter,
-                OnlyShadowWorld: data.function.onlyShadowContinent == 1);
+            ItemMetadataFunction? function = null;
+            if (!string.IsNullOrWhiteSpace(data.function.name) && EnumSkipLog.TryParseOrSkip(data.function.name, $"item {id} function", out ItemFunction functionType)) {
+                function = new ItemMetadataFunction(
+                    Type: functionType,
+                    Name: data.function.name, // Temp duplicate data makes it easier to read DB
+                    Parameters: data.function.parameter,
+                    OnlyShadowWorld: data.function.onlyShadowContinent == 1);
+            }
 
             bool hasOption = data.option.@static > 0 || data.option.constant > 0 || data.option.random > 0 || data.option.optionID > 0;
             int levelFactor = (int) data.option.optionLevelFactor;
@@ -144,7 +148,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
             var housingCategory = HousingCategory.None;
             if (!string.IsNullOrEmpty(data.housing.categoryTag)) {
                 string[] tags = data.housing.categoryTag.Split(',');
-                housingCategory = Enum.Parse<HousingCategory>(tags[0]);
+                housingCategory = EnumSkipLog.ParseOrDefault(tags[0], HousingCategory.None, $"item {id} housing category");
             }
             ItemMetadataHousing? housing = data.property.type != 6 ? null : new ItemMetadataHousing(
                 TrophyId: data.housing.trophyID,
@@ -164,7 +168,8 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                 Name: name,
                 SlotNames: data.slots.slot
                     .Where(slot => !string.IsNullOrEmpty(slot.name))
-                    .Select(slot => Enum.Parse<EquipSlot>(slot.name, true))
+                    .Select(slot => EnumSkipLog.TryParseOrSkip(slot.name, $"item {id} slot", out EquipSlot equipSlot, ignoreCase: true) ? (EquipSlot?) equipSlot : null)
+                    .OfType<EquipSlot>()
                     .ToArray(),
                 Mesh: data.ucc.mesh,
                 DefaultHairs: hairList.ToArray(),
@@ -180,7 +185,7 @@ public class ItemMapper : TypeMapper<ItemMetadata> {
                     SubType: data.property.subtype,
                     Category: data.property.category,
                     BlackMarketCategory: data.property.blackMarketCategory,
-                    Tag: string.IsNullOrWhiteSpace(data.basic.stringTag) ? ItemTag.None : Enum.Parse<ItemTag>(data.basic.stringTag),
+                    Tag: EnumSkipLog.ParseOrDefault(data.basic.stringTag, ItemTag.None, $"item {id} tag"),
                     Group: data.property.itemGroup,
                     Collection: data.property.collection,
                     GearScore: data.property.gearScore,

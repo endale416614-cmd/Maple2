@@ -14,6 +14,7 @@ using Maple2.File.Parser.MapXBlock;
 using Maple2.File.Parser.Tools;
 using Maple2.Tools;
 using Maple2.Tools.Extensions;
+using M2dXmlGenerator;
 using Microsoft.EntityFrameworkCore;
 
 const string locale = "NA";
@@ -31,6 +32,7 @@ string? dumpXml = null;
 string? probeXBlock = null;
 string? probeAll = null;
 string? exportedOverride = null;
+string? extraFeatures = null;
 bool mapEntitiesOnly = false;
 bool listOnly = false;
 var dumpArchives = new List<string>();
@@ -64,6 +66,9 @@ for (int i = 0; i < args.Length; i++) {
             break;
         case "--exported" when i + 1 < args.Length:
             exportedOverride = args[++i];
+            break;
+        case "--extra-features" when i + 1 < args.Length:
+            extraFeatures = args[++i];
             break;
         case "--map-entities-only":
             mapEntitiesOnly = true;
@@ -275,6 +280,7 @@ if (mapEntitiesOnly) {
     // Portals and other entities are filtered by feature/locale like in a full ingest.
     using (var featureReader = new M2dReader(xmlPath)) {
         Filter.Load(featureReader, locale, env);
+        AddExtraFeatures(extraFeatures);
     }
     if (NpcMapper.NpcMetadataById.Count == 0) {
         Console.WriteLine("No NPC metadata in the database; refusing to re-import map entities (spawn points would be dropped).");
@@ -314,6 +320,7 @@ Console.WriteLine("Starting data ingestion...");
 
 // Filter Xml results based on feature settings.
 Filter.Load(xmlReader, locale, env);
+AddExtraFeatures(extraFeatures);
 
 // new TriggerGenerator(xmlReader).Generate();
 
@@ -375,6 +382,25 @@ if (runNavmesh) {
 }
 
 Console.WriteLine("Done!".ColorGreen());
+EnumSkipLog.WriteLog("ingest-skipped.log");
+Console.WriteLine($"Skipped enum values: {EnumSkipLog.Entries.Count} (ingest-skipped.log)");
+
+void AddExtraFeatures(string? path) {
+    if (path == null) {
+        return;
+    }
+    int added = 0;
+    foreach (string raw in System.IO.File.ReadAllLines(path)) {
+        string name = raw.Trim();
+        if (name.Length == 0 || name.StartsWith('#')) {
+            continue;
+        }
+        if (FeatureLocaleFilter.Features.TryAdd(name, 1)) {
+            added++;
+        }
+    }
+    Console.WriteLine($"Extra features enabled: {added} ({path})");
+}
 
 void UpdateDatabase<T>(DbContext context, TypeMapper<T> mapper) where T : class {
     string? tableName = context.GetTableName<T>();

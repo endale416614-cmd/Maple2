@@ -86,6 +86,7 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
         }
 
         nextState = state?.OnTick();
+        TriggerRing.Add($"{Field.Metadata.XBlock} {Value.Name} {state.Name}");
     }
 
     /// <summary>

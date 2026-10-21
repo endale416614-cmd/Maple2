@@ -454,12 +454,12 @@ public partial class TriggerContext {
     public void StartCombineSpawn(int[] groupIds, bool isStart) {
         if (TraceEnabled) DebugLog("[StartCombineSpawn] groupIds:{Ids}, isStart:{IsStart}", string.Join(", ", groupIds), isStart);
         if (!Field.ServerTableMetadata.CombineSpawnTable.Groups.TryGetValue(Field.MapId, out Dictionary<int, SpawnGroupMetadata>? groupDict)) {
-            if (TraceEnabled) ErrorLog("[StartCombineSpawn] No group metadata found for map {MapId}", Field.MapId);
+            if (TraceEnabled) WarnLog("[StartCombineSpawn] No group metadata found for map {MapId}", Field.MapId);
             return;
         }
         foreach (int groupId in groupIds) {
             if (!groupDict.TryGetValue(groupId, out SpawnGroupMetadata? group)) {
-                if (TraceEnabled) ErrorLog("[StartCombineSpawn] No group metadata found for group {GroupId}", groupId);
+                if (TraceEnabled) WarnLog("[StartCombineSpawn] No group metadata found for group {GroupId}", groupId);
                 continue;
             }
 
@@ -486,11 +486,11 @@ public partial class TriggerContext {
     }
 
     public void RoomExpire() {
-        if (TraceEnabled) ErrorLog("[RoomExpire]");
+        ErrorLog("[RoomExpire]");
     }
 
     public void FieldWarEnd(bool isClear) {
-        if (TraceEnabled) ErrorLog("[FieldWarEnd] isClear:{IsClear}", isClear);
+        ErrorLog("[FieldWarEnd] isClear:{IsClear}", isClear);
     }
     #endregion
 
@@ -531,7 +531,7 @@ public partial class TriggerContext {
     }
 
     public bool PvpZoneEnded(int boxId) {
-        if (TraceEnabled) ErrorLog("[PvpZoneEnded] boxId:{BoxId}", boxId);
+        ErrorLog("[PvpZoneEnded] boxId:{BoxId}", boxId);
         return false;
     }
 

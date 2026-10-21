@@ -15,7 +15,7 @@ namespace Maple2.Server.Game.Util;
 /// target number of kills per level, a chance multiplier for monster loot rolls, and level-based upgrade-material drops.
 /// </summary>
 public static class OfflineGrind {
-    public sealed record UpgradeDrop(int ItemId, string Name, int MinLevel, int MaxLevel, float Chance, int Amount, float AmountPerLevel);
+    public sealed record UpgradeDrop(int ItemId, string Name, int MinLevel, int MaxLevel, float Chance, int Amount, float AmountPerLevel, float? BossChance = null, float? BossMultiplier = null, int? MaxAmount = null);
     public sealed record Config(int TargetKillsPerLevel, float MaxExpMultiplier, float DropRateMultiplier, float BossMultiplier, UpgradeDrop[] UpgradeDrops,
         float MesoMultiplier = 1, ChestBonus? Chests = null);
 
@@ -76,7 +76,11 @@ public static class OfflineGrind {
 
     /// <summary>The upgrade materials one kill drops (item id, amount).</summary>
     public static IEnumerable<(int ItemId, int Amount)> RollUpgradeDrops(int monsterLevel, bool boss, Random random) {
-        Config? config = Settings;
+        return RollUpgradeDrops(Settings, monsterLevel, boss, random);
+    }
+
+    /// <summary>The upgrade materials one kill drops (item id, amount).</summary>
+    public static IEnumerable<(int ItemId, int Amount)> RollUpgradeDrops(Config? config, int monsterLevel, bool boss, Random random) {
         if (config == null) {
             yield break;
         }
@@ -85,13 +89,13 @@ public static class OfflineGrind {
             if (monsterLevel < drop.MinLevel || (drop.MaxLevel > 0 && monsterLevel > drop.MaxLevel)) {
                 continue;
             }
-            if (random.NextSingle() >= drop.Chance) {
+            if (random.NextSingle() >= (boss ? drop.BossChance ?? drop.Chance : drop.Chance)) {
                 continue;
             }
 
-            int amount = Math.Max(1, (int) (drop.Amount + drop.AmountPerLevel * monsterLevel));
+            int amount = Math.Max(1, drop.MaxAmount is { } maxAmount ? random.Next(drop.Amount, Math.Max(drop.Amount, maxAmount) + 1) : (int) (drop.Amount + drop.AmountPerLevel * monsterLevel));
             if (boss) {
-                amount = (int) Math.Max(1, amount * config.BossMultiplier);
+                amount = (int) Math.Max(1, amount * (drop.BossMultiplier ?? config.BossMultiplier));
             }
             yield return (drop.ItemId, amount);
         }

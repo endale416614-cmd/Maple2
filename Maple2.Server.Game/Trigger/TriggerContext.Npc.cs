@@ -54,11 +54,11 @@ public partial class TriggerContext {
     }
 
     public void InitNpcRotation(int[] spawnIds) {
-        if (TraceEnabled) ErrorLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
+        ErrorLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
     }
 
     public void LimitSpawnNpcCount(int limitCount, string desc) {
-        if (TraceEnabled) ErrorLog("[LimitSpawnNpcCount] limitCount:{Count}", limitCount);
+        ErrorLog("[LimitSpawnNpcCount] limitCount:{Count}", limitCount);
     }
 
     public void MoveNpc(int spawnId, string patrolName) {
@@ -100,7 +100,7 @@ public partial class TriggerContext {
     }
 
     public void NpcToPatrolInBox(int boxId, int npcId, string spawnId, string patrolName) {
-        if (TraceEnabled) ErrorLog("[NpcToPatrolInBox] boxId:{BoxId}, npcId:{NpcId}, spawnId:{SpawnId}, patrolName:{PatrolName}", spawnId, npcId, spawnId, patrolName);
+        ErrorLog("[NpcToPatrolInBox] boxId:{BoxId}, npcId:{NpcId}, spawnId:{SpawnId}, patrolName:{PatrolName}", spawnId, npcId, spawnId, patrolName);
     }
 
     public void SetAiExtraData(string key, int value, bool isModify, int boxId) {
@@ -269,7 +269,7 @@ public partial class TriggerContext {
     }
 
     public bool NpcIsDeadByStringId(string stringId) {
-        if (TraceEnabled) ErrorLog("[NpcIsDeadByStringId] stringId:{Round}", stringId);
+        ErrorLog("[NpcIsDeadByStringId] stringId:{Round}", stringId);
         return false;
     }
     #endregion

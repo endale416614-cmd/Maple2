@@ -5,6 +5,7 @@ using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -20,11 +21,11 @@ public partial class TriggerContext {
     }
 
     public void GiveExp(int boxId, float expRate, bool arg3) {
-        if (TraceEnabled) ErrorLog("[GiveExp] boxId:{BoxId}, expRate:{ExpRate}", boxId, expRate);
+        ErrorLog("[GiveExp] boxId:{BoxId}, expRate:{ExpRate}", boxId, expRate);
     }
 
     public void GiveRewardContent(int rewardId) {
-        if (TraceEnabled) ErrorLog("[GiveRewardContent] rewardId:{RewardId}", rewardId);
+        ErrorLog("[GiveRewardContent] rewardId:{RewardId}", rewardId);
     }
 
     public void KickMusicAudience(int targetBoxId, int targetPortalId) {
@@ -139,7 +140,7 @@ public partial class TriggerContext {
     }
 
     public void PatrolConditionUser(string patrolName, int patrolIndex, int additionalEffectId) {
-        if (TraceEnabled) ErrorLog("[PatrolConditionUser] patrolName:{Name}, patrolIndex:{Index}, additionalEffectId:{EffectId}", patrolName, patrolIndex, additionalEffectId);
+        ErrorLog("[PatrolConditionUser] patrolName:{Name}, patrolIndex:{Index}, additionalEffectId:{EffectId}", patrolName, patrolIndex, additionalEffectId);
     }
 
     public void SetAchievement(int triggerId, string type, string code) {
@@ -170,16 +171,26 @@ public partial class TriggerContext {
         Broadcast(TriggerPacket.UiPlayerRotation(rotation));
     }
 
+    // Map scripts start their quests this way (91000047-91000049 on map 52020036); Start checks the requirements.
     public void SetQuestAccept(int questId) {
-        if (TraceEnabled) ErrorLog("[SetQuestAccept] questId:{QuestId}", questId);
+        if (TraceEnabled) DebugLog("[SetQuestAccept] questId:{QuestId}", questId);
+        foreach (FieldPlayer player in Field.Players.Values) {
+            player.Session.Quest.Start(questId);
+        }
     }
 
+    // Map scripts complete their quests this way (91000047-91000049 on map 52020036): the script decides the objective is done.
     public void SetQuestComplete(int questId) {
-        if (TraceEnabled) ErrorLog("[SetQuestComplete] questId:{QuestId}", questId);
+        if (TraceEnabled) DebugLog("[SetQuestComplete] questId:{QuestId}", questId);
+        foreach (FieldPlayer player in Field.Players.Values) {
+            if (player.Session.Quest.TryGetQuest(questId, out Quest? quest) && quest.State == QuestState.Started) {
+                player.Session.Quest.Complete(quest, bypassConditions: true);
+            }
+        }
     }
 
     public void TalkNpc(int spawnId) {
-        if (TraceEnabled) ErrorLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
+        ErrorLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
     }
 
     public void AddUserValue(string key, int value) {
@@ -211,7 +222,7 @@ public partial class TriggerContext {
     }
 
     public void SetState(int triggerId, string[] states, bool randomize) {
-        if (TraceEnabled) ErrorLog("[SetState] triggerId:{TriggerId}, states:{States}, randomize:{Randomize}", triggerId, string.Join(", ", states), randomize);
+        if (TraceEnabled) DebugLog("[SetState] triggerId:{TriggerId}, states:{States}, randomize:{Randomize}", triggerId, string.Join(", ", states), randomize);
         if (randomize) {
             Random.Shared.Shuffle(states);
         }
@@ -232,7 +243,7 @@ public partial class TriggerContext {
     }
 
     public bool CheckSameUserTag(int boxId, bool negate) {
-        if (TraceEnabled) ErrorLog("[CheckSameUserTag] boxId:{BoxId}", boxId);
+        ErrorLog("[CheckSameUserTag] boxId:{BoxId}", boxId);
         return false;
     }
 
@@ -278,12 +289,14 @@ public partial class TriggerContext {
             .Select(boxId => Objects.Boxes.GetValueOrDefault(boxId))
             .Where(box => box != null)!;
 
+        // /allboxes (test kit): the player counts as inside every box the map has, as in PlayersInBox.
+        bool anyBox = boxes.Any();
         bool result;
         if (jobCode != 0) {
             result = Field.Players.Values
-                .Any(player => player.Value.Character.Job.Code() == jobCode && boxes.Any(box => box.Contains(player.Position)));
+                .Any(player => player.Value.Character.Job.Code() == jobCode && (boxes.Any(box => box.Contains(player.Position)) || (anyBox && OfflineCheats.IsInAllBoxes(player.Session.CharacterId))));
         } else {
-            result = Field.Players.Values.Any(player => boxes.Any(box => box.Contains(player.Position)));
+            result = Field.Players.Values.Any(player => (boxes.Any(box => box.Contains(player.Position)) || (anyBox && OfflineCheats.IsInAllBoxes(player.Session.CharacterId))));
         }
 
         return negate ? !result : result;
@@ -303,7 +316,10 @@ public partial class TriggerContext {
             .Select(boxId => Objects.Boxes.GetValueOrDefault(boxId))
             .Where(box => box != null)!;
 
-        return Field.Players.Values.Where(player => boxes.Any(box => box.Contains(player.Position)));
+        // /allboxes (test kit): the player counts as inside every box the map has; each player once (user counts).
+        bool anyBox = boxes.Any();
+        return Field.Players.Values.Where(player => boxes.Any(box => box.Contains(player.Position))
+            || (anyBox && OfflineCheats.IsInAllBoxes(player.Session.CharacterId)));
     }
 
     private IEnumerable<FieldPlayer> PlayersNotInBox(int boxId) {
@@ -311,6 +327,7 @@ public partial class TriggerContext {
             return [];
         }
 
-        return Field.Players.Values.Where(player => !box.Contains(player.Position));
+        // /allboxes (test kit): the player is inside every box.
+        return Field.Players.Values.Where(player => !box.Contains(player.Position) && !OfflineCheats.IsInAllBoxes(player.Session.CharacterId));
     }
 }

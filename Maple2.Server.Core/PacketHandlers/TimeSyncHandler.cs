@@ -2,6 +2,7 @@
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Core.Packets;
+using Maple2.Tools;
 
 namespace Maple2.Server.Core.PacketHandlers;
 
@@ -11,6 +12,6 @@ public abstract class TimeSyncHandler<T> : PacketHandler<T> where T : Session {
     public override void Handle(T session, IByteReader packet) {
         int key = packet.ReadInt();
 
-        session.Send(TimeSyncPacket.Response(DateTimeOffset.UtcNow, key));
+        session.Send(TimeSyncPacket.Response(GameClock.UtcNow, key));
     }
 }

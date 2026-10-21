@@ -30,6 +30,14 @@ public class PacketRouter<T> where T : Session {
                 return;
             }
 
+            if (handler == null) {
+                // A client action the server does not implement: logged once per opcode and session, counted for the disconnect line.
+                if (session.UnhandledOpcodes.AddOrUpdate((ushort) op, 1, (_, count) => count + 1) == 1) {
+                    logger.Warning("Unhandled client packet {OpCode} {Name}: no handler", $"0x{(ushort) op:X4}", op);
+                }
+                return;
+            }
+
             handler?.Handle(session, reader);
         } catch (Exception ex) {
             logger.Error(ex, "Packet handler failed for {OpCode} {Handler}", $"0x{(ushort) op:X4}", handler?.GetType().Name);

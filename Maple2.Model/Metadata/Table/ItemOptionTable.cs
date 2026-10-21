@@ -3,6 +3,31 @@ using Maple2.Model.Enum;
 
 namespace Maple2.Model.Metadata;
 
+public static class ItemOptionRarity {
+    // Rarity of an item created without one. Boxes and consumables keep theirs in Option.ConstantId (1-6). For gear
+    // ConstantId is an option table id, and drop tables leave the grade out for gear that exists at one rarity only
+    // (raid gear is Epic, Legendary or Ascendant), so gear takes the lowest rarity its option tables define.
+    public static int Default(ItemMetadataOption? option, ItemOptionConstantTable constants, ItemOptionStaticTable statics, ItemOptionRandomTable randoms) {
+        if (option == null) {
+            return 1;
+        }
+        if (option.ConstantId is > 0 and < 7) {
+            return option.ConstantId;
+        }
+
+        return OptionRarities(constants.Options, option.ConstantId)
+            .Concat(OptionRarities(statics.Options, option.StaticId))
+            .Concat(OptionRarities(randoms.Options, option.RandomId))
+            .Where(rarity => rarity is > 0 and < 7)
+            .DefaultIfEmpty(1)
+            .Min();
+    }
+
+    private static IEnumerable<int> OptionRarities<T>(IReadOnlyDictionary<int, IReadOnlyDictionary<int, T>> options, int id) {
+        return id > 0 && options.TryGetValue(id, out IReadOnlyDictionary<int, T>? byRarity) ? byRarity.Keys : [];
+    }
+}
+
 public record ItemOptionConstantTable(
     IReadOnlyDictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>> Options
 ) : Table;

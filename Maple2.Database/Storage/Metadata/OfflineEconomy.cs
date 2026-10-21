@@ -48,9 +48,11 @@ public static class OfflineEconomy {
     /// original shop_merat.xml and the gacha prize pools) to the Meret Market. Shipped entries keep priority.
     /// </summary>
     public static MeretMarketTable Apply(MeretMarketTable table) {
+        // The client shows SalePrice as the price to pay (the ingest sets it to Price for items without a sale). Offline every item costs and shows its list price, without the end-of-service sale of the client's last data.
+        var entries = table.Entries.ToDictionary(pair => pair.Key, pair => pair.Value with { SalePrice = pair.Value.Price });
         string path = Environment.GetEnvironmentVariable("OFFLINE_MERET_CATALOG_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json");
         if (!File.Exists(path)) {
-            return table;
+            return new MeretMarketTable(entries);
         }
 
         CatalogFile? catalog;
@@ -58,13 +60,12 @@ public static class OfflineEconomy {
             catalog = JsonSerializer.Deserialize<CatalogFile>(File.ReadAllText(path), new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
         } catch (JsonException ex) {
             Logger.Error(ex, "Invalid offline Meret catalog {Path}; not loaded", path);
-            return table;
+            return new MeretMarketTable(entries);
         }
 
-        var entries = new Dictionary<int, MeretMarketItemMetadata>(table.Entries);
         int added = 0;
         foreach (MeretMarketItemMetadata entry in catalog?.Entries ?? []) {
-            if (entry.Price > 0 && entries.TryAdd(entry.Id, entry)) {
+            if (entry.Price > 0 && entries.TryAdd(entry.Id, entry with { SalePrice = entry.Price })) {
                 added++;
             }
         }

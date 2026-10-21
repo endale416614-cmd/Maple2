@@ -14,6 +14,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.DebugGraphics;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game;
 
@@ -66,6 +67,7 @@ public class GameServer : Server<GameSession> {
         }
 
         debugGraphicsContext.Initialize();
+        OfflineTestKitInbox.Start(GetSessions);
     }
 
     public override void OnConnected(GameSession session) {

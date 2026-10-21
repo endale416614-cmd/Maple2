@@ -580,7 +580,7 @@ public partial class FieldManager {
             return; // metadata ingested before field chest events were added
         }
 
-        DateTime now = DateTime.Now;
+        DateTime now = GameClock.Now;
         foreach (FieldInteractEventMetadata metadata in events.Values) {
             if (!metadata.TargetMapIds.Contains(MapId) || metadata.EndTime < now || metadata.CycleTime <= TimeSpan.Zero) {
                 continue;
@@ -615,7 +615,7 @@ public partial class FieldManager {
         }
 
         // The scheduler pauses while the field is empty, so this can run late: skip the missed cycles.
-        DateTime now = DateTime.Now;
+        DateTime now = GameClock.Now;
         DateTime nextTime = NextCycleTime(spawnTime + metadata.CycleTime, metadata.CycleTime, now);
         if (metadata.RandomTime > TimeSpan.Zero) {
             nextTime += TimeSpan.FromMilliseconds(Random.Shared.Next((int) metadata.RandomTime.TotalMilliseconds));

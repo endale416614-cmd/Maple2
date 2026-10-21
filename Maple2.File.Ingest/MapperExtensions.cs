@@ -8,6 +8,7 @@ using Maple2.File.Parser.Xml.Skill;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Tools.Extensions;
 using BeginCondition = Maple2.Model.Metadata.BeginCondition;
 using ItemOption = Maple2.Model.Metadata.ItemOption;
 
@@ -400,7 +401,7 @@ public static class MapperExtensions {
                     Level: data.hasBuffLevel.Length > i ? data.hasBuffLevel[i] : (short) 0,
                     Owned: data.hasBuffOwner.Length > i && data.hasBuffOwner[i],
                     Count: data.hasBuffCount.Length > i ? data.hasBuffCount[i] : 0,
-                    Compare: data.hasBuffCountCompare.Length > i ? Enum.Parse<CompareType>(data.hasBuffCountCompare[i]) : CompareType.Equals);
+                    Compare: data.hasBuffCountCompare.Length > i ? EnumSkipLog.ParseOrDefault(data.hasBuffCountCompare[i], CompareType.Equals, $"begin condition buff {data.hasBuffID[i]} compare") : CompareType.Equals);
             }
 
             return hasBuff;
@@ -432,7 +433,7 @@ public static class MapperExtensions {
                         stats[i] = new BeginConditionTarget.BeginConditionStat(
                             Attribute: attribute,
                             Value: value,
-                            Compare: data.compareStat.Count > i ? Enum.Parse<CompareType>(data.compareStat[i].func) : CompareType.Equals,
+                            Compare: data.compareStat.Count > i ? EnumSkipLog.ParseOrDefault(data.compareStat[i].func, CompareType.Equals, "begin condition stat compare") : CompareType.Equals,
                             ValueType: (CompareStatValueType) data.compareStat[i].type);
                         break;
                     }

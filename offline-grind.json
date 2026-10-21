@@ -13,19 +13,31 @@
   // Multiplier for the mesos monsters drop. 1 = original.
   "MesoMultiplier": 6,
 
-  // Extra upgrade-material drops from monsters. Chance per kill (0..1); amount = Amount + AmountPerLevel * monster level.
-  // Bosses get BossMultiplier times the amount.
+  // Extra upgrade-material drops from monsters. Chance per kill (0..1); amount = Amount + AmountPerLevel * monster level, or a random amount from Amount to MaxAmount when MaxAmount is set.
+  // Bosses get BossMultiplier times the amount; a drop's own BossChance and BossMultiplier win.
   "BossMultiplier": 5,
   "UpgradeDrops": [
     { "ItemId": 40100001, "Name": "Crystal Fragment",   "MinLevel": 1,  "Chance": 0.30, "Amount": 1, "AmountPerLevel": 0.10 },
     { "ItemId": 40100023, "Name": "Onyx Crystal",       "MinLevel": 20, "Chance": 0.40, "Amount": 1, "AmountPerLevel": 0.20 },
-    { "ItemId": 40100024, "Name": "Chaos Onyx Crystal", "MinLevel": 40, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0 },
+    { "ItemId": 40100024, "Name": "Chaos Onyx Crystal", "MinLevel": 40, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0, "BossChance": 0 },
     { "ItemId": 40100002, "Name": "Red Crystal",        "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
     { "ItemId": 40100003, "Name": "Blue Crystal",       "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
     { "ItemId": 40100021, "Name": "Green Crystal",      "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
     { "ItemId": 40100026, "Name": "Metacell",           "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 },
     { "ItemId": 40300001, "Name": "Blue Gem Dust",      "MinLevel": 30, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.05 },
-    { "ItemId": 40300002, "Name": "Purple Gem Dust",    "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 }
+    { "ItemId": 40300002, "Name": "Purple Gem Dust",    "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 },
+
+    // Every boss: 1 to 10 Chaos Onyx Crystals.
+    { "ItemId": 40100024, "Name": "Chaos Onyx Crystal (boss)", "MinLevel": 1, "Chance": 0, "BossChance": 1, "Amount": 1, "MaxAmount": 10, "AmountPerLevel": 0, "BossMultiplier": 1 },
+
+    // Meret (item 90000004: picking it up adds it to your Meret, no pouch to open), a random amount from Amount to MaxAmount.
+    // Normal monsters by level; bosses (BossChance, BossMultiplier) always 1-1,000 Meret, often 1-500 and sometimes 1-1,000 more.
+    { "ItemId": 90000004, "Name": "1-10 Meret",                 "MinLevel": 1, "MaxLevel": 49,  "Chance": 0.50, "BossChance": 0,    "Amount": 1, "MaxAmount": 10,   "AmountPerLevel": 0 },
+    { "ItemId": 90000004, "Name": "1-100 Meret",                "MinLevel": 50, "MaxLevel": 69, "Chance": 0.10, "BossChance": 0,    "Amount": 1, "MaxAmount": 100,  "AmountPerLevel": 0 },
+    { "ItemId": 90000004, "Name": "1-100 Meret",                "MinLevel": 70,                 "Chance": 0.20, "BossChance": 0,    "Amount": 1, "MaxAmount": 100,  "AmountPerLevel": 0 },
+    { "ItemId": 90000004, "Name": "1-1,000 Meret (boss)",       "MinLevel": 1,                  "Chance": 0,    "BossChance": 1,    "Amount": 1, "MaxAmount": 1000, "AmountPerLevel": 0, "BossMultiplier": 1 },
+    { "ItemId": 90000004, "Name": "1-500 Meret (boss)",         "MinLevel": 1,                  "Chance": 0,    "BossChance": 0.60, "Amount": 1, "MaxAmount": 500,  "AmountPerLevel": 0, "BossMultiplier": 1 },
+    { "ItemId": 90000004, "Name": "1-1,000 Meret (boss bonus)", "MinLevel": 1,                  "Chance": 0,    "BossChance": 0.20, "Amount": 1, "MaxAmount": 1000, "AmountPerLevel": 0, "BossMultiplier": 1 }
   ],
 
   // Extra loot from treasure chests, on top of their original mesos/items. Each drop rolls once per chest opened

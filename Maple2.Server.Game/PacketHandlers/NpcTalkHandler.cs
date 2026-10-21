@@ -58,7 +58,7 @@ public class NpcTalkHandler : FieldPacketHandler {
                 HandleQuest(session, packet);
                 return;
             case Command.AcceptAllianceQuest:
-                HandleAcceptAllianceQuest(session, packet);
+                HandleQuest(session, packet); // alliance-board quests open like a quest of the NPC; QuestHandler checks requirements when player accepts
                 return;
             case Command.TalkAlliance:
                 HandleTalkAlliance(session);
@@ -280,17 +280,6 @@ public class NpcTalkHandler : FieldPacketHandler {
         if (!session.NpcScript.BeginQuest()) {
             session.NpcScript = null;
         }
-    }
-
-    private void HandleAcceptAllianceQuest(GameSession session, IByteReader packet) {
-        if (session.NpcScript == null) {
-            return;
-        }
-
-        int questId = packet.ReadInt();
-        packet.ReadShort(); // 2 or 0. 2 = Start quest, 0 = Complete quest.
-
-        // TODO: similar to HandleQuest but we'll need to check questId against the available quests for the player.
     }
 
     private void HandleTalkAlliance(GameSession session) {

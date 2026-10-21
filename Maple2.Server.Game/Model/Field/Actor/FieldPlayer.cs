@@ -108,6 +108,9 @@ public class FieldPlayer : Actor<Player> {
     /// <summary>Offline cheat /godmode: no damage taken, every hit kills.</summary>
     public bool GodMode => OfflineCheats.IsGodMode(Value.Character.Id);
 
+    /// <summary>Offline cheat /godmode without --protect: each hit on an NPC takes all its health.</summary>
+    public bool GodModeKill => OfflineCheats.IsGodModeKill(Value.Character.Id);
+
     private readonly EventQueue scheduler;
 
     public FieldPlayer(GameSession session, Player player) : base(session.Field!, player.ObjectId, player, session.NpcMetadata) {

@@ -37,6 +37,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
     internal DbSet<Achievement> Achievement { get; set; } = null!;
     internal DbSet<Quest> Quest { get; set; } = null!;
     internal DbSet<ServerInfo> ServerInfo { get; set; } = null!;
+    internal DbSet<OfflineState> OfflineState { get; set; } = null!;
     internal DbSet<Medal> Medal { get; set; } = null!;
     internal DbSet<BannerSlot> BannerSlots { get; set; } = null!;
     internal DbSet<HomeLayout> HomeLayout { get; set; } = null!;
@@ -92,6 +93,7 @@ public sealed class Ms2Context(DbContextOptions options) : DbContext(options) {
         modelBuilder.Entity<GameEventUserValue>(Maple2.Database.Model.GameEventUserValue.Configure);
 
         modelBuilder.Entity<ServerInfo>(Maple2.Database.Model.ServerInfo.Configure);
+        modelBuilder.Entity<OfflineState>(Maple2.Database.Model.OfflineState.Configure);
         modelBuilder.Entity<PlayerReport>(PlayerReport.Configure);
 
         modelBuilder.Entity<DungeonRecord>(Maple2.Database.Model.DungeonRecord.Configure);

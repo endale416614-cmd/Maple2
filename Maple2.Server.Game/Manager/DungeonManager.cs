@@ -259,14 +259,16 @@ public class DungeonManager {
         field.DungeonRoomRecord.UserResults.TryAdd(session.CharacterId, UserRecord);
     }
 
-    public void CreateDungeonRoom(int dungeonId, bool withParty) {
+    /// <param name="ignoreEnterLimits">Only the test-kit /dungeon command: skips the player's entry limits (level, trophy,
+    /// gear score, earlier clears) so scripted play tests can enter any room with one character.</param>
+    public void CreateDungeonRoom(int dungeonId, bool withParty, bool ignoreEnterLimits = false) {
         int size = 1;
         if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(dungeonId, out DungeonRoomMetadata? metadata)) {
             session.Send(DungeonRoomPacket.Error(DungeonRoomError.s_room_dungeon_notOpenTimeDungeon));
             return;
         }
 
-        if (EnterLimits.TryGetValue(dungeonId, out DungeonEnterLimit limit) && limit != DungeonEnterLimit.Veteran && limit != DungeonEnterLimit.Rookie) {
+        if (!ignoreEnterLimits && EnterLimits.TryGetValue(dungeonId, out DungeonEnterLimit limit) && limit != DungeonEnterLimit.Veteran && limit != DungeonEnterLimit.Rookie) {
             session.Send(FieldEntrancePacket.Error(dungeonId, limit));
             return;
         }

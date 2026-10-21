@@ -158,6 +158,7 @@ public class KillCommand : GameCommand {
             Direction = session.Player.Rotation,
         };
 
+        npc.SetHpFloor(0); // a boss HP hold must not keep a killed NPC alive
         long damage = npc.Stats.Values[BasicAttribute.Health].Current;
         target.AddDamage(DamageType.Normal, damage);
         damageRecord.Targets.TryAdd(npc.ObjectId, target);

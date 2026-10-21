@@ -66,6 +66,8 @@ public class DungeonFieldManager : FieldManager {
                 player.Session.Dungeon.CompleteDungeon(clearTimestamp);
                 player.Session.ConditionUpdate(ConditionType.dungeon_clear,
                     codeLong: DungeonId);
+                player.Session.ConditionUpdate(ConditionType.dungeon_rank,
+                    codeLong: DungeonId); // no rank is scored yet (DungeonManager), so a clear counts for any rank target
 
             }
         }

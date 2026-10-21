@@ -86,7 +86,7 @@ public partial class TriggerContext {
         if (spawnId == 0) {
             FieldPlayer? fieldPlayer = Field.Players.Values.FirstOrDefault();
             if (fieldPlayer == null) {
-                if (TraceEnabled) ErrorLog("[AddBalloonTalk] No players found in field");
+                if (TraceEnabled) WarnLog("[AddBalloonTalk] No players found in field");
                 return;
             }
 
@@ -96,7 +96,7 @@ public partial class TriggerContext {
 
         FieldNpc? fieldNpc = Field.Npcs.Values.FirstOrDefault(npc => npc.SpawnPointId == spawnId);
         if (fieldNpc == null) {
-            if (TraceEnabled) ErrorLog("[AddBalloonTalk] No NPC with spawnId:{SpawnId} found in field", spawnId);
+            if (TraceEnabled) WarnLog("[AddBalloonTalk] No NPC with spawnId:{SpawnId} found in field", spawnId);
             return;
         }
 

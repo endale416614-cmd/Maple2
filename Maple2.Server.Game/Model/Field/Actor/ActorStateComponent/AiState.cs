@@ -480,7 +480,8 @@ public class AiState {
     private void ProcessNode(SelectNode node) {
         var weightedEntries = new WeightedSet<(Entry, int)>();
 
-        for (int i = 0; i < node.Prob.Length; ++i) {
+        // Some AI data lists more weights than entries (AI_BlueLukeJunior.xml: 3 and 2); the extra weights choose nothing.
+        for (int i = 0; i < Math.Min(node.Prob.Length, node.Entries.Length); ++i) {
             if (!CanEvaluateNode(node.Entries[i])) {
                 continue;
             }
@@ -550,16 +551,9 @@ public class AiState {
     }
 
     private void ProcessNode(MinimumHpNode node) {
-        Stat health = actor.Stats.Values[BasicAttribute.Health];
-        float currentHpPercent = ((float) health.Current / (float) health.Total) * 100f;
-
-        if (currentHpPercent > node.HpPercent) {
-            return;
-        }
-
-        // Heal back to node.HpPercent
-        long newHp = (long) ((node.HpPercent / 100) * health.Total);
-        actor.Stats.Values[BasicAttribute.Health].Current = Math.Clamp(newHp, 0, health.Total);
+        // A standing floor until the next phase lowers it (R-06): it ran once and healed back once, so no hold acted.
+        // Health already below it is raised on the next update, as the heal-back did.
+        actor.SetHpFloor(node.HpPercent);
     }
 
     private void ProcessNode(BuffNode node) {
@@ -652,6 +646,7 @@ public class AiState {
     }
 
     private void ProcessNode(SuicideNode node) {
+        actor.SetHpFloor(0);
         actor.Stats.Values[BasicAttribute.Health].Current = 0;
     }
 

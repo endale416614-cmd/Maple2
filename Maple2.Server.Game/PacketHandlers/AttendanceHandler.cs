@@ -10,6 +10,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Tools;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -58,19 +59,19 @@ public class AttendanceHandler : FieldPacketHandler {
             }
 
             // Verify that the player meets the time requirements of event
-            long accumulatedTimeValue = session.GameEvent.Get(GameEventUserValueType.AttendanceAccumulatedTime, gameEvent.Id, DateTime.Now.AddDays(1).Date.ToEpochSeconds()).Long();
-            if ((DateTime.Now.AddSeconds(accumulatedTimeValue) - session.Player.Value.Character.LastModified).TotalSeconds < attendGift.RequiredPlaySeconds) {
+            long accumulatedTimeValue = session.GameEvent.Get(GameEventUserValueType.AttendanceAccumulatedTime, gameEvent.Id, GameClock.Now.AddDays(1).Date.ToEpochSeconds()).Long();
+            if ((GameClock.Now.AddSeconds(accumulatedTimeValue) - session.Player.Value.Character.LastModified).TotalSeconds < attendGift.RequiredPlaySeconds) {
                 return;
             }
 
             DateTime completeTime = session.GameEvent.Get(GameEventUserValueType.AttendanceCompletedTimestamp, gameEvent.Id, gameEvent.EndTime).Long().FromEpochSeconds();
-            if (DateTime.Now < completeTime || completeTime.Date == DateTime.Now.Date) {
+            if (GameClock.Now < completeTime || completeTime.Date == GameClock.Now.Date) {
                 session.Send(AttendancePacket.Error(AttendanceError.s_attendGift_item_attend_already_used));
                 return;
             }
 
             GetRewards(session, attendGift, gameEvent);
-            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, DateTime.Now.ToEpochSeconds());
+            session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceCompletedTimestamp, GameClock.Now.ToEpochSeconds());
         }
     }
 
@@ -81,8 +82,8 @@ public class AttendanceHandler : FieldPacketHandler {
         }
 
         foreach (GameEvent gameEvent in gameEvents) {
-            long expirationTime = session.GameEvent.Get(GameEventUserValueType.AttendanceAccumulatedTime, gameEvent.Id, DateTime.Now.AddDays(1).Date.ToEpochSeconds()).ExpirationTime;
-            if (expirationTime < DateTime.Now.ToEpochSeconds()) {
+            long expirationTime = session.GameEvent.Get(GameEventUserValueType.AttendanceAccumulatedTime, gameEvent.Id, GameClock.Now.AddDays(1).Date.ToEpochSeconds()).ExpirationTime;
+            if (expirationTime < GameClock.Now.ToEpochSeconds()) {
                 session.GameEvent.Set(gameEvent.Id, GameEventUserValueType.AttendanceAccumulatedTime, 0);
             }
         }

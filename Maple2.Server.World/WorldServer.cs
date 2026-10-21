@@ -24,6 +24,7 @@ public class WorldServer {
     private readonly ChannelClientLookup channelClients;
     private readonly ServerTableMetadataStorage serverTableMetadata;
     private readonly ItemMetadataStorage itemMetadata;
+    private readonly TableMetadataStorage tableMetadata;
     private readonly GlobalPortalLookup globalPortalLookup;
     private readonly WorldBossLookup worldBossLookup;
     private readonly PlayerInfoLookup playerInfoLookup;
@@ -41,8 +42,9 @@ public class WorldServer {
 
     private readonly LoginClient login;
 
-    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata) {
+    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata, TableMetadataStorage tableMetadata) {
         this.gameStorage = gameStorage;
+        this.tableMetadata = tableMetadata;
         this.channelClients = channelClients;
         this.serverTableMetadata = serverTableMetadata;
         this.globalPortalLookup = globalPortalLookup;
@@ -59,6 +61,7 @@ public class WorldServer {
         db.SetAllCharacterToOffline();
         db.DeleteUnownedItems();
         db.DeleteOrphanedMailItems();
+        SeedBlackMarket(db);
 
         StartDailyReset();
         StartWeeklyReset();
@@ -72,6 +75,35 @@ public class WorldServer {
 
         heartbeatThread = new Thread(Heartbeat);
         heartbeatThread.Start();
+    }
+
+    // Offline Black Market (R12-22): a new set of synthetic listings at every World start, before the market is first
+    // read; none under Legacy or without offline-market.json (the old set is removed either way).
+    private void SeedBlackMarket(GameStorage.Request db) {
+        try { // a bad file must not stop World (Play) from starting
+            OfflineMarket.Config? market = OfflineMarket.Load();
+            var offers = new List<(Item Item, long Price)>();
+            long minPrice = Math.Max(1, Constants.BlackMarketSellMinPrice);
+            long maxPrice = Constants.BlackMarketSellMaxPrice > 0 ? Constants.BlackMarketSellMaxPrice : long.MaxValue;
+            double multiplier = market?.PriceMultiplier > 1 ? market.PriceMultiplier : 1;
+            IEnumerable<OfflineMarket.Offer> pool = (market?.Items ?? []).Where(offer => offer != null && itemMetadata.TryGet(offer.Id, out _));
+            foreach (OfflineMarket.Offer offer in pool.OrderBy(_ => Random.Shared.Next()).Take(Math.Max(0, market?.Count ?? 0))) {
+                itemMetadata.TryGet(offer.Id, out ItemMetadata? metadata);
+                // Gear takes the lowest rarity its option tables define, as drops do: at rarity 1 some gear has no stats.
+                int rarity = offer.Rarity > 0 ? offer.Rarity : ItemOptionRarity.Default(metadata!.Option, tableMetadata.ItemOptionConstantTable,
+                    tableMetadata.ItemOptionStaticTable, tableMetadata.ItemOptionRandomTable);
+                long sellPrice = Core.Formulas.Shop.SellPrice(metadata!, new ItemType(offer.Id), rarity);
+                // Never below what an NPC shop pays for it: buying here and selling there would make meso every Play.
+                long price = Math.Max(offer.Price > 0 ? offer.Price : (long) (sellPrice * multiplier), sellPrice);
+                offers.Add((new Item(metadata!, rarity, Math.Max(1, offer.Amount)), Math.Clamp(price, minPrice, maxPrice)));
+            }
+
+            long expiry = DateTimeOffset.UtcNow.AddDays(Math.Max(1, Constants.BlackMarketSellEndDay)).ToUnixTimeSeconds();
+            int listed = db.ReplaceSyntheticListings(offers, expiry);
+            logger.Information("Offline Black Market: {Count} synthetic listings", listed);
+        } catch (Exception ex) {
+            logger.Error(ex, "Offline Black Market: listings not replaced");
+        }
     }
 
     private void Heartbeat() {
@@ -259,25 +291,11 @@ public class WorldServer {
         // Global Portal
         IReadOnlyDictionary<int, GlobalPortalMetadata> globalEvents = serverTableMetadata.TimeEventTable.GlobalPortal;
         foreach ((int eventId, GlobalPortalMetadata eventData) in globalEvents) {
-            if (eventData.EndTime < GameClock.Now) {
+            DateTime now = GameClock.Now;
+            if (eventData.FirstRun(now) is not { } startTime) {
                 continue;
             }
-
-            // There is no cycle time, so we skip it.
-            if (eventData.CycleTime == TimeSpan.Zero) {
-                continue;
-            }
-            DateTime startTime = eventData.StartTime;
-            if (GameClock.Now > startTime) {
-                // catch up to a time after the start time
-                while (startTime < GameClock.Now) {
-                    startTime += eventData.CycleTime;
-                }
-                if (startTime > eventData.EndTime) {
-                    continue;
-                }
-                scheduler.Schedule(() => GlobalPortal(eventData, startTime), startTime - GameClock.Now);
-            }
+            scheduler.Schedule(() => GlobalPortal(eventData, startTime), startTime - now);
         }
     }
 
@@ -469,68 +487,10 @@ public class WorldServer {
         scheduler.Schedule(FieldPlotExpiryCheck, delay);
     }
 
-    // Marks a plot as pending, removes its cubes, and adds them to the owner's inventory.
+    // Marks a plot as pending; its cubes go to the owner's furnishing storage first, in one transaction (M5-02).
     private void SetPlotAsPending(GameStorage.Request db, PlotInfo plot) {
         logger.Information("Marking plot {PlotId} as pending (owner: {OwnerId})", plot.Id, plot.OwnerId);
-
-        db.SetPlotPending(plot.Id);
-
-        Plot? outdoorPlot = db.GetOutdoorPlotInfo(plot.Number, plot.MapId);
-        if (outdoorPlot == null) {
-            logger.Warning("Outdoor plot not found for plot id {PlotId}", plot.Id);
-            return;
-        }
-
-        List<Item>? items = db.GetItemGroupsNoTracking(plot.OwnerId, ItemGroup.Furnishing).GetValueOrDefault(ItemGroup.Furnishing);
-        if (items == null) {
-            logger.Warning("No furnishing items found for owner id {OwnerId}", outdoorPlot.OwnerId);
-            return;
-        }
-
-        var changedItems = new List<Item>();
-
-        foreach (PlotCube cube in outdoorPlot.Cubes.Values.ToList()) {
-            // remove cube from plot
-            db.DeleteCube(cube);
-
-            // add item to account inventory
-            Item? stored = items.FirstOrDefault(existing => existing.Id == cube.ItemId && existing.Template?.Url == cube.Template?.Url);
-            if (stored == null) {
-                Item? item = CreateItem(cube.ItemId);
-                if (item == null) {
-                    continue;
-                }
-                item.Group = ItemGroup.Furnishing;
-                db.CreateItem(outdoorPlot.OwnerId, item);
-                continue;
-            }
-
-            stored.Amount += 1;
-            if (!changedItems.Contains(stored)) {
-                changedItems.Add(stored);
-            }
-        }
-
-        if (changedItems.Count > 0) {
-            db.SaveItems(plot.OwnerId, changedItems.ToArray());
-        }
-        return;
-
-        Item? CreateItem(int itemId, int rarity = -1, int amount = 1) {
-            if (!itemMetadata.TryGet(itemId, out ItemMetadata? metadata)) {
-                return null;
-            }
-
-            if (rarity <= 0) {
-                if (metadata.Option != null && metadata.Option.ConstantId is < 6 and > 0) {
-                    rarity = metadata.Option.ConstantId;
-                } else {
-                    rarity = 1;
-                }
-            }
-
-            return new Item(metadata, rarity, amount);
-        }
+        db.ExpireOutdoorPlot(plot);
     }
 
     private void AddGameEvent(int eventId) {

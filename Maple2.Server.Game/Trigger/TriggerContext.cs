@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Context;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using Maple2.Model.Game;
@@ -7,6 +8,7 @@ using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Tools;
 using Maple2.Tools.Scheduler;
 using Serilog;
 using Serilog.Core;
@@ -49,6 +51,7 @@ public partial class TriggerContext : ITriggerContext {
 
     private readonly Dictionary<string, string> lastDebugKeys = new();
     private int lastAliveCount = -1;
+    private static readonly ConcurrentDictionary<string, byte> loggedFunctions = new();
 
     /// <summary>
     /// Trigger tracing for quest/dungeon debugging: OFFLINE_TRIGGER_TRACE=true logs every state change and action.
@@ -69,7 +72,17 @@ public partial class TriggerContext : ITriggerContext {
 
     [MessageTemplateFormatMethod("messageTemplate")]
     internal void ErrorLog(string messageTemplate, params object[] args) {
-        if (TraceEnabled) LogOnce(logger.Error, messageTemplate, args);
+        if (TraceEnabled) {
+            LogOnce(logger.Error, messageTemplate, args);
+        } else {
+            // Without TriggerTrace each stub is still logged once per map, so problem reports name what the player met.
+            int end = messageTemplate.IndexOf(']');
+            string function = end > 1 ? messageTemplate[1..end] : messageTemplate;
+            string key = $"{Field.MapId} {function}";
+            if (loggedFunctions.TryAdd(key, 0)) {
+                logger.Warning("[{MapId}] map script function {Function} is not implemented offline", Field.MapId, function);
+            }
+        }
     }
 
     private void LogOnce(Action<string, object[]> logAction, string messageTemplate, params object[] args) {
@@ -86,7 +99,7 @@ public partial class TriggerContext : ITriggerContext {
 
     // Accessors
     public bool ShadowExpeditionPoints(int score) {
-        if (TraceEnabled) ErrorLog("[GetShadowExpeditionPoints]");
+        ErrorLog("[GetShadowExpeditionPoints]");
         return 0 >= score;
     }
 
@@ -97,7 +110,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool NpcDamage(int spawnPointId, float damage, OperatorType operatorType) {
-        if (TraceEnabled) ErrorLog("[GetNpcDamageRate] spawnPointId:{Id}, damage:{Damage}, operatorType:{Operator}", spawnPointId, damage, operatorType);
+        ErrorLog("[GetNpcDamageRate] spawnPointId:{Id}, damage:{Damage}, operatorType:{Operator}", spawnPointId, damage, operatorType);
         return operatorType switch {
             OperatorType.Greater => damage > 1.0f,
             OperatorType.GreaterEqual => damage >= 1.0f,
@@ -108,35 +121,46 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
+    // Boss-phase scripts wait on it: 80 "health at or below X%" steps in 22 maps (BT-23: it was a stub at 100%).
     public bool NpcHp(int spawnPointId, bool isRelative, int value, CompareType compareType) {
-        if (TraceEnabled) ErrorLog("[GetNpcHpRate] spawnPointId:{Id}, isRelative:{IsRelative}, value:{Value}, compareType:{CompareType}", spawnPointId, isRelative, value, compareType);
+        var npc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnPointId && !npc.IsDead);
+        long health = 0; // no such NPC (not spawned yet, or dead and removed): as if dead
+        if (npc != null) {
+            var stat = npc.Stats.Values[Maple2.Model.Enum.BasicAttribute.Health];
+            health = isRelative ? (stat.Total > 0 ? stat.Current * 100 / stat.Total : 0) : stat.Current;
+        }
+        if (TraceEnabled) DebugLog("[GetNpcHpRate] spawnPointId:{Id}, isRelative:{IsRelative}, value:{Value}, compareType:{CompareType}, health:{Health}", spawnPointId, isRelative, value, compareType, health);
         return compareType switch {
-            CompareType.lower => value > 100,
-            CompareType.lowerEqual => value >= 100,
-            CompareType.higher => value < 100,
-            CompareType.higherEqual => value <= 100,
+            CompareType.lower => health < value,
+            CompareType.lowerEqual => health <= value,
+            CompareType.higher => health > value,
+            CompareType.higherEqual => health >= value,
             _ => false,
         };
     }
 
     public bool DungeonId(int dungeonId) {
-        if (TraceEnabled) ErrorLog("[GetDungeonId]");
-        return dungeonId == 0;
+        if (TraceEnabled) DebugLog("[GetDungeonId] dungeonId:{DungeonId}, fieldDungeonId:{FieldDungeonId}", dungeonId, Field.DungeonId);
+        return dungeonId != 0 && Field.DungeonId == dungeonId;
     }
 
     public bool DungeonLevel(int level) {
-        if (TraceEnabled) ErrorLog("[GetDungeonLevel]");
-        return level == 3;
+        Maple2.Model.Enum.DungeonGroupType? groupType = (Field as DungeonFieldManager)?.DungeonMetadata.GroupType;
+        if (TraceEnabled) DebugLog("[GetDungeonLevel] level:{Level}, groupType:{GroupType}", level, groupType ?? Maple2.Model.Enum.DungeonGroupType.none);
+        // level 2 is the raid boss, 3 the chaos-raid boss
+        return groupType != null && level == (groupType == Maple2.Model.Enum.DungeonGroupType.chaosRaid ? 3 : 2);
     }
 
     public bool DungeonMaxUserCount(int value) {
-        if (TraceEnabled) ErrorLog("[GetDungeonMaxUserCount]");
+        if (TraceEnabled) DebugLog("[GetDungeonMaxUserCount]");
+        // solo on purpose, the scripts wait for the room's max party size before they start
         return value == 1;
     }
 
     public bool DungeonRound(int round) {
-        if (TraceEnabled) ErrorLog("[GetDungeonRoundsRequired]");
-        return int.MaxValue == round;
+        if (TraceEnabled) DebugLog("[GetDungeonRoundsRequired] round:{Round}", round);
+        // offline every Colosseum round is open (the original limited rounds by item score)
+        return round > 0;
     }
 
     public bool CheckUser(bool negate) {
@@ -156,11 +180,12 @@ public partial class TriggerContext : ITriggerContext {
             return negate;
         }
 
+        // /allboxes (test kit): the player counts as inside the box.
         int count;
         if (userTagId > 0) {
-            count = Field.Players.Values.Count(player => player.TagId == userTagId && box.Contains(player.Position));
+            count = Field.Players.Values.Count(player => player.TagId == userTagId && (box.Contains(player.Position) || Maple2.Server.Game.Util.OfflineCheats.IsInAllBoxes(player.Session.CharacterId)));
         } else {
-            count = Field.Players.Values.Count(player => box.Contains(player.Position));
+            count = Field.Players.Values.Count(player => (box.Contains(player.Position) || Maple2.Server.Game.Util.OfflineCheats.IsInAllBoxes(player.Session.CharacterId)));
         }
 
         bool result = operatorType switch {
@@ -220,12 +245,12 @@ public partial class TriggerContext : ITriggerContext {
 
     // Scripts seem to just check if this is "Fail"
     public bool DungeonState(string checkState) {
-        if (TraceEnabled) ErrorLog("[GetDungeonState]");
+        ErrorLog("[GetDungeonState]");
         return checkState == "";
     }
 
     public bool DungeonFirstUserMissionScore(int score, OperatorType operatorType) {
-        if (TraceEnabled) ErrorLog("[GetDungeonFirstUserMissionScore]");
+        ErrorLog("[GetDungeonFirstUserMissionScore]");
         return operatorType switch {
             OperatorType.Greater => score > 0,
             OperatorType.GreaterEqual => score >= 0,
@@ -237,7 +262,7 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool ScoreBoardScore(int score, OperatorType operatorType) {
-        if (TraceEnabled) ErrorLog("[GetScoreBoardScore]");
+        ErrorLog("[GetScoreBoardScore]");
         return operatorType switch {
             OperatorType.Greater => score > 0,
             OperatorType.GreaterEqual => score >= 0,
@@ -268,9 +293,9 @@ public partial class TriggerContext : ITriggerContext {
     #region Conditions
     public bool DayOfWeek(int[] dayOfWeeks, string description, bool negate) {
         if (negate) {
-            return !dayOfWeeks.Contains((int) DateTime.UtcNow.DayOfWeek + 1);
+            return !dayOfWeeks.Contains((int) GameClock.UtcNow.DayOfWeek + 1);
         }
-        return dayOfWeeks.Contains((int) DateTime.UtcNow.DayOfWeek + 1);
+        return dayOfWeeks.Contains((int) GameClock.UtcNow.DayOfWeek + 1);
     }
 
     public bool RandomCondition(float rate, string description) {

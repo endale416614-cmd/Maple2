@@ -243,6 +243,52 @@ public partial class GameStorage {
             return Context.TrySaveChanges() ? created : null;
         }
 
+        /// <summary>Offline Black Market (R12-22): removes the synthetic listings (<see cref="OfflineMarket.SellerId"/>) with
+        /// the item rows they still own, then lists the offers; one transaction, so a failure keeps the old set.</summary>
+        public int ReplaceSyntheticListings(IReadOnlyList<(Item Item, long Price)> offers, long expiryTime) {
+            bool own = !IsTransaction;
+            if (own) {
+                BeginTransaction();
+            }
+            try {
+                var old = Context.BlackMarketListing.Where(listing => listing.CharacterId == OfflineMarket.SellerId)
+                    .Select(listing => new { listing.Id, listing.ItemUid }).ToList();
+                List<long> ids = old.Select(listing => listing.Id).ToList();
+                List<long> uids = old.Select(listing => listing.ItemUid).ToList();
+                // Only rows a synthetic listing still owns (a bought item belongs to the buyer's mail by then), and only
+                // its own item: owner ids alone could collide where listing and mail ids restart (MySQL before 8.0).
+                Context.Item.Where(item => ids.Contains(item.OwnerId) && uids.Contains(item.Id)).ExecuteDelete();
+                Context.BlackMarketListing.Where(listing => listing.CharacterId == OfflineMarket.SellerId).ExecuteDelete();
+
+                foreach ((Item item, long price) in offers) {
+                    var listing = new Model.BlackMarketListing {
+                        CharacterId = OfflineMarket.SellerId,
+                        Price = price,
+                        Quantity = item.Amount,
+                        ExpiryTime = expiryTime.FromEpochSeconds(),
+                        CreationTime = DateTime.Now, // unset, it is stored as 1970; the store keeps local time
+                    };
+                    Context.BlackMarketListing.Add(listing);
+                    Ensure(Context.TrySaveChanges(), "list a synthetic offer");
+                    Item? created = CreateItem(listing.Id, item);
+                    Ensure(created != null, "create a synthetic offer's item");
+                    listing.ItemUid = created!.Uid;
+                    Ensure(Context.TrySaveChanges(), "link a synthetic offer's item");
+                }
+
+                if (own) {
+                    Commit();
+                }
+                return offers.Count;
+            } catch {
+                if (own) {
+                    Rollback();
+                    Context.ChangeTracker.Clear();
+                }
+                throw;
+            }
+        }
+
         public IEnumerable<BlackMarketListing> GetBlackMarketListings(long characterId) {
             Model.BlackMarketListing[] models = Context.BlackMarketListing.Where(listing => listing.CharacterId == characterId)
                 .AsEnumerable()

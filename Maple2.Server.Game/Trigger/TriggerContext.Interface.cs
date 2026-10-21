@@ -61,15 +61,15 @@ public partial class TriggerContext {
     }
 
     public void ScoreBoardCreate(string type, string title, int maxScore) {
-        if (TraceEnabled) ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
+        ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
     }
 
     public void ScoreBoardRemove() {
-        if (TraceEnabled) ErrorLog("[ScoreBoardRemove]");
+        ErrorLog("[ScoreBoardRemove]");
     }
 
     public void ScoreBoardSetScore(int score) {
-        if (TraceEnabled) ErrorLog("[ScoreBoardSetScore] score:{Score}", score);
+        ErrorLog("[ScoreBoardSetScore] score:{Score}", score);
     }
 
     public void SetEventUiRound(int[] rounds, int arg3, int vOffset) {

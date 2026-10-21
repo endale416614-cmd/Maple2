@@ -36,12 +36,12 @@ public sealed class BlackMarketManager {
     }
 
     /// <summary>A listing needs a positive price and quantity, and a total that fits a long.</summary>
-    public static bool IsValidOffer(long price, int quantity) {
-        return price > 0 && quantity > 0 && price <= long.MaxValue / quantity;
+    public static bool IsValidOffer(long price, int quantity, long minPrice = 0, long maxPrice = 0) {
+        return price > 0 && quantity > 0 && price <= long.MaxValue / quantity && (minPrice == 0 || price >= minPrice) && (maxPrice == 0 || price <= maxPrice);
     }
 
     public void Add(long itemUid, long price, int quantity) {
-        if (!IsValidOffer(price, quantity)) {
+        if (!IsValidOffer(price, quantity, Constants.BlackMarketSellMinPrice, Constants.BlackMarketSellMaxPrice)) {
             session.Send(BlackMarketPacket.Error(BlackMarketError.s_blackmarket_error_fail_register));
             return;
         }
@@ -208,8 +208,19 @@ public sealed class BlackMarketManager {
             return;
         }
 
+        // A synthetic listing (offline market, R12-22) has an item without stats: they are rolled for the buyer.
+        bool synthetic = listing.CharacterId == OfflineMarket.SellerId;
+        void Roll(Item item) {
+            if (synthetic && session.Field != null) {
+                item.Stats = session.Field.ItemStatsCalc.GetStats(item);
+                item.Socket = session.Field.ItemStatsCalc.GetSockets(item);
+            }
+        }
+
         listing.Quantity -= quantity;
         if (quantity == listing.Item.Amount) {
+            Roll(listing.Item);
+            listing.Item.Transfer?.CountTrade();
             db.SaveItems(receivingMail.Id, listing.Item);
             receivingMail.Items.Add(listing.Item);
             db.DeleteBlackMarketListing(listingId);
@@ -218,6 +229,8 @@ public sealed class BlackMarketManager {
             db.SaveItems(listing.Id, listing.Item);
             Item? item = listing.Item.Clone();
             item.Amount = quantity;
+            Roll(item);
+            item.Transfer?.CountTrade();
 
             item = db.CreateItem(receivingMail.Id, item);
             if (item is null) {
@@ -246,6 +259,11 @@ public sealed class BlackMarketManager {
         }
 
         session.Mail.Notify(true);
+
+        if (synthetic) { // no seller to pay or notify
+            session.Send(BlackMarketPacket.Purchase(listingId, quantity));
+            return;
+        }
 
         // Seller Mail
         Mail? sellerMail = CreateSellerMail(listing, quantity);

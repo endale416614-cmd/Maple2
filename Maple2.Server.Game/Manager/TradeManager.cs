@@ -257,9 +257,7 @@ public class TradeManager : IDisposable {
             long fee = success ? (long) (Constants.TradeFeePercent / 100f * sender.Mesos) : 0;
             sender.Session.Currency.Meso += sender.Mesos - fee;
             foreach (Item item in sender.Items) {
-                if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true) {
-                    item.Transfer.RemainTrades--;
-                }
+                item.Transfer?.CountTrade();
                 sender.Session.Item.Inventory.Add(item);
             }
 
@@ -270,9 +268,7 @@ public class TradeManager : IDisposable {
             long fee = success ? (long) (Constants.TradeFeePercent / 100f * receiver.Mesos) : 0;
             receiver.Session.Currency.Meso += receiver.Mesos - fee;
             foreach (Item item in receiver.Items) {
-                if (item.Transfer?.Flag.HasFlag(TransferFlag.LimitTrade) == true) {
-                    item.Transfer.RemainTrades--;
-                }
+                item.Transfer?.CountTrade();
                 receiver.Session.Item.Inventory.Add(item);
             }
 

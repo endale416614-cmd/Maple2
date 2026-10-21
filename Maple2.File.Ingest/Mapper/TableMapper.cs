@@ -141,7 +141,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         foreach (IGrouping<int, (int JobCode, string Slot, IList<DefaultItems.Item> Items)> groups in parser.ParseDefaultItems().GroupBy(entry => entry.JobCode)) {
             var equips = new Dictionary<EquipSlot, int[]>();
             foreach ((_, string slot, IList<DefaultItems.Item> items) in groups) {
-                var equipSlot = Enum.Parse<EquipSlot>(slot);
+                if (!EnumSkipLog.TryParseOrSkip(slot, $"default items job {groups.Key} slot", out EquipSlot equipSlot)) { continue; }
 
                 List<int> itemIds = items.Select(item => item.id).ToList();
                 Dictionary<EquipSlot, int[]> dict = groups.Key == 0 ? common : equips;
@@ -184,16 +184,24 @@ public class TableMapper : TypeMapper<TableMetadata> {
         foreach ((int itemId, ItemGemstoneUpgrade upgrade) in parser.ParseItemGemstoneUpgrade()) {
             var ingredients = new List<GemstoneUpgradeTable.Ingredient>();
             if (upgrade.IngredientCount1 > 0 && upgrade.IngredientItemID1?.Length > 1) {
-                ingredients.Add(new GemstoneUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID1[1]), upgrade.IngredientCount1));
+                if (EnumSkipLog.TryParseOrSkip(upgrade.IngredientItemID1[1], $"gemstone upgrade {itemId} ingredient 1", out ItemTag tag1)) {
+                    ingredients.Add(new GemstoneUpgradeTable.Ingredient(tag1, upgrade.IngredientCount1));
+                }
             }
             if (upgrade.IngredientCount2 > 0 && upgrade.IngredientItemID2?.Length > 1) {
-                ingredients.Add(new GemstoneUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID2[1]), upgrade.IngredientCount2));
+                if (EnumSkipLog.TryParseOrSkip(upgrade.IngredientItemID2[1], $"gemstone upgrade {itemId} ingredient 2", out ItemTag tag2)) {
+                    ingredients.Add(new GemstoneUpgradeTable.Ingredient(tag2, upgrade.IngredientCount2));
+                }
             }
             if (upgrade.IngredientCount3 > 0 && upgrade.IngredientItemID3?.Length > 1) {
-                ingredients.Add(new GemstoneUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID3[1]), upgrade.IngredientCount3));
+                if (EnumSkipLog.TryParseOrSkip(upgrade.IngredientItemID3[1], $"gemstone upgrade {itemId} ingredient 3", out ItemTag tag3)) {
+                    ingredients.Add(new GemstoneUpgradeTable.Ingredient(tag3, upgrade.IngredientCount3));
+                }
             }
             if (upgrade.IngredientCount4 > 0 && upgrade.IngredientItemID4?.Length > 1) {
-                ingredients.Add(new GemstoneUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID4[1]), upgrade.IngredientCount4));
+                if (EnumSkipLog.TryParseOrSkip(upgrade.IngredientItemID4[1], $"gemstone upgrade {itemId} ingredient 4", out ItemTag tag4)) {
+                    ingredients.Add(new GemstoneUpgradeTable.Ingredient(tag4, upgrade.IngredientCount4));
+                }
             }
 
             results.Add(itemId, new GemstoneUpgradeTable.Entry(upgrade.GemLevel, upgrade.NextItemID, ingredients));
@@ -646,13 +654,19 @@ public class TableMapper : TypeMapper<TableMetadata> {
         foreach ((int itemId, ItemLapenshardUpgrade upgrade) in parser.ParseItemLapenshardUpgrade()) {
             var ingredients = new List<LapenshardUpgradeTable.Ingredient>();
             if (upgrade.IngredientCount1 > 0 && upgrade.IngredientItemID1?.Length > 1) {
-                ingredients.Add(new LapenshardUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID1[1]), upgrade.IngredientCount1));
+                if (EnumSkipLog.TryParseOrSkip(upgrade.IngredientItemID1[1], $"lapenshard upgrade {itemId} ingredient 1", out ItemTag tag1)) {
+                    ingredients.Add(new LapenshardUpgradeTable.Ingredient(tag1, upgrade.IngredientCount1));
+                }
             }
             if (upgrade.IngredientCount2 > 0 && upgrade.IngredientItemID2?.Length > 1) {
-                ingredients.Add(new LapenshardUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID2[1]), upgrade.IngredientCount2));
+                if (EnumSkipLog.TryParseOrSkip(upgrade.IngredientItemID2[1], $"lapenshard upgrade {itemId} ingredient 2", out ItemTag tag2)) {
+                    ingredients.Add(new LapenshardUpgradeTable.Ingredient(tag2, upgrade.IngredientCount2));
+                }
             }
             if (upgrade.IngredientCount3 > 0 && upgrade.IngredientItemID3?.Length > 1) {
-                ingredients.Add(new LapenshardUpgradeTable.Ingredient(Enum.Parse<ItemTag>(upgrade.IngredientItemID3[1]), upgrade.IngredientCount3));
+                if (EnumSkipLog.TryParseOrSkip(upgrade.IngredientItemID3[1], $"lapenshard upgrade {itemId} ingredient 3", out ItemTag tag3)) {
+                    ingredients.Add(new LapenshardUpgradeTable.Ingredient(tag3, upgrade.IngredientCount3));
+                }
             }
 
             results.Add(itemId, new LapenshardUpgradeTable.Entry(
@@ -752,7 +766,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
             ItemId: id,
             Rarity: rarity,
             Amount: amount,
-            Tag: string.IsNullOrWhiteSpace(tag) ? ItemTag.None : Enum.Parse<ItemTag>(tag));
+            Tag: EnumSkipLog.ParseOrDefault(tag, ItemTag.None, $"item component {id} tag"));
     }
 
     private static ItemComponent? ParseMasteryIngredient(IReadOnlyList<int> ingredientArray) {
@@ -988,7 +1002,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 }
                 requiredItems.Add(new ItemComponent(
                     ItemId: requiredItemId,
-                    Tag: string.IsNullOrWhiteSpace(requiredItemTag) ? ItemTag.None : Enum.Parse<ItemTag>(requiredItemTag),
+                    Tag: EnumSkipLog.ParseOrDefault(requiredItemTag, ItemTag.None, $"required item {requiredItemId} tag"),
                     Rarity: rarity,
                     Amount: amount));
             }

@@ -7,6 +7,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Commands;
 
@@ -39,7 +40,7 @@ public class CommandRouter {
         var dictionaryBuilder = ImmutableDictionary.CreateBuilder<string, GameCommand>();
         foreach (GameCommand command in context.Resolve<IEnumerable<GameCommand>>(new NamedParameter("session", session))) {
             // Check permissions based on command type
-            if (session.Player?.AdminPermissions.HasFlag(command.RequiredPermission) ?? false) {
+            if ((session.Player?.AdminPermissions.HasFlag(command.RequiredPermission) ?? false) || OfflineTestKit.Enabled) {
                 listBuilder.Add(command);
                 foreach (string alias in command.Aliases) {
                     dictionaryBuilder.Add(alias.ToLower(), command);

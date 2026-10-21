@@ -47,6 +47,24 @@ public class OfflineEditionTest {
         Assert.That(table.Entries.Values.Select(entry => entry.ItemId).Distinct().Count(), Is.EqualTo(table.Entries.Count));
         // Entries the game already ships keep priority over the generated catalog.
         Assert.That(table.Entries[shipped.Id].Price, Is.EqualTo(123));
+        Assert.That(table.Entries.Values.All(entry => entry.SalePrice == entry.Price), "every entry shows its list price");
+    }
+
+    [Test]
+    public void MeretCatalog_SalePriceReset() {
+        string path = Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json");
+        Assume.That(File.Exists(path), "offline-meret-catalog.json not generated");
+        Environment.SetEnvironmentVariable("OFFLINE_MERET_CATALOG_FILE", path);
+
+        var shipped = new MeretMarketItemMetadata(1, 0, 10, "", default, 1, 1, 1, 0, 0, default,
+            MeretMarketCurrencyType.Meret, 500, 250, 0, 0, (JobFilterFlag) 4095, false, 0, 0, 0, 0, false, false, false, "", 0, 0);
+        MeretMarketTable table = OfflineEconomy.Apply(new MeretMarketTable(new Dictionary<int, MeretMarketItemMetadata> {
+            [shipped.Id] = shipped,
+        }));
+
+        // Every entry costs and shows its list price (the client shows SalePrice).
+        Assert.That(table.Entries[shipped.Id].Price, Is.EqualTo(500));
+        Assert.That(table.Entries[shipped.Id].SalePrice, Is.EqualTo(500));
     }
 
     [Test]
@@ -192,6 +210,18 @@ public class OfflineEditionTest {
     }
 
     [Test]
+    public void MeretCatalog_ListsOnlyItemsTheClientShows() {
+        string path = Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json");
+        Assume.That(File.Exists(path), "offline-meret-catalog.json not generated");
+
+        HashSet<int> items = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path)).RootElement.GetProperty("Entries")
+            .EnumerateArray().Select(entry => entry.GetProperty("ItemId").GetInt32()).ToHashSet();
+
+        // The NA client hides Wedding and Mentoring items (empty rows) and names 20300484 and 20301697 after other items.
+        Assert.That(items.Intersect(new[] { 11050067, 11050068, 11250210, 11301057, 20300484, 20301697 }), Is.Empty);
+    }
+
+    [Test]
     public void MeretExchange_AddsPouchesPricedInMesos() {
         tempFile = Path.GetTempFileName();
         File.WriteAllText(tempFile, """
@@ -238,6 +268,10 @@ public class OfflineEditionTest {
         Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([], [JobCode.Wizard]), Is.True, "items for every class");
         Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([JobCode.None], [JobCode.Wizard]), Is.True);
         Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([JobCode.Archer, JobCode.Knight], [JobCode.Knight]), Is.True);
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([], [JobCode.Berserker], [JobCode.Knight]), Is.False, "Berserker weapon for Knight");
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([], [JobCode.Knight], [JobCode.Knight]), Is.True);
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([], [JobCode.None], [JobCode.Knight]), Is.True);
+        Assert.That(Maple2.Server.Game.Util.OfflineClassDrops.AllowedFor([], [], [JobCode.Knight]), Is.True);
     }
 
     [Test]

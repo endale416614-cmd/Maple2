@@ -21,8 +21,16 @@ public class ItemDismantleHandler : FieldPacketHandler {
         AutoAdd = 6,
     }
 
+    /// <summary>Chaos Onyx Crystals for dismantling one gear item: Epic 1-3, Legendary 2-6, Ascendant 3-9, none below Epic.</summary>
+    public static (int Min, int Max) ChaosOnyx(int rarity) => rarity >= 4 ? (rarity - 3, 3 * (rarity - 3)) : (0, 0);
+
+    /// <summary>Offline edition (maintainer 2026-10-21): (Navigator) gear from the level reward boxes can be dismantled although its data
+    /// says enableBreak=0; the client mod offline-dismantle (tools/build_dismantle_mod.py) lifts the same flag in the client.</summary>
+    public static bool CanDismantle(bool enableBreak, string? name) => enableBreak || name?.StartsWith("(Navigator)", StringComparison.Ordinal) == true;
+
     // TODO: Simple calculation now of 10k onyx per item
     private const int ONYX_ID = 40100023;
+    private const int CHAOS_ONYX_ID = 40100024;
     private const int MIN_ONYX = 700;
     private const int MAX_ONYX = 1000;
 
@@ -68,7 +76,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
         long itemUid = packet.ReadLong();
         int amount = packet.ReadInt();
         Item? item = session.Item.Inventory.Get(itemUid);
-        if (item == null || (!item.Metadata.Limit.EnableBreak && item.GachaDismantleId == 0) || item.Amount < amount) {
+        if (item == null || (!CanDismantle(item.Metadata.Limit.EnableBreak, item.Metadata.Name) && item.GachaDismantleId == 0) || item.Amount < amount) {
             return;
         }
 
@@ -138,16 +146,17 @@ public class ItemDismantleHandler : FieldPacketHandler {
 
             var result = new Dictionary<int, int>();
             foreach ((int id, (int min, int max)) in rewards) {
-                int total = Random.Shared.Next(min, max);
+                int total = Random.Shared.Next(min, max + 1);
                 result[id] = total;
                 while (total > 0) {
 
                     Item? item = session.Field?.ItemDrop.CreateItem(id, amount: total);
                     if (item == null) {
-                        continue;
+                        break;
                     }
                     int rewarded = Math.Min(item.Metadata.Property.SlotMax, total);
                     total -= rewarded;
+                    item.Amount = rewarded;
                     session.Item.Inventory.Add(item, true);
                 }
             }
@@ -182,7 +191,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
 
                 switch (type) {
                     case InventoryType.Gear or InventoryType.Gemstone:
-                        if (!item.Metadata.Limit.EnableBreak) {
+                        if (!CanDismantle(item.Metadata.Limit.EnableBreak, item.Metadata.Name)) {
                             continue;
                         }
                         break;
@@ -237,5 +246,11 @@ public class ItemDismantleHandler : FieldPacketHandler {
             yield return (ONYX_ID, minAdd, maxAdd);
         }
         // TODO: ItemSkinCrystal reward from outfits?
+
+        // Epic or better gear always gives Chaos Onyx, as in the original game (the dismantle data does not list it).
+        (int chaosMin, int chaosMax) = ChaosOnyx(item.Rarity);
+        if (item.Inventory == InventoryType.Gear && chaosMax > 0) {
+            yield return (CHAOS_ONYX_ID, chaosMin * amount, chaosMax * amount);
+        }
     }
 }

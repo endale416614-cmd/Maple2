@@ -87,6 +87,7 @@ public static class ConditionUtil {
             case ConditionType.quest_clear_by_chapter:
             case ConditionType.quest_clear:
             case ConditionType.dungeon_clear:
+            case ConditionType.dungeon_rank:
             case ConditionType.buff:
             case ConditionType.enchant_result:
             case ConditionType.dialogue:
@@ -339,6 +340,8 @@ public static class ConditionUtil {
             case ConditionType.send_mail:
             case ConditionType.change_ugc_equip:
             case ConditionType.unlimited_enchant:
+            // No rank is scored yet (DungeonManager), so a clear counts for any rank target.
+            case ConditionType.dungeon_rank:
                 return true;
         }
         return false;

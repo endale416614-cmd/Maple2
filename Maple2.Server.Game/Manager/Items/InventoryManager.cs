@@ -46,8 +46,10 @@ public class InventoryManager {
             if (!tabs.TryGetValue(type, out ItemCollection? items)) continue;
             foreach (Item item in load) {
                 if (items.Add(item).Count != 0) continue;
-                delete.Add(item);
-                Log.Warning("Deleted item {ItemUid} from inventory {InventoryType} due to overflow", item.Uid, type);
+                // Kept in the save, not discarded: after a session without the content pack (its items are not loaded
+                // then) a full bag must not cost the player an item. It loads again at the next load (login, map change) when its tab
+                // has a free slot.
+                Log.Warning("Item {ItemUid} ({ItemId}) not loaded into inventory {InventoryType}: no free slot, kept in the save", item.Uid, item.Id, type);
             }
         }
     }
@@ -346,10 +348,10 @@ public class InventoryManager {
         }
     }
 
-    public bool CanAdd(Item item) {
+    public bool CanAdd(Item item, int amount = -1) {
         lock (session.Item) {
             if (tabs.TryGetValue(item.Inventory, out ItemCollection? items)) {
-                return items.OpenSlots > 0 || items.GetStackResult(item) == 0;
+                return items.OpenSlots > 0 || items.GetStackResult(item, amount) == 0;
             }
 
             return false;

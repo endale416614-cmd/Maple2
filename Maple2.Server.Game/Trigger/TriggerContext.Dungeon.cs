@@ -33,11 +33,11 @@ public partial class TriggerContext {
     }
 
     public void DungeonCloseTimer() {
-        if (TraceEnabled) ErrorLog("[DungeonCloseTimer]");
+        ErrorLog("[DungeonCloseTimer]");
     }
 
     public void DungeonDisableRanking() {
-        if (TraceEnabled) ErrorLog("[DungeonDisableRanking]");
+        ErrorLog("[DungeonDisableRanking]");
     }
 
     public void DungeonEnableGiveUp(bool enabled) {
@@ -46,7 +46,7 @@ public partial class TriggerContext {
     }
 
     public void DungeonFail() {
-        if (TraceEnabled) ErrorLog("[DungeonFail]");
+        ErrorLog("[DungeonFail]");
     }
 
     public void DungeonMissionComplete(string feature, int missionId) {
@@ -66,7 +66,7 @@ public partial class TriggerContext {
     }
 
     public void DungeonMoveLapTimeToNow(int id) {
-        if (TraceEnabled) ErrorLog("[DungeonMoveLapTimeToNow] id:{Id}", id);
+        ErrorLog("[DungeonMoveLapTimeToNow] id:{Id}", id);
     }
 
     public void DungeonResetTime(int seconds) {
@@ -77,15 +77,15 @@ public partial class TriggerContext {
     }
 
     public void DungeonSetEndTime() {
-        if (TraceEnabled) ErrorLog("[DungeonSetEndTime]");
+        ErrorLog("[DungeonSetEndTime]");
     }
 
     public void DungeonSetLapTime(int id, int lapTime) {
-        if (TraceEnabled) ErrorLog("[DungeonSetLapTime] id:{Id}, lapTime:{LapTime}", id, lapTime);
+        ErrorLog("[DungeonSetLapTime] id:{Id}, lapTime:{LapTime}", id, lapTime);
     }
 
     public void DungeonStopTimer() {
-        if (TraceEnabled) ErrorLog("[DungeonStopTimer]");
+        ErrorLog("[DungeonStopTimer]");
     }
 
     public void RandomAdditionalEffect(
@@ -110,16 +110,17 @@ public partial class TriggerContext {
     }
 
     public void SetUserValueFromDungeonRewardCount(string key, int dungeonRewardId) {
-        if (TraceEnabled) ErrorLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
+        ErrorLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
     }
 
     public void StartTutorial() {
-        if (TraceEnabled) ErrorLog("[StartTutorial]");
+        ErrorLog("[StartTutorial]");
     }
 
     #region DarkStream
     public void DarkStreamSpawnMonster(int[] spawnIds, int score) {
-        if (TraceEnabled) ErrorLog("[DarkStreamSpawnMonster]");
+        if (TraceEnabled) DebugLog("[DarkStreamSpawnMonster] spawnIds:{SpawnIds}, score:{Score}", spawnIds, score);
+        SpawnMonster(spawnIds, true, 0);
     }
 
     public void DarkStreamStartGame(int round) {
@@ -130,7 +131,7 @@ public partial class TriggerContext {
     }
 
     public void DarkStreamStartRound(int round, int uiDuration, int damagePenalty) {
-        if (TraceEnabled) ErrorLog("[DarkStreamStartRound]");
+        ErrorLog("[DarkStreamStartRound]");
     }
 
     public void DarkStreamClearRound(int round) {
@@ -146,11 +147,11 @@ public partial class TriggerContext {
 
     #region ShadowExpedition
     public void ShadowExpeditionOpenBossGauge(int maxGaugePoint, string title) {
-        if (TraceEnabled) ErrorLog("[ShadowExpeditionOpenBossGauge]");
+        ErrorLog("[ShadowExpeditionOpenBossGauge]");
     }
 
     public void ShadowExpeditionCloseBossGauge() {
-        if (TraceEnabled) ErrorLog("[ShadowExpeditionCloseBossGauge]");
+        ErrorLog("[ShadowExpeditionCloseBossGauge]");
     }
     #endregion
 
@@ -168,7 +169,7 @@ public partial class TriggerContext {
     }
 
     public bool DungeonTimeout() {
-        if (TraceEnabled) ErrorLog("[DungeonTimeout]");
+        ErrorLog("[DungeonTimeout]");
         return false;
     }
 
@@ -181,7 +182,7 @@ public partial class TriggerContext {
     }
 
     public bool IsPlayingMapleSurvival(bool negate) {
-        if (TraceEnabled) ErrorLog("[IsPlayingMapleSurvival]");
+        ErrorLog("[IsPlayingMapleSurvival]");
         return false;
     }
     #endregion

@@ -678,7 +678,17 @@ public partial class GameStorage {
             }
 
             Context.Remove(character);
-            return Context.TrySaveChanges();
+            if (!Context.TrySaveChanges()) {
+                return false;
+            }
+
+            // Rows keyed by the character id that the delete leaves behind. Account-wide quests and achievements and the
+            // account storage use the ACCOUNT id as OwnerId (seeded id ranges keep the two apart; the item guard is a backstop).
+            Context.Database.ExecuteSqlRaw("DELETE FROM `quest` WHERE OwnerId = {0}", characterId);
+            Context.Database.ExecuteSqlRaw("DELETE FROM `achievement` WHERE OwnerId = {0}", characterId);
+            Context.Database.ExecuteSqlRaw("DELETE FROM `dungeon-record` WHERE OwnerId = {0}", characterId);
+            Context.Database.ExecuteSqlRaw("DELETE FROM `item` WHERE OwnerId = {0} AND OwnerId NOT IN (SELECT Id FROM `account`)", characterId);
+            return true;
         }
         #endregion
     }

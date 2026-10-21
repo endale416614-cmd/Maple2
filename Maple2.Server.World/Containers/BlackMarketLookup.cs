@@ -39,7 +39,7 @@ public class BlackMarketLookup : IDisposable {
                 continue;
             }
 
-            if (!string.IsNullOrEmpty(name) && !listing.Item.Metadata.Name?.Contains(name) == true) {
+            if (!string.IsNullOrEmpty(name) && !listing.Item.Metadata.Name?.Contains(name, StringComparison.OrdinalIgnoreCase) == true) {
                 continue;
             }
 

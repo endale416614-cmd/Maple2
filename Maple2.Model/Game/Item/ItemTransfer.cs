@@ -39,6 +39,16 @@ public sealed class ItemTransfer : IByteSerializable, IByteDeserializable {
         return true;
     }
 
+    /// <summary>
+    /// Decrements the trade count for a trade-limited item.
+    /// A trade, or a Black Market purchase, uses one of a trade-limited item's remaining trades.
+    /// </summary>
+    public void CountTrade() {
+        if (Flag.HasFlag(TransferFlag.LimitTrade) && RemainTrades > 0) {
+            RemainTrades--;
+        }
+    }
+
     public void WriteTo(IByteWriter writer) {
         // CItemTransfer is CItem[66]
         writer.Write<TransferFlag>(Flag); // CItemTransfer[5]

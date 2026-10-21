@@ -111,6 +111,27 @@ public class FieldNpc : Actor<Npc> {
 
     public readonly Dictionary<string, int> AiExtraData = new();
 
+    // Boss HP hold (AI MinimumHpNode, BossHpFloor): the health percent damage cannot pass until the next phase lowers it.
+    public float HpFloorPercent { get; private set; }
+    private long hpFloorHeldSince;
+
+    public void SetHpFloor(float percent) {
+        percent = Math.Max(0, percent);
+        if (percent != HpFloorPercent) { // an AI that sets the same floor again must not restart the 60 s count
+            HpFloorPercent = percent;
+            hpFloorHeldSince = 0;
+        }
+    }
+
+    /// <summary>Raises health to the floor at once (a hit), so the health bar never shows the hit going through.</summary>
+    public void ClampToHpFloor() {
+        Stat health = Stats.Values[BasicAttribute.Health];
+        long floor = BossHpFloor.FloorHealth(HpFloorPercent, health.Total);
+        if (health.Current < floor) {
+            health.Current = floor;
+        }
+    }
+
     public FieldNpc(FieldManager field, int objectId, DtCrowdAgent? agent, Npc npc, string aiPath, string spawnAnimation = "", string? patrolDataUUID = null) : base(field, objectId, npc, field.NpcMetadata) {
         IdleSequenceMetadata = npc.Animations.GetValueOrDefault("Idle_A") ?? new AnimationSequenceMetadata(string.Empty, -1, 1f, []);
         JumpSequence = npc.Animations.GetValueOrDefault("Jump_A") ?? npc.Animations.GetValueOrDefault("Jump_B");
@@ -149,6 +170,24 @@ public class FieldNpc : Actor<Npc> {
 
     protected virtual void Remove(TimeSpan delay) => Field.RemoveNpc(ObjectId, delay);
 
+    private void ApplyHpFloor(long tickCount) {
+        if (HpFloorPercent <= 0) {
+            return;
+        }
+        Stat health = Stats.Values[BasicAttribute.Health];
+        (long keep, bool release, long heldSince) = BossHpFloor.Step(health.Current, health.Total, HpFloorPercent, hpFloorHeldSince, tickCount);
+        hpFloorHeldSince = heldSince;
+        if (release) {
+            Logger.Warning("HP floor {Percent}% of NPC {NpcId} held {Seconds} s without its next phase; released", HpFloorPercent, Value.Metadata.Id, BossHpFloor.HoldLimitMs / 1000);
+            HpFloorPercent = 0;
+            return;
+        }
+        if (keep != health.Current) {
+            health.Current = keep;
+            Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
+        }
+    }
+
     private List<string> debugMessages = [];
     private bool playersListeningToDebug = false; // controls whether messages should log
     private long nextDebugPacket = 0;
@@ -163,7 +202,11 @@ public class FieldNpc : Actor<Npc> {
             return;
         }
 
+        ApplyHpFloor(tickCount); // before base.Update, which turns health 0 into death
         base.Update(tickCount);
+        if (!IsDead) {
+            ApplyHpFloor(tickCount); // again after the damage over time base.Update applies, before the AI checks its phases
+        }
 
         // controls whether currently logged messages should print
         bool playersListeningToDebugNow = false;

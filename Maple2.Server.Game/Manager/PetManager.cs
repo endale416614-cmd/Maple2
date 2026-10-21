@@ -106,6 +106,10 @@ public sealed class PetManager : IDisposable {
                 return StringCode.s_item_err_invalid_count;
             }
 
+            if (!session.Item.Inventory.CanAdd(withdraw, amount)) {
+                return StringCode.s_err_inventory;
+            }
+
             if (!RemoveInternal(uid, amount, out withdraw)) {
                 return StringCode.s_empty_string;
             }

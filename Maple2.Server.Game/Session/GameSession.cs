@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Numerics;
 using Autofac;
 using Grpc.Core;
+using Maple2.Database.Context;
 using Maple2.Database.Extensions;
 using Maple2.Database.Storage;
 using Maple2.Model;
@@ -252,6 +253,12 @@ public sealed partial class GameSession : Core.Network.Session {
             case MigrationType.Normal:
             default:
                 break;
+        }
+
+        SaveStamp.Result stamp = db.StampMode(SaveStamp.Current);
+        if (stamp.WarnLegacyAfterAdapted) {
+            Logger.Warning("Legacy mode on a save that has run Adapted rules (history {History})", stamp.History);
+            Send(NoticePacket.Message("This save has been played with Adapted rules before. Legacy mode keeps your progress and items; only the rules change."));
         }
 
         var playerUpdate = new PlayerUpdateRequest {
@@ -529,7 +536,7 @@ public sealed partial class GameSession : Core.Network.Session {
             GetGlobalPortal = new TimeEventRequest.Types.GetGlobalPortal(),
         });
 
-        if (globalEventResponse.Error != 0 && globalEventResponse.GlobalPortalInfo != null) {
+        if (globalEventResponse.Error == 0 && globalEventResponse.GlobalPortalInfo != null) {
             if (ServerTableMetadata.TimeEventTable.GlobalPortal.TryGetValue(globalEventResponse.GlobalPortalInfo.MetadataId, out GlobalPortalMetadata? portal)) {
                 Send(GlobalPortalPacket.Announce(portal, globalEventResponse.GlobalPortalInfo.EventId));
             }

@@ -126,7 +126,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             targetRecord.AddDamage(DamageType.Miss, 0);
             return;
         }
-        if (caster is FieldPlayer { GodMode: true } && this is FieldNpc) {
+        if (caster is FieldPlayer { GodModeKill: true } && this is FieldNpc) {
             long health = Math.Max(1, Stats.Values[BasicAttribute.Health].Current);
             targetRecord.AddDamage(DamageType.Critical, health);
             ApplyCheatDamage(caster, health);
@@ -145,9 +145,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 damageAmount -= attack.Damage.Value;
             } else {
                 try {
-                    (DamageType damageTypeResult, double damageResult) = DamageCalculator.CalculateDamage(caster, this, damage.Properties);
-                    targetRecord.AddDamage(damageTypeResult, (long) damageResult);
-                    damageAmount -= (long) damageResult;
+                    (DamageType damageTypeResult, long damageResult) = DamageCalculator.CalculateDamage(caster, this, damage.Properties);
+                    // Reverse Fair Fight (RFF_DESIGN 3.3): a solo player's direct hit on a boss or group-dungeon monster rises to its floor.
+                    damageResult = OfflineFairFight.Floor(caster, this, damage.Properties, damageTypeResult, damageResult);
+                    targetRecord.AddDamage(damageTypeResult, damageResult);
+                    damageAmount -= damageResult;
                 } catch (Exception e) {
                     Logger.Error(e, "Error calculating damage for {Caster} on {Target} with attack {Attack}", caster, this, attack);
                     damageAmount = 0; // No damage dealt
@@ -163,6 +165,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             }
             record.AddDamage(DamageType.Normal, positiveDamage);
             Stats.Values[BasicAttribute.Health].Add(damageAmount);
+            if (this is FieldNpc floored) {
+                floored.ClampToHpFloor(); // a boss HP hold: the bar stops at the floor instead of showing the hit go through
+            }
             Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
             OnDamageReceived(caster, positiveDamage);
         }
@@ -203,6 +208,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
     }
 
     private void ApplyCheatDamage(IActor caster, long amount) {
+        if (this is FieldNpc npc) {
+            npc.SetHpFloor(0); // a boss HP hold must not keep a cheat-killed NPC alive
+        }
         if (!DamageDealers.TryGetValue(caster.ObjectId, out DamageRecordTarget? record)) {
             record = new DamageRecordTarget(this);
             DamageDealers.TryAdd(caster.ObjectId, record);

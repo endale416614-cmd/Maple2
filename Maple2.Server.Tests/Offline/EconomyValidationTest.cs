@@ -62,6 +62,15 @@ public class EconomyValidationTest {
     }
 
     [Test]
+    public void BlackMarketOffer_EnforcesPriceLimits() {
+        Assert.That(BlackMarketManager.IsValidOffer(99, 1, 100, 10_000_000_000), Is.False);
+        Assert.That(BlackMarketManager.IsValidOffer(100, 1, 100, 10_000_000_000), Is.True);
+        Assert.That(BlackMarketManager.IsValidOffer(10_000_000_000, 1, 100, 10_000_000_000), Is.True);
+        Assert.That(BlackMarketManager.IsValidOffer(10_000_000_001, 1, 100, 10_000_000_000), Is.False);
+        Assert.That(BlackMarketManager.IsValidOffer(5, 1, 0, 0), Is.True);
+    }
+
+    [Test]
     public void SaveUpgrade_AddedColumnsGetValuesTheirReadersCanParse() {
         Assume.That(DbProvider.IsSqlite, "runs with DB_PROVIDER=sqlite");
         using var connection = new SqliteConnection("Data Source=:memory:");

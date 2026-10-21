@@ -178,6 +178,16 @@ public partial class GameStorage {
                 return false;
             }
 
+            // An attachment the server could not load (its item has no data, e.g. the content pack is off) would stay under
+            // the deleted mail's id and be deleted at the next World start: keep the mail until it can be collected (M5-02).
+            // A collected attachment (it has data) waits under the mail id for the next inventory save and does not count.
+            // shortcut: no metadata (game is null only in MailAttachmentTest) skips the hold; give that test metadata to drop it.
+            if (game != null && Context.Item.Where(item => item.OwnerId == mailId && !attachedItemUids.Contains(item.Id))
+                    .Select(item => item.ItemId).AsEnumerable().Any(itemId => !game.itemMetadata.TryGet(itemId, out _))) {
+                Logger.LogWarning("Mail {MailId} not deleted: it holds an attachment that could not be loaded", mailId);
+                return false;
+            }
+
             BeginTransaction();
             Context.Mail.Remove(mail);
             if (!SaveChanges()) {

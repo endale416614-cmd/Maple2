@@ -35,6 +35,8 @@ public abstract class Session : IDisposable {
 
     public EventHandler<string>? OnError;
     public EventHandler<IByteReader>? OnPacket;
+    /// <summary>Client packets that have no handler, by opcode, with their count this session (R12-21).</summary>
+    public readonly ConcurrentDictionary<ushort, int> UnhandledOpcodes = new();
     public Action? OnLoop;
 
     private bool disposed;
@@ -138,6 +140,10 @@ public abstract class Session : IDisposable {
 
         if (Interlocked.Exchange(ref disconnecting, 1) == 1) return;
         Logger.Information("Disconnected {Session} at {Caller} in {FilePath} on line {LineNumber}", this, caller, filePath, line);
+        if (!UnhandledOpcodes.IsEmpty) {
+            Logger.Warning("Unhandled client packets this session: {Opcodes}",
+                string.Join(", ", UnhandledOpcodes.OrderBy(entry => entry.Key).Select(entry => $"0x{entry.Key:X4} x{entry.Value}")));
+        }
 
         // Drain the send queue before disposing — ensures queued packets (e.g. migration)
         // are delivered to the client before the connection is closed.

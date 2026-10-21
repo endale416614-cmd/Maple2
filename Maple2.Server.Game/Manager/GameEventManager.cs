@@ -17,6 +17,8 @@ public sealed class GameEventManager {
     private const int BATCH_SIZE = 10;
     private readonly GameSession session;
     private readonly Dictionary<int, Dictionary<GameEventUserValueType, GameEventUserValue>> eventValues;
+    // Values of events that were not active at login; Get picks one up when its event turns active.
+    private readonly Dictionary<(int EventId, GameEventUserValueType Type), GameEventUserValue> kept = new();
     private long nextUpdateTick;
 
     private readonly ILogger logger = Log.Logger.ForContext<GameEventManager>();
@@ -42,11 +44,16 @@ public sealed class GameEventManager {
 
         using GameStorage.Request db = session.GameStorage.Context();
         IList<GameEventUserValue> values = db.GetEventUserValues(session.CharacterId);
+        long now = GameClock.Now.ToEpochSeconds();
         foreach (GameEventUserValue userValue in values) {
-            // Remove if the event is no longer active or the value has expired
-            if (events.All(gameEvent => gameEvent.Id != userValue.EventId) ||
-                userValue.ExpirationTime < GameClock.Now.ToEpochSeconds()) {
+            // Remove if the value has expired. A value of an event that is not active now stays in the save, unloaded:
+            // part-time and offline yearly events (R12-15) come back, and their progress with them.
+            if (Expired(userValue, now)) {
                 db.RemoveGameEventUserValue(userValue, session.CharacterId);
+                continue;
+            }
+            if (events.All(gameEvent => gameEvent.Id != userValue.EventId)) {
+                kept[(userValue.EventId, userValue.Type)] = userValue;
                 continue;
             }
 
@@ -146,14 +153,18 @@ public sealed class GameEventManager {
 
     public GameEventUserValue Get(GameEventUserValueType type, int eventId, long expirationTime) {
         if (!eventValues.TryGetValue(eventId, out Dictionary<GameEventUserValueType, GameEventUserValue>? valueDict)) {
-            eventValues.Add(eventId, new Dictionary<GameEventUserValueType, GameEventUserValue> {
-                { type, new GameEventUserValue(type, expirationTime, eventId) },
-            });
-        } else if (!valueDict.ContainsKey(type)) {
-            valueDict.Add(type, new GameEventUserValue(type, expirationTime, eventId));
+            eventValues.Add(eventId, valueDict = new Dictionary<GameEventUserValueType, GameEventUserValue>());
+        }
+        if (!valueDict.ContainsKey(type)) {
+            if (kept.Remove((eventId, type), out GameEventUserValue? stored) && !Expired(stored, GameClock.Now.ToEpochSeconds())) {
+                valueDict.Add(type, stored);
+                session.Send(GameEventUserValuePacket.Update(stored)); // Load ran at login, before this event was active
+            } else {
+                valueDict.Add(type, new GameEventUserValue(type, expirationTime, eventId));
+            }
         }
 
-        if (eventValues[eventId][type].ExpirationTime < GameClock.Now.ToEpochSeconds()) {
+        if (Expired(eventValues[eventId][type], GameClock.Now.ToEpochSeconds())) {
             eventValues[eventId][type] = new GameEventUserValue(type, expirationTime, eventId);
         }
 
@@ -170,4 +181,6 @@ public sealed class GameEventManager {
         }
         db.Ensure(db.SaveGameEventUserValues(session.CharacterId, eventValues.Values.SelectMany(value => value.Values).ToList()), "game event values");
     }
+
+    public static bool Expired(GameEventUserValue value, long now) => value.ExpirationTime < now;
 }

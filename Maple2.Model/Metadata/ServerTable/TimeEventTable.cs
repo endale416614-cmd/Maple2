@@ -54,6 +54,19 @@ public record GlobalPortalMetadata(
     string PopupMessage,
     string SoundId,
     GlobalPortalMetadata.Field[] Entries) {
+    // The first run at or after now: the start time while it lies ahead, else the start plus whole cycles.
+    // Null without a cycle or when that run would be after the end time.
+    public DateTime? FirstRun(DateTime now) {
+        if (CycleTime <= TimeSpan.Zero || EndTime < now) {
+            return null;
+        }
+        DateTime run = StartTime;
+        while (run < now) {
+            run += CycleTime;
+        }
+        return run > EndTime ? null : run;
+    }
+
     public record Field(
         string Name,
         int MapId,

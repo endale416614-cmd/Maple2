@@ -2,6 +2,7 @@
 using Maple2.Model.Common;
 using Maple2.Model.Game.Event;
 using Maple2.Model.Metadata;
+using Maple2.Tools;
 
 namespace Maple2.Database.Storage;
 
@@ -87,7 +88,7 @@ public class ServerTableMetadataStorage {
 
     public IEnumerable<GameEvent> GetGameEvents() {
         foreach ((int id, GameEventMetadata gameEvent) in GameEventTable.Entries) {
-            if (gameEvent.EndTime < DateTime.Now) {
+            if (gameEvent.EndTime < GameClock.Now) {
                 continue;
             }
 

@@ -121,6 +121,12 @@ public sealed class StorageManager {
                 return;
             }
 
+            if (!session.Item.Inventory.CanAdd(withdraw, amount)) {
+                // The storage's error codes have no "inventory full"; the inventory's own message says it.
+                session.Send(ItemInventoryPacket.Error(Maple2.Model.Error.ItemInventoryError.s_err_inventory));
+                return;
+            }
+
             if (!RemoveInternal(uid, amount, out withdraw)) {
                 return;
             }
