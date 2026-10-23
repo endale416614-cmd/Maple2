@@ -207,8 +207,9 @@ public class FurnishingManager {
 
             long itemUid = AddStorage(cube);
             if (itemUid == 0) {
-                logger.Fatal("Failed to return cube: {CubeId} to storage", cube.Id);
-                throw new InvalidOperationException($"Failed to return cube: {cube.Id} to storage");
+                AddInventory(cube);
+                logger.Error("Cube {CubeId} (item {ItemId}) could not go back to storage; it stays placed", cube.Id, cube.ItemId);
+                return false;
             }
 
             return true;
@@ -234,10 +235,11 @@ public class FurnishingManager {
     }
 
     public long AddStorage(Item item, UgcItemLook? template = null) {
-        const int amount = 1;
+        int amount = Math.Max(1, item.Amount); // The whole stack: a reward or purchase of several adds them all.
 
         lock (session.Item) {
-            Item? stored = storage.FirstOrDefault(existing => existing.Id == item.Id && existing.Template?.Url == template?.Url);
+            // A full stack (assistants have SlotMax 1) starts a new one.
+            Item? stored = storage.FirstOrDefault(existing => existing.Id == item.Id && existing.Template?.Url == template?.Url && existing.Amount + amount <= item.Metadata.Property.SlotMax);
             if (stored == null) {
                 if (storage.OpenSlots <= 0) {
                     logger.Error("Furnishing storage is full, cannot add item: {ItemId}", item.Id);

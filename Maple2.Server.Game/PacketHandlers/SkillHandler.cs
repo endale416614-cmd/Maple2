@@ -17,6 +17,9 @@ using Maple2.Tools.Collision;
 namespace Maple2.Server.Game.PacketHandlers;
 
 public class SkillHandler : FieldPacketHandler {
+    /// <summary>A cancel stops the motion only for the newest cast: a late cancel of an older cast must not stop the newer cast's motion (ActiveSkill buffs read it).</summary>
+    public static bool CancelsMotion(long? newestCastUid, long cancelUid) => newestCastUid == cancelUid;
+
     public override RecvOp OpCode => RecvOp.Skill;
 
     private enum Command : byte {
@@ -117,6 +120,10 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         if (!session.Player.SkillCastConsume(record)) {
+            // The client already plays the cast: stop it, and send the server's spirit and stamina, which its own check missed.
+            session.Send(SkillUseFailedPacket.Fail(record));
+            session.Send(StatsPacket.Update(session.Player, BasicAttribute.Spirit));
+            session.Send(StatsPacket.Update(session.Player, BasicAttribute.Stamina));
             return;
         }
 
@@ -254,59 +261,39 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         byte count = packet.ReadByte();
-        if (count > record.Attack.TargetCount) {
-            // Skills with BounceCount send all bounce targets in one packet but TargetCount is per-bounce.
-            // This may indicate an unimplemented bounce mechanic rather than a true exploit.
-            Logger.Warning("SkillId={SkillId} AttackPoint={AttackPoint} sent {Count} targets but TargetCount={TargetCount} — clamping. BounceCount={BounceCount}",
-                record.SkillId, attackPoint, count, record.Attack.TargetCount, record.Attack.Arrow.BounceCount);
-            count = (byte) record.Attack.TargetCount;
-        }
-
         int iterations = packet.ReadInt();
         if (iterations != 0) {
-            Logger.Information("Unhandled skill-Target iterations: ({Value}): {Record}", iterations, record);
+            // A held skill (Iron Shield) counts its loops here; each loop packet is handled.
+            Logger.Debug("Unhandled skill-Target iterations: ({Value}): {Record}", iterations, record);
         }
 
         if (session.Player.DebugSkills) {
             session.Send(NoticePacket.Message($"Skill.Attack.Damage: {skillUid}; AttackPoint: {attackPoint}"));
         }
 
-        // Although the client feeds us this information and is right, we cannot rely on it and must validate it
-        // we should keep it just to ensure what the server gathers as proper targets is the same as the client
-        /*for (byte i = 0; i < count; i++) {
-            int targetId = packet.ReadInt();
-            if (record.Targets.ContainsKey(targetId)) {
-                continue;
-            }
-            packet.ReadByte();
+        // Read client target IDs
+        var clientIds = new List<int>(count);
+        for (int i = 0; i < count && packet.Available >= 5; i++) {
+            clientIds.Add(packet.ReadInt());
+            packet.ReadByte(); // unknown
+        }
 
-            switch (record.Attack.Range.ApplyTarget) {
-                case ApplyTargetType.Hostile:
-                    if (session.Field.Mobs.TryGetValue(targetId, out FieldNpc? npc)) {
-                        record.Targets.TryAdd(npc.ObjectId, npc);
-                    }
-                    continue;
-                case ApplyTargetType.Friendly:
-                    if (session.Field.TryGetPlayer(targetId, out FieldPlayer? player)) {
-                        record.Targets.TryAdd(player.ObjectId, player);
-                    }
-                    continue;
-                case ApplyTargetType.HungryMobs:
-                    if (session.Field.Pets.TryGetValue(targetId, out FieldPet? pet)) {
-                        record.Targets.TryAdd(pet.ObjectId, pet);
-                    }
-                    continue;
-                case ApplyTargetType.RegionBuff:
-                case ApplyTargetType.RegionBuff2:
-                default:
-                    Logger.Debug("Unhandled Target-SkillEntity:{Entity}", record.Attack.Range.ApplyTarget);
-                    continue;
+        // Pierce, bounce and chain: the targets the client reports, if the server also finds them in the attack's range
+        // (around the impact point or from the caster), up to the skill's limit (DL-18).
+        int limit = SkillUtils.MaxTargets(record.Attack.TargetCount, record.Attack.Arrow.BounceType, record.Attack.Arrow.BounceCount);
+        SkillMetadataRange range = record.Attack.Range;
+        Prism[] prisms = [range.GetPrism(record.ImpactPosition, record.Rotation.Z), range.GetPrism(record.Caster.Position, record.Rotation.Z)];
+        Dictionary<int, IActor> inRange = new();
+        foreach (IActor actor in session.Field.GetTargets(record.Caster, prisms, range, byte.MaxValue)) {
+            inRange.TryAdd(actor.ObjectId, actor);
+        }
+        foreach (int id in SkillUtils.PickClientTargets(clientIds, inRange.Keys.ToHashSet(), limit)) {
+            record.Targets.TryAdd(id, inRange[id]);
+        }
+        if (record.Targets.IsEmpty) { // nothing the client named is in range here: the server's own pick, as before
+            foreach (IActor target in session.Field.GetTargets(record)) {
+                record.Targets.TryAdd(target.ObjectId, target);
             }
-        }*/
-
-        IEnumerable<IActor> targets = session.Field.GetTargets(record);
-        foreach (IActor target in targets) {
-            record.Targets.TryAdd(target.ObjectId, target);
         }
         session.Player.TargetAttack(record);
     }
@@ -327,12 +314,14 @@ public class SkillHandler : FieldPacketHandler {
 
         int unknown1 = packet.ReadInt(); // Unknown(0)
         if (unknown1 != 0) {
-            Logger.Error("Unhandled skill-MagicPath value1({Value}): {Record}", unknown1, record);
+            // A held skill's loop number (Smiting Aura 10400121), as the Target packet's iterations; nothing reads it.
+            Logger.Debug("Unhandled skill-MagicPath value1({Value}): {Record}", unknown1, record);
         }
 
         int attackIndex = packet.ReadInt(); // Unknown(0)
         if (attackIndex != 0) {
-            Logger.Error("Unhandled skill-MagicPath attackIndex ({Value}): {Record}", attackIndex, record);
+            // The client's projectile number on magic paths with several projectiles (Fireball 99910021: 3); nothing reads it.
+            Logger.Debug("Unhandled skill-MagicPath attackIndex ({Value}): {Record}", attackIndex, record);
         }
 
         if (session.Player.DebugSkills) {
@@ -363,7 +352,8 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         if (session.Player.Animation.PlayingSequence is null) {
-            Logger.Warning("Last motion already expired on skill {SkillUid}", skillUid);
+            // A sync for a cast whose motion already ended or was cancelled is normal client traffic; the motion is replayed below.
+            Logger.Debug("Last motion already expired on skill {SkillUid}", skillUid);
         }
 
         record.TrySetMotionPoint(motionPoint);
@@ -432,6 +422,8 @@ public class SkillHandler : FieldPacketHandler {
             session.Send(NoticePacket.Message($"Skill.Cancel: {skillUid}"));
         }
 
-        session.Animation.CancelSequence();
+        if (CancelsMotion(session.Player.ActiveSkills.GetMostRecent()?.CastUid, skillUid)) {
+            session.Animation.CancelSequence();
+        }
     }
 }

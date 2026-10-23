@@ -17,7 +17,7 @@ public static class RegionSkillPacket {
         var pWriter = Packet.Of(SendOp.RegionSkill);
         pWriter.Write<Command>(Command.Add);
         pWriter.WriteInt(fieldSkill.ObjectId);
-        pWriter.WriteInt(fieldSkill.ObjectId);
+        pWriter.WriteInt(fieldSkill.UserId); // the owner: the casting player (DL-46)
         pWriter.WriteInt(fieldSkill.NextTick.Truncate32());
         pWriter.WriteByte((byte) fieldSkill.Points.Length);
         foreach (Vector3 point in fieldSkill.Points) {

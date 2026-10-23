@@ -2,6 +2,7 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using Serilog;
 using static Maple2.Model.Metadata.AiMetadata;
@@ -33,6 +34,43 @@ public class AiState {
         BattleEnd,
     }
 
+    /// <summary>distanceOver: the target is farther than <paramref name="value"/>.</summary>
+    public static bool IsFarther(float distanceSquared, int value) => distanceSquared > (float) value * value;
+
+    /// <summary>distanceLess: the target is closer than <paramref name="value"/>.</summary>
+    public static bool IsCloser(float distanceSquared, int value) => distanceSquared < (float) value * value;
+
+    /// <summary>triggerModifyUserValue adds its value to the map's: the data counts +1/-1 up to what the map script waits for.</summary>
+    public static void AddUserValue(Dictionary<string, int> values, string key, int delta) {
+        values.TryGetValue(key, out int old);
+        values[key] = old + delta;
+    }
+
+    /// <summary>setValue and setValueRangeTarget: the value, or with isModify the value added to the one already set.</summary>
+    public static void SetAiValue(Dictionary<string, int> data, string key, int value, bool modify) {
+        data[key] = modify && data.TryGetValue(key, out int old) ? old + value : value;
+    }
+
+    /// <summary>setSlaveValue targets: every live slave, or with isRandom one of them at random (none without slaves).</summary>
+    public static IReadOnlyList<T> SlaveTargets<T>(IReadOnlyList<T> slaves, bool isRandom, Random random) =>
+        isRandom && slaves.Count > 1 ? [slaves[random.Next(slaves.Count)]] : slaves;
+
+    /// <summary>A select's weights: with useNpcProb the NPC's own skill probabilities (entry i is skill i + 1) when it has one
+    /// per skill and they are not all 0; otherwise the node's (AI_Default: Prob [100] over the skill 1, 2 and 3 entries).</summary>
+    public static int[] SelectWeights(int[] nodeProb, bool useNpcProb, int[]? npcProbs, int skillCount) =>
+        useNpcProb && npcProbs is { Length: > 0 } && npcProbs.Length == skillCount && npcProbs.Sum() > 0 ? npcProbs : nodeProb;
+
+    /// <summary>combatTime: the battle time (ms), taken modulo loop when there is one, is from begin up to but not including end
+    /// (no end: the end of the loop, or no end at all without a loop).</summary>
+    public static bool InCombatWindow(long battleMs, long begin, long loop, long end) {
+        if (battleMs < 0) {
+            return false;
+        }
+        long time = loop > 0 ? battleMs % loop : battleMs;
+        long until = end > 0 ? end : loop > 0 ? loop : long.MaxValue;
+        return time >= begin && time < until;
+    }
+
     public AiState(FieldNpc actor, string aiPath) {
         this.actor = actor;
         if (string.IsNullOrEmpty(aiPath)) {
@@ -43,11 +81,14 @@ public class AiState {
             aiPath = Constant.DefaultAiPath;
         }
 
-        if (!actor.Field.AiMetadata.TryGet(aiPath, out AiMetadata? metadata)) {
+        if (!actor.Field.AiMetadata.TryGetOrSubstitute(aiPath, out AiMetadata? metadata)) {
             Logger.Error("{AiPath} could not be found for {ValueId}. setting as default AI", aiPath, actor.Value.Id);
             if (!actor.Field.AiMetadata.TryGet(Constant.DefaultAiPath, out metadata)) {
                 throw new KeyNotFoundException($"Could not find default AI {Constant.DefaultAiPath} for {actor.Value.Id}");
             }
+        } else if (metadata.Name != aiPath) {
+            // A substitute was used
+            Logger.Information("{AiPath} is not in the data; {Npc} uses {Substitute}", aiPath, actor.Value.Id, metadata.Name);
         }
 
         AiMetadata = metadata;
@@ -249,7 +290,8 @@ public class AiState {
             actor.AppendDebugMessage($"{AiMetadata!.Name}\n");
             actor.AppendDebugMessage($"Invalid Skill Idx {idx}\n");
 
-            Logger.Warning($"Missing skillIdx {idx} in {actor.Value.Metadata.Name}[{actor.Value.Id}] script '{AiMetadata!.Name}'. Xml.m2d/m2h might be out of date. Check the MS2 Hub resources!");
+            // Original data: a shared AI file names a skill the NPC lacks (Masked Swordsman 21000102 has one; 41 NPCs in 8 files).
+            Logger.Debug($"Skill index {idx} beyond the {actor.Skills.Length} skills of {actor.Value.Metadata.Name}[{actor.Value.Id}] in '{AiMetadata!.Name}'; the step is skipped");
 
             return null;
         }
@@ -433,13 +475,7 @@ public class AiState {
 
     private void ProcessNode(SetValueNode node) {
         // Assumed that we increment the current by the value if isModify is true
-        if (node.IsModify) {
-            if (actor.AiExtraData.TryGetValue(node.Key, out int oldValue)) {
-                actor.AiExtraData[node.Key] = oldValue + node.Value;
-                return;
-            }
-        }
-        actor.AiExtraData[node.Key] = node.Value;
+        SetAiValue(actor.AiExtraData, node.Key, node.Value, node.IsModify);
     }
 
     private void ProcessNode(ConditionsNode node) {
@@ -479,14 +515,16 @@ public class AiState {
 
     private void ProcessNode(SelectNode node) {
         var weightedEntries = new WeightedSet<(Entry, int)>();
+        // useNpcProb: the NPC's skill probabilities weigh the entries (DL-05; the ingest drops them, summon-npcs.json has them).
+        int[] weights = SelectWeights(node.Prob, node.useNpcProb, NpcSummons.SkillProbs(actor.Value.Metadata.Id), actor.Skills.Length);
 
         // Some AI data lists more weights than entries (AI_BlueLukeJunior.xml: 3 and 2); the extra weights choose nothing.
-        for (int i = 0; i < Math.Min(node.Prob.Length, node.Entries.Length); ++i) {
+        for (int i = 0; i < Math.Min(weights.Length, node.Entries.Length); ++i) {
             if (!CanEvaluateNode(node.Entries[i])) {
                 continue;
             }
 
-            weightedEntries.Add((node.Entries[i], i), node.Prob[i]);
+            weightedEntries.Add((node.Entries[i], i), weights[i]);
         }
 
         if (weightedEntries.Count == 0) {
@@ -511,17 +549,23 @@ public class AiState {
         SetNodeTask(task, node.Limit);
     }
 
-    private void ProcessNode(SummonNode node) { }
-
     private void ProcessNode(TriggerSetUserValueNode node) {
         actor.Field.UserValues[node.Key] = node.Value;
     }
 
     private void ProcessNode(RideNode node) { }
 
-    private void ProcessNode(SetSlaveValueNode node) { }
+    private void ProcessNode(SetSlaveValueNode node) {
+        foreach (FieldNpc slave in SlaveTargets(LiveSlaves(), node.IsRandom, Random.Shared)) {
+            SetAiValue(slave.AiExtraData, node.Key, node.Value, node.IsModify);
+        }
+    }
 
-    private void ProcessNode(SetMasterValueNode node) { }
+    private void ProcessNode(SetMasterValueNode node) {
+        if (actor.IsSlave && actor.Summoner is { IsDead: false } master) {
+            SetAiValue(master.AiExtraData, node.Key, node.Value, node.IsModify);
+        }
+    }
 
     private void ProcessNode(RunawayNode node) {
         if (!actor.Field.TryGetActor(actor.BattleState.TargetId, out IActor? target)) {
@@ -613,13 +657,7 @@ public class AiState {
                 continue;
             }
 
-            if (node.IsModify) {
-                if (npc.AiExtraData.TryGetValue(node.Key, out int oldValue)) {
-                    actor.AiExtraData[node.Key] = oldValue + node.Value;
-                    continue;
-                }
-            }
-            actor.AiExtraData[node.Key] = node.Value;
+            SetAiValue(npc.AiExtraData, node.Key, node.Value, node.IsModify);
         }
     }
 
@@ -632,18 +670,12 @@ public class AiState {
     private void ProcessNode(HideVibrateAllNode node) { }
 
     private void ProcessNode(TriggerModifyUserValueNode node) {
-        actor.Field.UserValues[node.Key] = node.Value;
+        AddUserValue(actor.Field.UserValues, node.Key, node.Value);
     }
-
-    private void ProcessNode(RemoveSlavesNode node) { }
 
     private void ProcessNode(CreateRandomRoomNode node) { }
 
     private void ProcessNode(CreateInteractObjectNode node) { }
-
-    private void ProcessNode(RemoveMeNode node) {
-        actor.Field.RemoveNpc(actor.ObjectId);
-    }
 
     private void ProcessNode(SuicideNode node) {
         actor.SetHpFloor(0);
@@ -658,11 +690,12 @@ public class AiState {
 
         float targetDistance = (actor.BattleState.Target.Position - actor.Position).LengthSquared();
 
-        return node.Value * node.Value > (int) targetDistance;
+        return IsFarther(targetDistance, node.Value);
     }
 
     private bool ProcessCondition(CombatTimeCondition node) {
-        return false;
+        long start = actor.BattleState.BattleStartTick;
+        return start > 0 && InCombatWindow(actor.Field.FieldTick - start, node.BattleTimeBegin, node.BattleTimeLoop, node.BattleTimeEnd);
     }
 
     private bool ProcessCondition(DistanceLessCondition node) {
@@ -672,7 +705,7 @@ public class AiState {
 
         float targetDistance = (actor.BattleState.Target.Position - actor.Position).LengthSquared();
 
-        return node.Value * node.Value < (int) targetDistance;
+        return IsCloser(targetDistance, node.Value);
     }
 
     private bool ProcessCondition(SkillRangeCondition node) {
@@ -709,7 +742,8 @@ public class AiState {
     }
 
     private bool ProcessCondition(SlaveCountCondition node) {
-        return false;
+        // Exact count (Shoo and Booboo test 4, 3, 2, 1, 0 in turn); with useSummonGroup only that group's slaves.
+        return LiveSlaves().Count(slave => !node.UseSummonGroup || slave.SummonGroup == node.SummonGroup) == node.Count;
     }
 
     private bool ProcessCondition(SlaveCountOpCondition node) {
@@ -763,5 +797,63 @@ public class AiState {
 
     private bool ProcessCondition(TrueCondition node) {
         return true;
+    }
+
+    private void ProcessNode(SummonNode node) {
+        int? npcId = SummonRules.Resolve(NpcSummons.For(actor.Value.Metadata.Id), node.NpcId);
+        if (npcId is null || !actor.Field.NpcMetadata.TryGet(npcId.Value, out NpcMetadata? metadata)) {
+            actor.AppendDebugMessage($"Summon {node.NpcId}: not in the summon list\n");
+            return;
+        }
+
+        bool linked = node.Master != NodeSummonMaster.None;
+        int live = actor.Field.EnumerateNpcs().Count(npc => npc.Summoner == actor && npc.IsSlave == linked && (!linked || npc.SummonGroup == node.Group));
+        int count = SummonRules.Count(node.NpcCount, node.NpcCountMax, live, linked);
+        for (int i = 0; i < count; i++) {
+            if (node.DelayTick > 0) {
+                actor.Field.Scheduler.Schedule(() => Summon(node, metadata!, linked), TimeSpan.FromMilliseconds(node.DelayTick));
+            } else {
+                Summon(node, metadata!, linked);
+            }
+        }
+    }
+
+    private void Summon(SummonNode node, NpcMetadata metadata, bool linked) {
+        if (actor.IsDead) {
+            return; // a delayed summon whose summoner died meanwhile
+        }
+
+        Vector3 position = SummonRules.Position(actor.Position, actor.BattleState.Target?.Position, node.SummonPos, node.SummonPosOffset,
+            node.SummonTargetOffset, node.SummonRadius, Random.Shared);
+        FieldNpc? summon = actor.Field.SpawnNpc(metadata, position, node.SummonRot != Vector3.Zero ? node.SummonRot : actor.Rotation);
+        if (summon == null) {
+            return;
+        }
+
+        summon.Summoner = actor;
+        summon.IsSlave = linked;
+        summon.SummonGroup = node.Group;
+        if (node.Option?.Contains(NodeSummonOption.MasterHp) == true) {
+            // The next phase's body starts with the summoner's health (Turka, Madria).
+            var health = summon.Stats.Values[BasicAttribute.Health];
+            health.Current = Math.Clamp(actor.Stats.Values[BasicAttribute.Health].Current, 1, health.Total);
+        }
+        actor.Field.Broadcast(FieldPacket.AddNpc(summon));
+        actor.Field.Broadcast(ProxyObjectPacket.AddNpc(summon));
+        if (node.LifeTime > 0) {
+            actor.Field.RemoveNpc(summon.ObjectId, SummonRules.LifeTime(node.LifeTime));
+        }
+        actor.AppendDebugMessage($"Summon {metadata.Id} ({(linked ? $"slave, group {node.Group}" : "unlinked")})\n");
+    }
+
+    private void ProcessNode(RemoveSlavesNode node) {
+        actor.RemoveSlaves();
+    }
+
+    private List<FieldNpc> LiveSlaves() => actor.Field.EnumerateNpcs().Where(npc => npc.Summoner == actor && npc.IsSlave && !npc.IsDead).ToList();
+
+    private void ProcessNode(RemoveMeNode node) {
+        actor.RemoveSlaves();
+        actor.Field.RemoveNpc(actor.ObjectId);
     }
 }

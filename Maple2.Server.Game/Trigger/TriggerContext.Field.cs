@@ -9,6 +9,16 @@ using Maple2.Server.Game.Trigger.Helpers;
 namespace Maple2.Server.Game.Trigger;
 
 public partial class TriggerContext {
+    private readonly HashSet<int> localCameras = [];
+    private readonly HashSet<string> noBreakableWarned = [];
+
+    /// <summary>Once per script and method: the ids a map script names that have no breakable here (original-data gaps).</summary>
+    private void WarnNoBreakable(string method, List<int> missing) {
+        if (missing.Count > 0 && noBreakableWarned.Add(method)) {
+            logger.Warning("[{Method}] map {MapId} has no breakable for ids {Ids}", method, Field.MapId, string.Join(", ", missing));
+        }
+    }
+
     public void AllocateBattlefieldPoints(int boxId, int points) {
         if (TraceEnabled) DebugLog("[AllocateBattlefieldPoints] boxId:{BoxId}, points:{Points}", boxId, points);
     }
@@ -105,12 +115,35 @@ public partial class TriggerContext {
 
     public void SetLocalCamera(int cameraId, bool enabled) {
         if (TraceEnabled) DebugLog("[SetLocalCamera] cameraId:{Id}, enabled:{Enabled}", cameraId, enabled);
+        if (enabled) {
+            localCameras.Add(cameraId);
+        } else {
+            localCameras.Remove(cameraId);
+        }
         Broadcast(CameraPacket.Local(cameraId, enabled));
     }
 
     public void ResetCamera(float interpolationTime) {
         if (TraceEnabled) DebugLog("[CameraReset] interpolationTime:{Time}", interpolationTime);
+        // A reset ends every scripted view: 97 scripts hand the view back from select_camera with reset_camera alone, and
+        // scripts turn their local camera on again after each reset (02000388).
+        foreach (TriggerObjectCamera camera in ReleaseCameras(Objects.Cameras.Values)) {
+            Broadcast(TriggerPacket.Update(camera));
+        }
+        foreach (int cameraId in localCameras) {
+            Broadcast(CameraPacket.Local(cameraId, false));
+        }
+        localCameras.Clear();
         Broadcast(CameraPacket.Interpolate(interpolationTime));
+    }
+
+    /// <summary>Switches off every selected trigger camera; returns the ones switched off.</summary>
+    public static List<TriggerObjectCamera> ReleaseCameras(IEnumerable<TriggerObjectCamera> cameras) {
+        List<TriggerObjectCamera> released = cameras.Where(camera => camera.Visible).ToList();
+        foreach (TriggerObjectCamera camera in released) {
+            camera.Visible = false;
+        }
+        return released;
     }
 
     public void SelectCamera(int triggerId, bool enabled) {
@@ -156,14 +189,17 @@ public partial class TriggerContext {
     public void SetBreakable(int[] triggerIds, bool enabled) {
         if (TraceEnabled) DebugLog("[SetBreakable] triggerIds:{Ids}, enabled:{Enabled}", string.Join(", ", triggerIds), enabled);
         var updated = new List<FieldBreakable>(triggerIds.Length);
+        var missing = new List<int>();
         foreach (int triggerId in triggerIds) {
             if (!Field.TryGetBreakable(triggerId, out FieldBreakable? breakable)) {
+                missing.Add(triggerId);
                 continue;
             }
 
             breakable.UpdateState(enabled ? BreakableState.Show : BreakableState.Hide);
             updated.Add(breakable);
         }
+        WarnNoBreakable(nameof(SetBreakable), missing);
 
         Field.Broadcast(BreakablePacket.Update(updated));
     }
@@ -285,7 +321,8 @@ public partial class TriggerContext {
         int intervalTotal = 0;
         foreach (int triggerId in triggerIds) {
             if (!Objects.Meshes.TryGetValue(triggerId, out TriggerObjectMesh? mesh)) {
-                logger.Warning("Invalid mesh: {Id}", triggerId);
+                // original data: 94 maps' scripts name meshes the map lacks (52000143: 4005, 4006)
+                DebugLog("Invalid mesh: {Id}", triggerId);
                 continue;
             }
             if (mesh.Visible == visible) {
@@ -350,14 +387,17 @@ public partial class TriggerContext {
     public void SetVisibleBreakableObject(int[] triggerIds, bool visible) {
         if (TraceEnabled) DebugLog("[SetVisibleBreakableObject] triggerIds:{Ids}, visible:{Visible}", string.Join(", ", triggerIds), visible);
         var updated = new List<FieldBreakable>(triggerIds.Length);
+        var missing = new List<int>();
         foreach (int triggerId in triggerIds) {
             if (!Field.TryGetBreakable(triggerId, out FieldBreakable? breakable)) {
+                missing.Add(triggerId);
                 continue;
             }
 
             breakable.Visible = visible;
             updated.Add(breakable);
         }
+        WarnNoBreakable(nameof(SetVisibleBreakableObject), missing);
 
         Field.Broadcast(BreakablePacket.Update(updated));
     }
@@ -365,11 +405,7 @@ public partial class TriggerContext {
     public void AddBuff(int[] boxIds, int buffId, int level, bool ignorePlayer, bool isSkillSet, string feature) {
         DebugLog("[AddBuff] boxIds:{Ids}, buffId:{BuffId}, level:{Level}, ignorePlayer:{ignorePlayer}, isSkillSet:{Arg5}, feature:{Feature}",
             string.Join(", ", boxIds), buffId, level, ignorePlayer, isSkillSet, feature);
-        if (isSkillSet) {
-            logger.Error("[AddBuff] SkillSets not implemented...");
-            return;
-        }
-
+        // is_skill_set marks battle-ride and event buffs; the id is an ordinary additional effect either way (62 calls).
         long startTick = Field.FieldTick;
         if (!ignorePlayer) {
             foreach (IActor player in PlayersInBox(boxIds)) {

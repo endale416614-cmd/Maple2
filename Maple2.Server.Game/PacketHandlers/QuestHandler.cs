@@ -109,13 +109,13 @@ public class QuestHandler : FieldPacketHandler {
         }
 
         bool isPostbox = npcObjectId == 0 && metadata.Basic.UsePostbox;
-        bool fieldNpcExists = session.Field.Npcs.TryGetValue(npcObjectId, out FieldNpc? _);
+        bool fieldNpcExists = session.Field.Npcs.TryGetValue(npcObjectId, out FieldNpc? npc);
 
         if (!isPostbox && !fieldNpcExists) {
             return;
         }
 
-        session.Quest.Start(questId);
+        session.Quest.Start(questId, npc: npc);
     }
 
     private void HandleComplete(GameSession session, IByteReader packet) {

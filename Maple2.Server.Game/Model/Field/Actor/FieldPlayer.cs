@@ -127,6 +127,7 @@ public class FieldPlayer : Actor<Player> {
         scheduler = new EventQueue(Logger);
         scheduler.ScheduleRepeated(() => {
             session.ConditionUpdate(ConditionType.stay_map, codeLong: session.Field!.MapId);
+            session.ConditionUpdate(ConditionType.playtime); // minutes played (Time Among Friends)
         }, TimeSpan.FromSeconds(60), skipFirst: true);
         scheduler.Start();
     }

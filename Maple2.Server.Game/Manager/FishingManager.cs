@@ -352,7 +352,7 @@ public class FishingManager {
         if (session.Field is null) return;
         var items = new List<Item>();
         if (spot.GlobalDropBoxId > 0) {
-            ICollection<Item> globalDropItems = session.Field.ItemDrop.GetGlobalDropItems(spot.GlobalDropBoxId, spot.SpotLevel);
+            ICollection<Item> globalDropItems = session.Field.ItemDrop.GetGlobalDropItems(spot.GlobalDropBoxId, spot.SpotLevel, false, 1f, session);
             foreach (Item item in globalDropItems) {
                 items.Add(item);
                 if (!session.Item.Inventory.Add(item, true)) {

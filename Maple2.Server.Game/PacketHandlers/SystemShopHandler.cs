@@ -120,7 +120,9 @@ public class SystemShopHandler : FieldPacketHandler {
             return;
         }
 
-        session.Shop.Load(item.Metadata.Property.ShopId);
+        if (!session.Shop.Load(item.Metadata.Property.ShopId)) {
+            return;
+        }
         session.Send(SystemShopPacket.Item());
     }
 }

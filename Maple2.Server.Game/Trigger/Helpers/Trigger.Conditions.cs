@@ -238,6 +238,7 @@ public partial class Trigger {
 
     public class RandomCondition(float weight, string desc) : ICondition {
         public string Name => "random_condition";
+        public float Weight => weight;
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
         public bool Evaluate(TriggerContext context) => context.RandomCondition(weight, desc);

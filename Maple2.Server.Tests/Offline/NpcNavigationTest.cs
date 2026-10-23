@@ -91,4 +91,39 @@ public class NpcNavigationTest {
         var nan = new RcVec3f(float.NaN, float.NaN, float.NaN);
         Assert.That(AgentNavigation.FindPointAway(query, filter, PolyAt(Koborc), Koborc, nan, 15f, out _), Is.False);
     }
+
+    [Test]
+    public void FindPullPoint() {
+        // Test that pull point returns true, ends on mesh and closer to center when pulling toward a point 1 navmesh unit away
+        var target = new RcVec3f(Koborc.X + 1, Koborc.Y, Koborc.Z + 1);
+        Assume.That(PolyAt(target), Is.Not.EqualTo(0));
+        bool found = AgentNavigation.FindPullPoint(query, filter, PolyAt(Koborc), Koborc, target, out RcVec3f point);
+
+        Assert.That(found, Is.True);
+        Assert.That(point.IsFinite(), Is.True);
+        Assert.That(PolyAt(point), Is.Not.EqualTo(0));
+        Assert.That(RcVec3f.Distance(point, target), Is.LessThan(RcVec3f.Distance(Koborc, target)));
+
+        // Toward the off-mesh point the slide still ends on the mesh
+        found = AgentNavigation.FindPullPoint(query, filter, PolyAt(Koborc), Koborc, PlayerOffMesh, out point);
+        Assert.That(found, Is.True);
+        Assert.That(point.IsFinite(), Is.True);
+        Assert.That(PolyAt(point), Is.Not.EqualTo(0));
+
+        // Test that pull point returns false when pulling toward self (already there)
+        found = AgentNavigation.FindPullPoint(query, filter, PolyAt(Koborc), Koborc, Koborc, out point);
+        Assert.That(found, Is.False);
+
+        // Test that pull point returns false when center is NaN
+        var nanCenter = new RcVec3f(float.NaN, float.NaN, float.NaN);
+        found = AgentNavigation.FindPullPoint(query, filter, PolyAt(Koborc), Koborc, nanCenter, out point);
+        Assert.That(found, Is.False);
+    }
+
+    [TestCase(5, 1, true)]
+    [TestCase(5, 80, false)]
+    [TestCase(5, 99, false)]
+    public void CanBePushed(int hitImmuneBreak, int hitImmune, bool expected) {
+        Assert.That(Maple2.Server.Game.Model.FieldNpc.CanBePushed(hitImmuneBreak, hitImmune), Is.EqualTo(expected));
+    }
 }

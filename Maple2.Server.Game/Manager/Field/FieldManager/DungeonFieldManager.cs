@@ -29,7 +29,9 @@ public class DungeonFieldManager : FieldManager {
 
     public void ChangeState(DungeonState state) {
         DungeonRoomRecord.State = state;
-        DungeonRoomRecord.EndTick = FieldTick;
+        if (DungeonRoomRecord.EndTick == 0) {
+            DungeonRoomRecord.EndTick = FieldTick; // dungeon_set_end_time may have set it.
+        }
 
         var compiledResults = new Dictionary<long, DungeonUserResult>();
 

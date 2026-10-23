@@ -1,0 +1,11 @@
+{
+ "Patches": [
+  {
+   "XBlock": "52000066_qd",
+   "Trigger": "chase01",
+   "Find": "quest_ids=\"10001028\"",
+   "Replace": "quest_ids=\"10001028,60100070\"",
+   "Note": "Cave Depths exit also for the live quest 60100070 The End of Nelph (GMS and KMS check only the retired 10001028)"
+  }
+ ]
+}

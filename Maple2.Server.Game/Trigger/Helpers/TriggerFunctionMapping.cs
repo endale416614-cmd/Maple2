@@ -224,7 +224,7 @@ public static class TriggerFunctionMapping {
         { "check_any_user_additional_effect", attrs => new Trigger.CheckAnyUserAdditionalEffect(ParseInt(attrs?["box_id"]?.Value), ParseInt(attrs?["additional_effect_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "check_dungeon_lobby_user_count", attrs => new Trigger.CheckDungeonLobbyUserCount(ParseBool(attrs?["negate"]?.Value)) },
         { "check_npc_additional_effect", attrs => new Trigger.CheckNpcAdditionalEffect(ParseInt(attrs?["spawn_id"]?.Value), ParseInt(attrs?["additional_effect_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
-        { "npc_damage", attrs => new Trigger.NpcDamage(ParseInt(attrs?["spawn_id"]?.Value), ParseFloat(attrs?["damageRate"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
+        { "npc_damage", attrs => new Trigger.NpcDamage(ParseInt(attrs?["spawn_id"]?.Value), ParseFloat(attrs?["damage_rate"]?.Value ?? attrs?["damageRate"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "npc_extra_data", attrs => new Trigger.NpcExtraData(ParseInt(attrs?["spawn_point_id"]?.Value), attrs?["extra_data_key"]?.Value ?? string.Empty, ParseInt(attrs?["extra_data_value"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "npc_hp", attrs => new Trigger.NpcHp(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_relative"]?.Value), ParseInt(attrs?["value"]?.Value), ParseCompareType(attrs?["compare_type"]?.Value)) },
         { "check_same_user_tag", attrs => new Trigger.CheckSameUserTag(ParseInt(attrs?["box_id"]?.Value), ParseBool(attrs?["negate"]?.Value)) },

@@ -177,7 +177,7 @@ public enum RecvOp : ushort {
     WorldChampion = 0x00B1,
     ServerEnter = 0x00B2,
     MinimapPing = 0x00B3,
-    // 0x00B4, CClientPlatformNexonAmerica sub_7F3AE0
+    WinActivate = 0x00B4, // CClientPlatformNexonAmerica sub_7F3AE0 (name from the GMS2 packet definitions)
     MsgBox = 0x00B5,
     Wardrobe = 0x00B6,
     SystemInfo = 0x00B7,

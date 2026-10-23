@@ -28,6 +28,9 @@ public partial class MovementState {
         }
 
         protected override void TaskFinished(bool isCompleted) {
+            if (movement.walkTask != null && movement.walkTask != this) {
+                return; // cancelled while queued behind another walk (a pull): that one keeps the walk state
+            }
             movement.walkTask = null;
             movement.Idle();
         }
@@ -71,6 +74,9 @@ public partial class MovementState {
         }
 
         protected override void TaskFinished(bool isCompleted) {
+            if (movement.walkTask != null && movement.walkTask != this) {
+                return; // cancelled while queued behind another walk (a pull): that one keeps the walk state
+            }
             movement.walkTask = null;
             movement.Idle();
         }
@@ -97,6 +103,9 @@ public partial class MovementState {
         }
 
         protected override void TaskFinished(bool isCompleted) {
+            if (movement.walkTask != null && movement.walkTask != this) {
+                return; // cancelled while queued behind another walk (a pull): that one keeps the walk state
+            }
             movement.walkTask = null;
             movement.isFlying = false;
             movement.Idle();
@@ -133,6 +142,30 @@ public partial class MovementState {
                 movement.Land();
             }
 
+            movement.walkTask = null;
+            movement.walkType = WalkType.None;
+            movement.Idle();
+        }
+    }
+
+    public class NpcPullTask : NpcTask {
+        private readonly MovementState movement;
+        public Vector3 Position { get; init; }
+        public float Seconds { get; init; }
+
+        public NpcPullTask(TaskState taskState, MovementState movement) : base(taskState, NpcTaskPriority.Interrupt) {
+            this.movement = movement;
+        }
+
+        protected override void TaskResumed() => movement.PullTo(this, Position, Seconds);
+
+        protected override void TaskFinished(bool isCompleted) {
+            if (movement.walkTask != this) {
+                return; // never started
+            }
+            if (!isCompleted && movement.walkType == WalkType.Jump) {
+                movement.Land(); // cut short (a newer pull): the agent still goes back under the NPC
+            }
             movement.walkTask = null;
             movement.walkType = WalkType.None;
             movement.Idle();
@@ -217,6 +250,9 @@ public partial class MovementState {
         }
 
         protected override void TaskFinished(bool isCompleted) {
+            if (movement.walkTask != null && movement.walkTask != this) {
+                return; // cancelled while queued behind another walk (a pull): that one keeps the walk state
+            }
             movement.walkTask = null;
             movement.Idle();
         }

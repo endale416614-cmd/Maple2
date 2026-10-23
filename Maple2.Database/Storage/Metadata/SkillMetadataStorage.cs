@@ -69,6 +69,11 @@ public class SkillMetadataStorage : MetadataStorage<(int, short), SkillMetadata>
         return true;
     }
 
+    /// <summary>The effect at <paramref name="level"/>, else its level 1: skills name their own level of effects that have
+    /// only level 1 (Smiting Aura 10400123), AI buff nodes without a level ask for 0 (Colosseum 69000501).</summary>
+    public bool TryGetEffectOrLevel1(int id, short level, [NotNullWhen(true)] out AdditionalEffectMetadata? effect) =>
+        TryGetEffect(id, level, out effect) || level != 1 && TryGetEffect(id, 1, out effect);
+
     public List<StoredSkillMetadata> Search(string name) {
         lock (Context) {
             return Context.SkillMetadata

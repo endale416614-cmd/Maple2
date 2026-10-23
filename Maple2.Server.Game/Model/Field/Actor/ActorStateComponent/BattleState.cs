@@ -32,6 +32,8 @@ public class BattleState {
     public int TargetId => Target?.ObjectId ?? 0;
     public IActor? Target { get; private set; }
     public IActor? GrabbedUser { get; set; }
+    /// <summary>Field tick at which this battle began (combatTime counts from it); 0 out of battle.</summary>
+    public long BattleStartTick { get; private set; }
     private long nextTargetSearchTick = 0;
     private bool changedTargetType = false;
     private TargetNode? targetNode = null;
@@ -57,6 +59,12 @@ public class BattleState {
     }
 
     public void Update(long tickCount) {
+        if (actor.IsDead || !InBattle) {
+            BattleStartTick = 0;
+        } else if (BattleStartTick == 0) {
+            BattleStartTick = tickCount;
+        }
+
         if (actor.IsDead) {
             Target = null;
 
@@ -113,15 +121,18 @@ public class BattleState {
     }
 
     /// <summary>
-    /// A monster busy with an ally, barrier or gate turns on the player who hits it, so players can defend them.
+    /// A monster with no target, or busy with an ally, barrier or gate, turns on the player who hits it: passive monsters (sight 0) fight back, and players can defend their allies.
     /// </summary>
     public void Provoke(IActor attacker) {
-        if (!CanBattle || KeepBattle || Target is not FieldNpc || attacker.IsDead) {
+        if (!CanBattle || KeepBattle || attacker.IsDead || !TakesHitAsTarget(Target != null, Target is FieldNpc)) {
             return;
         }
         Target = attacker;
         actor.AppendDebugMessage($"Provoked by '{GetTargetName()}'\n");
     }
+
+    /// <summary>Whether a hit makes the monster target the attacker: it has no target, or its target is an NPC.</summary>
+    public static bool TakesHitAsTarget(bool hasTarget, bool targetIsNpc) => !hasTarget || targetIsNpc;
 
     /// <summary>Whether a target is still close enough to keep chasing (the NPC's "last sight").</summary>
     public static bool WithinLastSight(Vector3 position, Vector3 targetPosition, NpcMetadataDistance distance) {

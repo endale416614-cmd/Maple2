@@ -82,7 +82,8 @@ public readonly record struct ItemType(byte Group, byte Type) {
     public bool IsBlueLapenshard => Group is 4 && Type is 20;
     public bool IsGreenLapenshard => Group is 4 && Type is 30;
 
-    public bool IsFurnishing => Group is 5 && Type is >= 1 and <= 4 or 7 or 8 or 9;
+    // Type 5: Lapentouched Portraits and Monster Boxes (placeable, 505xxxxx).
+    public bool IsFurnishing => Group is 5 && Type is >= 1 and <= 5 or 7 or 8 or 9;
     public bool IsFloorFurnishing => Group is 5 && Type is 1;
     public bool IsDisplayFurnishing => Group is 5 && Type is 2;
     public bool IsSkillFurnishing => Group is 5 && Type is 3;

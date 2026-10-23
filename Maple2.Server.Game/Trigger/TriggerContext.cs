@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Dungeon;
 using Maple2.PacketLib.Tools;
@@ -109,14 +110,21 @@ public partial class TriggerContext : ITriggerContext {
         return Field is DungeonFieldManager dungeonField && dungeonField.DungeonRoomRecord.Variables.GetValueOrDefault(id) == value;
     }
 
-    public bool NpcDamage(int spawnPointId, float damage, OperatorType operatorType) {
-        ErrorLog("[GetNpcDamageRate] spawnPointId:{Id}, damage:{Damage}, operatorType:{Operator}", spawnPointId, damage, operatorType);
+    public bool NpcDamage(int spawnPointId, float damageRate, OperatorType operatorType) {
+        if (TraceEnabled) DebugLog("[NpcDamage] spawnPointId:{Id}, damageRate:{Rate}, operatorType:{Operator}", spawnPointId, damageRate, operatorType);
+        FieldNpc? npc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnPointId);
+        long maxHealth = npc?.Stats.Values[Maple2.Model.Enum.BasicAttribute.Health].Total ?? 0;
+        return DamageRateMatches(npc == null ? 1 : npc.DamageTaken, npc == null ? 1 : maxHealth, damageRate, operatorType);
+    }
+
+    public static bool DamageRateMatches(long damageTaken, long maxHealth, float damageRate, OperatorType operatorType) {
+        float rate = maxHealth > 0 ? (float) damageTaken / maxHealth : 0;
         return operatorType switch {
-            OperatorType.Greater => damage > 1.0f,
-            OperatorType.GreaterEqual => damage >= 1.0f,
-            OperatorType.Equal => Math.Abs(damage - 1.0f) < 0.0001f,
-            OperatorType.LessEqual => damage <= 1.0f,
-            OperatorType.Less => damage < 1.0f,
+            OperatorType.Greater => rate > damageRate,
+            OperatorType.GreaterEqual => rate >= damageRate,
+            OperatorType.Equal => Math.Abs(rate - damageRate) < 0.0001f,
+            OperatorType.LessEqual => rate <= damageRate,
+            OperatorType.Less => rate < damageRate,
             _ => false,
         };
     }

@@ -1,5 +1,6 @@
 using System.CommandLine;
 using System.CommandLine.Invocation;
+using System.CommandLine.IO;
 using Maple2.Model.Enum;
 using Maple2.Server.Game.Session;
 
@@ -17,6 +18,11 @@ public class DungeonCommand : GameCommand {
         AddArgument(id);
         this.SetHandler<InvocationContext, int>((ctx, dungeonId) => {
             if (dungeonId == 0) {
+                if (session.Dungeon.Lobby == null) {
+                    ctx.Console.Error.WriteLine("/dungeon 0 enters the first field of the dungeon room you are in; open one with /dungeon <id> first.");
+                    ctx.ExitCode = 1;
+                    return;
+                }
                 session.Dungeon.EnterInitField();
             } else {
                 session.Dungeon.CreateDungeonRoom(dungeonId, false, ignoreEnterLimits: true);

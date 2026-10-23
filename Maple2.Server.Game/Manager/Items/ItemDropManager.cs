@@ -28,7 +28,7 @@ public class ItemDropManager {
     // globalDropItemBox/globalDropItemSet (e.g. meso amounts in group 103 scale with NPC level).
     // all: every eligible item of every eligible group drops once, instead of the weighted roll.
     // dropRate: multiplies the chance of every non-empty drop-count outcome (offline grind rates; 1 = original).
-    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0, bool all = false, float dropRate = 1f) {
+    public ICollection<Item> GetGlobalDropItems(int globalDropBoxId, int level = 0, bool all = false, float dropRate = 1f, GameSession? receiver = null) {
         if (!field.ServerTableMetadata.GlobalDropItemBoxTable.DropGroups.TryGetValue(globalDropBoxId, out Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? dropGroup)) {
             return new List<Item>();
         }
@@ -80,8 +80,8 @@ public class ItemDropManager {
                         continue;
                     }
 
-                    // TODO: find quest ID and see if player has it in progress. if not, skip item. Currently just skipping.
-                    if (itemEntry.QuestConstraint) {
+                    // quest-limited: only for a receiver whose quest still needs it
+                    if (itemEntry.QuestConstraint && receiver?.Quest.NeedsItem(itemEntry.Id) != true) {
                         continue;
                     }
                     weightedItems.Add(itemEntry, itemEntry.Weight);

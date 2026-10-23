@@ -2,6 +2,7 @@ using Maple2.Database.Context;
 using Maple2.Database.Model;
 using Maple2.Tools;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace Maple2.Database.Storage;
 
@@ -20,6 +21,23 @@ public partial class GameStorage {
                     Context.SaveChanges();
                 }
                 return result;
+            }
+        }
+
+        /// <summary>In-game clock (T-02): the ticks World saved last and when (Unix milliseconds); 0 and 0 in a new save.</summary>
+        public (long Ticks, long SavedAt) GetWorldTicks() {
+            lock (Context) {
+                long.TryParse(Context.OfflineState.Find("WorldTicks")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long ticks);
+                long.TryParse(Context.OfflineState.Find("WorldTicksAt")?.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long savedAt);
+                return (ticks, savedAt);
+            }
+        }
+
+        public void SaveWorldTicks(long ticks, long savedAt) {
+            lock (Context) {
+                Set("WorldTicks", ticks.ToString(CultureInfo.InvariantCulture));
+                Set("WorldTicksAt", savedAt.ToString(CultureInfo.InvariantCulture));
+                Context.SaveChanges();
             }
         }
 

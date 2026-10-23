@@ -190,7 +190,14 @@ public partial class TriggerContext {
     }
 
     public void TalkNpc(int spawnId) {
-        ErrorLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
+        if (TraceEnabled) DebugLog("[TalkNpc] spawnId:{SpawnId}", spawnId);
+        FieldNpc? npc = Field.Npcs.Values.FirstOrDefault(npc => npc.SpawnPointId == spawnId);
+        if (npc == null) {
+            return;
+        }
+        foreach (FieldPlayer player in Field.Players.Values) {
+            NpcTalkUtil.Talk(player.Session, npc); // as if the player had clicked the NPC (the Colosseum host, BT-25)
+        }
     }
 
     public void AddUserValue(string key, int value) {

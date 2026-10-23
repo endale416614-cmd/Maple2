@@ -124,6 +124,10 @@ public static class ConditionUtil {
             case ConditionType.hero_achieve_grade:
             case ConditionType.stay_map:
             case ConditionType.stay_cube:
+            case ConditionType.hero_achieve:
+            case ConditionType.dungeon_reward:
+            case ConditionType.dungeon_first_clear:
+            case ConditionType.quest_revise_achieve:
                 if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
                     return true;
                 }
@@ -256,6 +260,7 @@ public static class ConditionUtil {
             case ConditionType.revise_achieve_multi_grade:
             case ConditionType.revise_achieve_single_grade:
             case ConditionType.chat:
+            case ConditionType.hero_achieve:
                 if (target.Range != null && target.Range.Value.Min >= longValue &&
                     target.Range.Value.Max <= longValue) {
                     return true;

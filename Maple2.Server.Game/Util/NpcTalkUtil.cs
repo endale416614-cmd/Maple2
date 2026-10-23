@@ -2,11 +2,111 @@
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Model;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.Util;
 
 public static class NpcTalkUtil {
+    /// <summary>Whether the NPC's shop is a game shop. Beauty NPCs (kinds 30-39) name shop_beauty ids, which the beauty window loads.</summary>
+    public static bool OpensGameShop(int shopId, int kind) => shopId > 0 && kind is not (>= 30 and < 40);
+
+    /// <summary>A player's talk with an NPC: what a click on the NPC does (NpcTalkHandler) and the map-script action talk_npc.</summary>
+    public static void Talk(GameSession session, FieldNpc npc) {
+        if (session.Field is null) return;
+
+        int options = 0;
+        var talkType = NpcTalkType.None;
+        if (npc.Value.Metadata.Basic.ShopId > 0) {
+            if (OpensGameShop(npc.Value.Metadata.Basic.ShopId, npc.Value.Metadata.Basic.Kind)) {
+                session.Shop.Load(npc.Value.Metadata.Basic.ShopId, npc.Value.Id);
+            }
+            talkType |= NpcTalkType.Dialog;
+            options++;
+        }
+
+        session.ScriptMetadata.TryGet(npc.Value.Id, out ScriptMetadata? metadata);
+        ScriptState? scriptState = GetInitialScriptType(session, ScriptStateType.Script, metadata, npc.Value.Id);
+        ScriptState? selectState = GetInitialScriptType(session, ScriptStateType.Select, metadata, npc.Value.Id);
+        ScriptState? questState = GetInitialScriptType(session, ScriptStateType.Quest, metadata, npc.Value.Id);
+
+        if (questState != null) {
+            talkType |= NpcTalkType.Quest;
+            options++;
+        }
+
+        if (scriptState?.Type == ScriptStateType.Job) {
+            // Job script only counts as an additional option if quests are present.
+            if (talkType.HasFlag(NpcTalkType.Quest)) {
+                options++;
+            }
+            talkType |= NpcTalkType.Dialog;
+        } else if (scriptState != null) {
+            talkType |= NpcTalkType.Talk;
+            options++;
+        }
+
+        if (options > 1 && selectState != null) {
+            talkType |= NpcTalkType.Select;
+        }
+
+        switch (npc.Value.Metadata.Basic.Kind) {
+            case >= 30 and < 40: // Beauty
+            case 2: // Storage
+            case 86: // TODO(BT-40): BlackMarket
+            case 88: // TODO(BT-40): Birthday
+            case 501:
+                talkType |= NpcTalkType.Dialog;
+                break;
+            case >= 100 and <= 104: // Sky Fortress
+            case >= 105 and <= 107: // Kritias
+            case 108: // Humanitas
+                talkType = NpcTalkType.Dialog;
+                break;
+        }
+
+        // Determine which script to use.
+        ScriptState? selectedState;
+        if (npc.Value.Metadata.Basic.Kind is >= 100 and <= 108 || talkType.HasFlag(NpcTalkType.Select)) {
+            selectedState = selectState;
+        } else if (talkType.HasFlag(NpcTalkType.Quest)) {
+            if (questState == null) {
+                session.Send(NpcTalkPacket.Close());
+                npc.StopTalk();
+                return;
+            }
+            selectedState = questState;
+            talkType = NpcTalkType.Quest;
+            // now that quest is selected, change the metadata to the quest's metadata
+            if (!session.ScriptMetadata.TryGet(session.Quest.GetAvailableQuests(npc.Value.Id).Keys.Min(), out metadata)) {
+                session.Send(NpcTalkPacket.Close());
+                npc.StopTalk();
+                return;
+            }
+        } else if (scriptState == null && selectState == null) {
+            if (talkType.HasFlag(NpcTalkType.Dialog)) {
+                session.Send(NpcTalkPacket.Respond(npc, talkType, default));
+                return;
+            }
+            session.Send(NpcTalkPacket.Close());
+            npc.StopTalk();
+            return;
+        } else {
+            selectedState = scriptState ?? selectState;
+        }
+
+        session.NpcScript = new NpcScriptManager(session, npc, metadata, selectedState, talkType);
+        if (!session.NpcScript.BeginNpcTalk()) {
+            session.NpcScript = null;
+            return;
+        }
+
+        session.ConditionUpdate(ConditionType.dialogue, codeLong: npc.Value.Id);
+        session.ConditionUpdate(ConditionType.talk_in, codeLong: npc.Value.Id);
+    }
+
     public static ScriptState? GetInitialScriptType(GameSession session, ScriptStateType type, ScriptMetadata? metadata, int npcId) {
         switch (type) {
             case ScriptStateType.Script:
@@ -243,7 +343,8 @@ public static class NpcTalkUtil {
             stateId = GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 200, 300);
         }
 
-        if (quest != null && quest.Metadata.Basic.CompleteNpc == npcId) {
+        // The completion dialogue only when the quest can complete; otherwise its in-progress one (a refused Complete click said nothing).
+        if (quest != null && quest.Metadata.Basic.CompleteNpc == npcId && session.Quest.CanComplete(quest)) {
             stateId = GetFirstStateScript(scriptMetadata.States.Keys.ToArray(), 300, 400);
         }
 

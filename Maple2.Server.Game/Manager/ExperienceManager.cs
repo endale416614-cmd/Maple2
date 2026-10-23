@@ -58,6 +58,7 @@ public sealed class ExperienceManager {
     public IList<int> PrestigeRewardsClaimed => session.Player.Value.Account.PrestigeRewardsClaimed;
 
     private int ChainKillCount { get; set; }
+    private long lastKillTick;
 
     public ExperienceManager(GameSession session) {
         this.session = session;
@@ -70,6 +71,18 @@ public sealed class ExperienceManager {
                 session.Player.Value.Account.PrestigeMissions.Add(new PrestigeMission(missionId));
             }
         }
+    }
+
+    /// <summary>The kill chain after one more kill: Lua.CalcKillCount, with a gap of 5 s or more starting a new chain.</summary>
+    public static int NextChain(int chain, int myLevel, int npcLevel, long elapsedMs) {
+        return elapsedMs >= 5000 ? 1 : Lua.CalcKillCount(myLevel, npcLevel, (int) elapsedMs, chain);
+    }
+
+    /// <summary>Counts a kill in the chain (Unstoppable!) and returns the chain's length.</summary>
+    public int ChainKill(int npcLevel, long tickCount) {
+        ChainKillCount = NextChain(ChainKillCount, Level, npcLevel, tickCount - lastKillTick);
+        lastKillTick = tickCount;
+        return ChainKillCount;
     }
 
     public void ResetChainKill() => ChainKillCount = 0;
@@ -134,6 +147,7 @@ public sealed class ExperienceManager {
             case ExpType.expDrop:
             case ExpType.miniGame:
             case ExpType.userMiniGame:
+            case ExpType.guildUserExp:
                 if (!expBase.TryGetValue(Level, out expValue)) {
                     return 0;
                 }

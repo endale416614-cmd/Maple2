@@ -12,6 +12,7 @@ using Maple2.Server.Core.Packets.Helper;
 using Maple2.Server.Game.Manager.Config;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Packets;
@@ -160,7 +161,7 @@ public static class FieldPacket {
         }
 
         pWriter.WriteLong(); // uid for PetNpc
-        pWriter.WriteByte();
+        pWriter.WriteBool(NpcSummons.InteractSkill(npc.Value.Id) != null); // usable: the client offers its interact key only then
         pWriter.WriteInt(npc.Value.Metadata.Basic.Level);
         pWriter.WriteInt();
 

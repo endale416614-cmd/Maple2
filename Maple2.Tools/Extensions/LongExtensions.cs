@@ -10,5 +10,13 @@ public static class LongExtensions {
     public static int Truncate32(this long value) {
         return (int) (0xFFFFFFFF & value);
     }
+
+    /// <summary>
+    /// Milliseconds from a 32-bit tick (one also sent to the client, such as an EndTick) to this 64-bit tick; negative while
+    /// that tick is still ahead. Correct across the 32-bit wrap, which comes after 24.8 days of uptime.
+    /// </summary>
+    public static int TicksSince(this long tickCount, int tick) {
+        return unchecked(tickCount.Truncate32() - tick);
+    }
 }
 

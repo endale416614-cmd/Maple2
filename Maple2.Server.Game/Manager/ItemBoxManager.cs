@@ -240,7 +240,7 @@ public class ItemBoxManager {
                 }
             }
 
-            IEnumerable<Item> itemList = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId);
+            IEnumerable<Item> itemList = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, receiver: session);
 
             itemList = itemList.Concat(session.Field.ItemDrop.GetIndividualDropItems(session, session.Player.Value.Character.Level, individualDropBoxId));
             foreach (Item newItem in itemList) {

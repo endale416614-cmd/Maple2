@@ -42,6 +42,9 @@ public class WorldServer {
 
     private readonly LoginClient login;
 
+    private long clockTicks; // in-game ticks when World started (T-02)
+    private long clockStartedAt; // Unix ms
+
     public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata, TableMetadataStorage tableMetadata) {
         this.gameStorage = gameStorage;
         this.tableMetadata = tableMetadata;
@@ -62,6 +65,7 @@ public class WorldServer {
         db.DeleteUnownedItems();
         db.DeleteOrphanedMailItems();
         SeedBlackMarket(db);
+        StartClock(db);
 
         StartDailyReset();
         StartWeeklyReset();
@@ -86,16 +90,44 @@ public class WorldServer {
             long minPrice = Math.Max(1, Constants.BlackMarketSellMinPrice);
             long maxPrice = Constants.BlackMarketSellMaxPrice > 0 ? Constants.BlackMarketSellMaxPrice : long.MaxValue;
             double multiplier = market?.PriceMultiplier > 1 ? market.PriceMultiplier : 1;
+
+            // A Seed lists the same set at every World start (tests, balancing); without one every start differs.
+            Random random = market?.Seed is { } seed ? new Random(seed) : Random.Shared;
+
             IEnumerable<OfflineMarket.Offer> pool = (market?.Items ?? []).Where(offer => offer != null && itemMetadata.TryGet(offer.Id, out _));
-            foreach (OfflineMarket.Offer offer in pool.OrderBy(_ => Random.Shared.Next()).Take(Math.Max(0, market?.Count ?? 0))) {
+            // BM-04: a share of the gear near the level of the character played last, the rest from other levels.
+            int playerLevel = db.LastPlayedLevel();
+            OfflineMarket.LevelRange? levels = market?.Levels;
+            List<OfflineMarket.Offer> shuffled = pool.OrderBy(_ => random.Next()).ToList();
+            OfflineMarket.Fill(shuffled, offer => levels != null && OfflineMarket.IsNear(GearLevel(offer.Id), playerLevel, levels),
+                levels?.Share ?? 0, Math.Max(0, market?.Count ?? 0), ListGear);
+
+            bool ListGear(OfflineMarket.Offer offer) {
                 itemMetadata.TryGet(offer.Id, out ItemMetadata? metadata);
-                // Gear takes the lowest rarity its option tables define, as drops do: at rarity 1 some gear has no stats.
+                int[]? weights = market?.Pricing?.RarityWeights;
+                int rarity = offer.Rarity > 0 ? offer.Rarity : GearRarity(metadata!, weights, random);
+                // Maintainer 2026-10-22: no Normal (white) gear; with RarityWeights a rarity without weight is never listed.
+                if (weights != null && (rarity > weights.Length || weights[rarity - 1] <= 0)) {
+                    return false;
+                }
+                long sellPrice = Core.Formulas.Shop.SellPrice(metadata!, new ItemType(offer.Id), rarity);
+                long listPrice = offer.Price > 0 ? offer.Price
+                    : market?.Pricing is { } pricing ? OfflineMarket.GearPrice(pricing, metadata!.Limit.Level, rarity) : (long) (sellPrice * multiplier);
+                // Never below what an NPC shop pays for it: buying here and selling there would make meso every Play.
+                long price = Math.Max(listPrice, sellPrice);
+                offers.Add((new Item(metadata!, rarity, Math.Max(1, offer.Amount)), Math.Clamp(price, minPrice, maxPrice)));
+                return true;
+            }
+
+            // Essentials (upgrade materials, gemstones, potions) are listed every time, in their own amount and price.
+            foreach (OfflineMarket.Offer offer in (market?.Essentials ?? []).Where(offer => offer != null && itemMetadata.TryGet(offer.Id, out _))) {
+                itemMetadata.TryGet(offer.Id, out ItemMetadata? metadata);
                 int rarity = offer.Rarity > 0 ? offer.Rarity : ItemOptionRarity.Default(metadata!.Option, tableMetadata.ItemOptionConstantTable,
                     tableMetadata.ItemOptionStaticTable, tableMetadata.ItemOptionRandomTable);
                 long sellPrice = Core.Formulas.Shop.SellPrice(metadata!, new ItemType(offer.Id), rarity);
-                // Never below what an NPC shop pays for it: buying here and selling there would make meso every Play.
                 long price = Math.Max(offer.Price > 0 ? offer.Price : (long) (sellPrice * multiplier), sellPrice);
-                offers.Add((new Item(metadata!, rarity, Math.Max(1, offer.Amount)), Math.Clamp(price, minPrice, maxPrice)));
+                int amount = Math.Clamp(offer.Amount, 1, Math.Max(1, metadata!.Property.SlotMax));
+                offers.Add((new Item(metadata!, rarity, amount), Math.Clamp(price, minPrice, maxPrice)));
             }
 
             long expiry = DateTimeOffset.UtcNow.AddDays(Math.Max(1, Constants.BlackMarketSellEndDay)).ToUnixTimeSeconds();
@@ -106,10 +138,24 @@ public class WorldServer {
         }
     }
 
+    // Gear takes the lowest rarity its option tables define, as drops do (at rarity 1 some gear has no stats), unless the
+    // market's RarityWeights pick one of the rarities it defines.
+    private int GearRarity(ItemMetadata metadata, int[]? weights, Random random) {
+        ItemOptionConstantTable constants = tableMetadata.ItemOptionConstantTable;
+        ItemOptionStaticTable statics = tableMetadata.ItemOptionStaticTable;
+        ItemOptionRandomTable randoms = tableMetadata.ItemOptionRandomTable;
+        int? picked = weights == null ? null : OfflineMarket.PickRarity(ItemOptionRarity.Defined(metadata.Option, constants, statics, randoms), weights, random);
+        return picked ?? ItemOptionRarity.Default(metadata.Option, constants, statics, randoms);
+    }
+
+    private int GearLevel(int itemId) => itemMetadata.TryGet(itemId, out ItemMetadata? metadata) ? metadata!.Limit.Level : 0;
+
     private void Heartbeat() {
         while (!tokenSource.Token.IsCancellationRequested) {
             try {
                 Task.Delay(TimeSpan.FromSeconds(30), tokenSource.Token).Wait(tokenSource.Token);
+
+                SaveClock();
 
                 login.Heartbeat(new HeartbeatRequest(), cancellationToken: tokenSource.Token);
 
@@ -176,7 +222,26 @@ public class WorldServer {
         }
     }
 
+    // In-game clock (T-02, maintainer 2026-10-20): it runs at 1x only while World runs; the time the game was closed never counts.
+    private void StartClock(GameStorage.Request db) {
+        clockTicks = db.GetWorldTicks().Ticks;
+        clockStartedAt = GameClock.UtcNow.ToUnixTimeMilliseconds();
+        db.SaveWorldTicks(clockTicks, clockStartedAt);
+        logger.Information("In-game time: {Date}", OfflineCalendar.ToDate(clockTicks));
+    }
+
+    private void SaveClock() {
+        try {
+            long now = GameClock.UtcNow.ToUnixTimeMilliseconds();
+            using GameStorage.Request db = gameStorage.Context();
+            db.SaveWorldTicks(clockTicks + OfflineCalendar.TicksFromRealMilliseconds(now - clockStartedAt), now);
+        } catch (Exception ex) {
+            logger.Warning(ex, "In-game time not saved");
+        }
+    }
+
     public void Stop() {
+        SaveClock();
         tokenSource.Cancel();
         thread.Join();
         heartbeatThread.Join();

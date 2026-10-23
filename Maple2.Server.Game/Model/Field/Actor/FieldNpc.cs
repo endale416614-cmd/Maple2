@@ -87,6 +87,12 @@ public class FieldNpc : Actor<Npc> {
     public readonly SkillMetadata?[] Skills;
 
     public int SpawnPointId = 0;
+
+    // AI summons (NB-10): who summoned this NPC; a slave (a linked summon) leaves with its summoner and counts toward its cap.
+    public FieldNpc? Summoner { get; set; }
+    public bool IsSlave { get; set; }
+    public int SummonGroup { get; set; }
+
     public bool IsCorpse { get; private set; }
     private long lastCorpseBroadcastTick;
     public Action<FieldNpc>? WorldBossDeathCallback { get; set; }
@@ -110,10 +116,20 @@ public class FieldNpc : Actor<Npc> {
     private long idleTaskLimitTick;
 
     public readonly Dictionary<string, int> AiExtraData = new();
+    public long InteractReadyTick; // the interact cooldown (InteractNpcHandler)
 
     // Boss HP hold (AI MinimumHpNode, BossHpFloor): the health percent damage cannot pass until the next phase lowers it.
     public float HpFloorPercent { get; private set; }
     private long hpFloorHeldSince;
+
+    /// <summary>The sequence an NPC walks with: Walk_A, else Run_A (23 models have only Run_A, Nutritious Larva 32001102).</summary>
+    public static AnimationSequenceMetadata? WalkOrRun(IReadOnlyDictionary<string, AnimationSequenceMetadata> animations) =>
+        animations.GetValueOrDefault("Walk_A") ?? animations.GetValueOrDefault("Run_A");
+
+    /// <summary>A routine's sequence: the model's own, or for a walk routine the walk sequence (a run-only model runs).</summary>
+    public static AnimationSequenceMetadata? RoutineSequence(IReadOnlyDictionary<string, AnimationSequenceMetadata> animations,
+            string routine, AnimationSequenceMetadata? walk) =>
+        animations.GetValueOrDefault(routine) ?? (routine.StartsWith("Walk_", StringComparison.OrdinalIgnoreCase) ? walk : null);
 
     public void SetHpFloor(float percent) {
         percent = Math.Max(0, percent);
@@ -135,7 +151,7 @@ public class FieldNpc : Actor<Npc> {
     public FieldNpc(FieldManager field, int objectId, DtCrowdAgent? agent, Npc npc, string aiPath, string spawnAnimation = "", string? patrolDataUUID = null) : base(field, objectId, npc, field.NpcMetadata) {
         IdleSequenceMetadata = npc.Animations.GetValueOrDefault("Idle_A") ?? new AnimationSequenceMetadata(string.Empty, -1, 1f, []);
         JumpSequence = npc.Animations.GetValueOrDefault("Jump_A") ?? npc.Animations.GetValueOrDefault("Jump_B");
-        WalkSequence = npc.Animations.GetValueOrDefault("Walk_A");
+        WalkSequence = WalkOrRun(npc.Animations);
         FlySequence = npc.Animations.GetValueOrDefault("Fly_A");
         SpawnAnimation = spawnAnimation;
         defaultRoutines = new WeightedSet<string>();
@@ -297,8 +313,10 @@ public class FieldNpc : Actor<Npc> {
         }
 
         string routineName = defaultRoutines.Get();
-        if (!Value.Animations.TryGetValue(routineName, out AnimationSequenceMetadata? sequence)) {
-            Logger.Error("Invalid routine: {Routine} for npc {NpcId}", routineName, Value.Metadata.Id);
+        AnimationSequenceMetadata? sequence = RoutineSequence(Value.Animations, routineName, WalkSequence);
+        if (sequence is null) {
+            // Original data: the NPC's routine names a sequence its model lacks.
+            Logger.Debug("Invalid routine: {Routine} for npc {NpcId}", routineName, Value.Metadata.Id);
 
             return MovementState.TryStandby(null, true);
         }
@@ -346,7 +364,8 @@ public class FieldNpc : Actor<Npc> {
             } else if (FlySequence is not null) {
                 approachTask = MovementState.TryFlyTo(currentWaypoint.Position, false, sequence: FlySequence.Name, speed: (float) Patrol.PatrolSpeed / 2, lookAt: true);
             } else {
-                Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
+                // Original data: some models have no walk sequence (Nelph 11003163); the NPC stays in place.
+                Logger.Debug("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
             }
         } else if (!Navigation!.CanWalkTo(currentWaypoint.Position, out Vector3 ledge) && currentWaypoint.Position.Z < ledge.Z) {
             // The navmesh has no links down ledges, so walk to the edge and drop the rest. Trigger walks rely on these drops
@@ -369,7 +388,7 @@ public class FieldNpc : Actor<Npc> {
                 } else if (WalkSequence is not null) {
                     approachTask = MovementState.TryMoveTo(currentWaypoint.Position, false, sequence: WalkSequence.Name, speed: 1);
                 } else {
-                    Logger.Warning("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
+                    Logger.Debug("No walk sequence found for npc {NpcId} in patrol {PatrolId}", Value.Metadata.Id, Patrol.Uuid);
                 }
             } else {
                 Logger.Warning("Failed to path to waypoint id({Id}) coord {Coord} for npc {NpcName} - {NpcId} in patrol {PatrolId}", currentWaypoint.Id, currentWaypoint.Position, Value.Metadata.Name, Value.Metadata.Id, Patrol.Uuid);
@@ -388,7 +407,10 @@ public class FieldNpc : Actor<Npc> {
         currentWaypointIndex = (currentWaypointIndex + 1) % Patrol.WayPoints.Count;
 
         if ((approachTask?.Status ?? NpcTaskStatus.Cancelled) == NpcTaskStatus.Cancelled) {
-            Logger.Warning("Failed to path to waypoint id({Id}) coord {Coord} for npc {NpcName} - {NpcId} in patrol {PatrolId}", currentWaypoint.Id, currentWaypoint.Position, Value.Metadata.Name, Value.Metadata.Id, Patrol.Uuid);
+            // A null task was logged above (no path, or no walk sequence in the model).
+            if (approachTask is not null) {
+                Logger.Warning("Failed to path to waypoint id({Id}) coord {Coord} for npc {NpcName} - {NpcId} in patrol {PatrolId}", currentWaypoint.Id, currentWaypoint.Position, Value.Metadata.Name, Value.Metadata.Id, Patrol.Uuid);
+            }
             return MovementState.TryStandby(null, true);
         }
 
@@ -409,7 +431,13 @@ public class FieldNpc : Actor<Npc> {
     protected override void OnDeath() {
         WorldBossDeathCallback?.Invoke(this);
         Owner?.Despawn(ObjectId);
+        RemoveSlaves(); // slaves leave with their summoner (NB-10)
         SendControl = false;
+
+        // Handle string IDs for npc_is_dead_by_string_id (NB-15)
+        if (NpcSummons.StringId(Value.Metadata.Id) is { } stringId) {
+            Field.DeadStringIds.Add(stringId);
+        }
 
         SequenceCounter++;
         Field.Broadcast(NpcControlPacket.Dead(this));
@@ -426,7 +454,8 @@ public class FieldNpc : Actor<Npc> {
 
     public virtual void Animate(string sequenceName, float duration = -1f) {
         if (!Value.Animations.TryGetValue(sequenceName, out AnimationSequenceMetadata? sequence)) {
-            Logger.Error("Invalid sequence: {Sequence} for npc {NpcId}", sequenceName, Value.Metadata.Id);
+            // Original data: the model lacks the sequence (dummy models, Rainsong Fairy Bore_B).
+            Logger.Debug("Invalid sequence: {Sequence} for npc {NpcId}", sequenceName, Value.Metadata.Id);
             return;
         }
 
@@ -470,7 +499,16 @@ public class FieldNpc : Actor<Npc> {
             BattleState.Provoke(caster);
         }
         base.ApplyDamage(caster, damage, attack);
+
+        // Push type 4 pulls the target to the skill's center (Magnetic Bomb 10600062, Flame Tornado 10300012, Gravity Rune
+        // 10900082, Raging Tempest 11100142). NPC positions are the server's, so the server has to move them (DL-19).
+        if (attack.Damage.Push is { Type: 4 } push && CanBePushed(attack.HitImmuneBreak, Value.Metadata.Basic.HitImmune)) {
+            MovementState.TryPull(damage.Position, push.Duration);
+        }
     }
+
+    /// <summary>Monsters whose hit immunity is above the attack's break (elites 80-98, bosses 99) are not moved.</summary>
+    public static bool CanBePushed(int hitImmuneBreak, int hitImmune) => hitImmuneBreak >= hitImmune;
 
     // Drop box semantics (confirmed via KMS2 video analysis):
     // - GlobalDropBoxIds       : drops spawned on death, shared (no per-player lock unless receiverCharacterId is set).
@@ -488,9 +526,11 @@ public class FieldNpc : Actor<Npc> {
     // IndividualDropBoxIds instead (keyed to the NPC id, e.g. individualDropBoxId="23000013" for Doondun).
     private void DropGlobalLoot(long receiverCharacterId = 0) {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
+        // The receiver's quests decide quest-limited drops; none for boss loot without one (receiverCharacterId 0).
+        GameSession? receiver = receiverCharacterId != 0 && Field.TryGetPlayerById(receiverCharacterId, out FieldPlayer? player) ? player.Session : null;
         var globalDrops = new List<Item>();
         foreach (int globalDropId in dropInfo.GlobalDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level, Field.ItemDrop.AllDrops, OfflineGrind.DropRate));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalDropId, Value.Metadata.Basic.Level, Field.ItemDrop.AllDrops, OfflineGrind.DropRate, receiver));
         }
         OfflineGrind.ScaleMeso(globalDrops);
 
@@ -505,7 +545,7 @@ public class FieldNpc : Actor<Npc> {
         NpcMetadataDropInfo dropInfo = Value.Metadata.DropInfo;
         var globalDrops = new List<Item>();
         foreach (int globalHitDropId in dropInfo.GlobalHitDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalHitDropId, Value.Metadata.Basic.Level));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(globalHitDropId, Value.Metadata.Basic.Level, false, 1f, player.Session));
         }
         OfflineGrind.ScaleMeso(globalDrops);
 
@@ -546,7 +586,7 @@ public class FieldNpc : Actor<Npc> {
         bool all = Field.ItemDrop.AllDrops && corpseAllDropsGiven.Add(player.Value.Character.Id);
         var globalDrops = new List<Item>();
         foreach (int deadGlobalDropId in dropInfo.DeadGlobalDropBoxIds) {
-            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(deadGlobalDropId, Value.Metadata.Basic.Level, all));
+            globalDrops.AddRange(Field.ItemDrop.GetGlobalDropItems(deadGlobalDropId, Value.Metadata.Basic.Level, all, 1f, player.Session));
         }
         OfflineGrind.ScaleMeso(globalDrops);
 
@@ -577,6 +617,16 @@ public class FieldNpc : Actor<Npc> {
         return MovementState.TryCastSkill(id, level, faceTarget, facePos, uid);
     }
 
+    /// <summary>The kill's trophy and quest conditions for one credited player.</summary>
+    private void CountKill(FieldPlayer player) {
+        player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
+        // Race trophies and quests key on the client's raceString, not the Korean spawn tags (MainTags).
+        if (NpcSummons.Race(Value.Id) is { } race) {
+            player.Session.ConditionUpdate(ConditionType.npc_race, codeString: race);
+        }
+        player.Session.ConditionUpdate(ConditionType.killcount, counter: player.Session.Exp.ChainKill(Value.Metadata.Basic.Level, Field.FieldTick));
+    }
+
     // mob drops, exp, etc.
     private void HandleDamageDealers() {
         if (Value.IsBoss) {
@@ -591,10 +641,7 @@ public class FieldNpc : Actor<Npc> {
                 DropUpgradeMaterials(player);
                 GiveExp(player);
 
-                player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
-                foreach (string tag in Value.Metadata.Basic.MainTags) {
-                    player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
-                }
+                CountKill(player);
             }
         } else {
             // Regular mob: first attacker is tagged and receives all drops.
@@ -614,10 +661,7 @@ public class FieldNpc : Actor<Npc> {
 
                 GiveExp(player);
 
-                player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
-                foreach (string tag in Value.Metadata.Basic.MainTags) {
-                    player.Session.ConditionUpdate(ConditionType.npc_race, codeString: tag);
-                }
+                CountKill(player);
             }
         }
     }
@@ -725,5 +769,12 @@ public class FieldNpc : Actor<Npc> {
 
     public override string ToString() {
         return $"FieldNpc(Id: {Value.Metadata.Id}, Name: {Value.Metadata.Name}, State: {State}, SequenceId: {SequenceId}, SequenceCounter: {SequenceCounter})";
+    }
+
+    /// <summary>Removes this NPC's slaves at once (the summoner died or removed itself).</summary>
+    public void RemoveSlaves() {
+        foreach (FieldNpc slave in Field.EnumerateNpcs().Where(npc => npc.Summoner == this && npc.IsSlave).ToList()) {
+            Field.RemoveNpc(slave.ObjectId);
+        }
     }
 }

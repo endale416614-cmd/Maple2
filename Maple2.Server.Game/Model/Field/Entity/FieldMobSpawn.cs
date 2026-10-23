@@ -1,4 +1,7 @@
 ﻿using System.Numerics;
+using DotRecast.Core;
+using DotRecast.Core.Numerics;
+using DotRecast.Detour;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
@@ -7,6 +10,8 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Tools;
+using Maple2.Tools.DotRecast;
+using Maple2.Tools.Extensions;
 using Serilog;
 
 namespace Maple2.Server.Game.Model;
@@ -67,34 +72,41 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         }
     }
 
+    /// <summary><paramref name="count"/> positions from <paramref name="pool"/>: distinct while the pool lasts (a partial
+    /// Fisher-Yates shuffle), then repeats.</summary>
+    public static List<Vector3> PickSpawns(IReadOnlyList<Vector3> pool, int count, Random random) {
+        var picked = new List<Vector3>(Math.Max(count, 0));
+        if (pool.Count == 0) {
+            return picked;
+        }
+        Vector3[] remaining = pool.ToArray();
+        int distinct = Math.Min(count, remaining.Length);
+        for (int i = 0; i < distinct; i++) {
+            int index = random.Next(remaining.Length - i);
+            picked.Add(remaining[index]);
+            remaining[index] = remaining[remaining.Length - i - 1];
+        }
+        for (int i = distinct; i < count; i++) {
+            picked.Add(pool[random.Next(pool.Count)]);
+        }
+        return picked;
+    }
+
     private List<Vector3> GetRandomSpawns(int count) {
-        List<Vector3> spawnsPicked = new();
-        var spawnsRemaining = new Vector3[validSpawns.Count];
-
-        validSpawns.CopyTo(spawnsRemaining);
-
-        int selectSpawns = Math.Min(count, validSpawns.Count);
-        int remainder = count - selectSpawns;
-
-        for (int i = 0; i < selectSpawns; ++i) {
-            int picked = Random.Shared.Next(spawnsRemaining.Length - i);
-
-            spawnsPicked.Add(spawnsRemaining[picked]);
-            spawnsRemaining[picked] = spawnsRemaining[selectSpawns - i - 1]; // remove picked from list by replacing with last in list
+        if (count > validSpawns.Count) {
+            Log.Logger.Debug("Spawn {SpawnId} in map {MapId} has {SpawnCount} positions for {Picking} monsters; some share one", spawnId, Field.MapId, validSpawns.Count, count);
         }
+        return PickSpawns(validSpawns, count, Random.Shared);
+    }
 
-        if (remainder > 0) {
-            Log.Logger.Error("Ran out of valid spawns to pick for spawn {SpawnId} in map {MapId}; valid spawns: {SpawnCount}; picking: {Picking}", spawnId, Field.MapId, validSpawns.Count, count);
+    private Vector3? RandomNavMeshPoint() {
+        if (!Field.FindNearestPoly(Position, out long closest, out RcVec3f position) || closest == 0) {
+            return null;
         }
-
-        // ran out of spawns to pick from so we are picking any duplicate now
-        for (int i = 0; i < remainder; ++i) {
-            int picked = Random.Shared.Next(0, validSpawns.Count);
-
-            spawnsPicked.Add(validSpawns[picked]);
-        }
-
-        return spawnsPicked;
+        float distance = SPAWN_DISTANCE * DotRecastHelper.MapRotation.GetRightAxis().Length(); // navmesh space
+        DtStatus status = Field.Navigation.Crowd.GetNavMeshQuery().FindRandomPointAroundCircle(closest, position, distance,
+            Field.Navigation.Crowd.GetFilter(0), new RcRand(), out _, out RcVec3f randomPt);
+        return status.Failed() ? null : DotRecastHelper.FromNavMeshSpace(randomPt);
     }
 
     private void InitializeSpawns() {
@@ -122,8 +134,17 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
             validSpawns.Add(entity.Position);
         }
 
+        // The ingest counts only box colliders as ground, so a region on mesh or vibrate cubes has few or no spawn tiles
+        // (2000083 spawn 15): random navmesh points around it make up the rest, once (DL-06).
+        for (int i = validSpawns.Count; i < Value.Population + 1; i++) {
+            if (RandomNavMeshPoint() is not { } point) {
+                break;
+            }
+            validSpawns.Add(point);
+        }
+
         if (validSpawns.Count == 0) {
-            Log.Logger.Error("Failed to find spawns for spawn {SpawnId} in map {MapId}", spawnId, Field.MapId);
+            Log.Logger.Warning("Failed to find spawns for spawn {SpawnId} in map {MapId}", spawnId, Field.MapId);
 
             validSpawns.Add(Position);
         }

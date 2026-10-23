@@ -1,4 +1,5 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -16,6 +17,21 @@ public sealed class PetManager : IDisposable {
     private readonly GameSession session;
     private readonly FieldPet pet;
     private readonly ItemCollection items;
+
+    // The summoned pet per character between leaving a field and entering the next, also across migrations (dungeon, home).
+    // shortcut: process-wide, fine while one Game process hosts every session (offline); several game processes need it
+    // in the World instead.
+    private static readonly ConcurrentDictionary<long, long> Following = new();
+
+    public static void Follow(long characterId, long petUid) => Following[characterId] = petUid;
+
+    public static void Unfollow(long characterId) => Following.TryRemove(characterId, out _);
+
+    /// <summary>The pet to summon again in the field being entered; it waits while the map forbids pets.</summary>
+    public static bool TryTakeFollowing(long characterId, bool mapAllowsPets, out long petUid) {
+        petUid = 0;
+        return mapAllowsPets && Following.TryRemove(characterId, out petUid);
+    }
 
     public Item Pet => pet.Pet;
     private readonly PetConfig config;

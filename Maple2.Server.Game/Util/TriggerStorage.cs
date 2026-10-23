@@ -28,7 +28,7 @@ public class TriggerCache : LRUCache<(string, string), Trigger.Helpers.Trigger> 
             if (triggerMetadata.TryGet(mapXBlock, triggerName, out TriggerMetadata? metadata)) {
                 try {
                     var document = new XmlDocument();
-                    document.LoadXml(metadata.Xml);
+                    document.LoadXml(OfflineTriggers.Apply(mapXBlock, triggerName, metadata.Xml));
                     trigger = ParseTrigger(mapXBlock, triggerName, document);
                     AddReplace((mapXBlock, triggerName), trigger);
                     return true;

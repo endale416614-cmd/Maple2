@@ -154,7 +154,8 @@ public class DungeonManager {
             return DungeonEnterLimit.Vip;
         }
 
-        if (limitMetadataMetadata.GearScore > 0 && session.Stats.Values.GearScore < limitMetadataMetadata.GearScore) {
+        // Offline the Queen Bean Rumble is open to any gear score (BT-47).
+        if (limitMetadataMetadata.GearScore > 0 && metadata.GroupType != DungeonGroupType.colosseum && session.Stats.Values.GearScore < limitMetadataMetadata.GearScore) {
             return DungeonEnterLimit.Gearscore;
         }
 
@@ -444,6 +445,7 @@ public class DungeonManager {
             session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp]);
             session.Currency.Meso += UserRecord.Rewards[DungeonRewardType.Meso];
             session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
+            session.ConditionUpdate(ConditionType.dungeon_reward, codeLong: Lobby.DungeonId / 1000); // trophy codes are room ids without the difficulty suffix
 
             ICollection<Item> items = [];
             if (rewardMetadata.UnlimitedDropBoxIds.Length > 0) {
@@ -508,6 +510,7 @@ public class DungeonManager {
         DateTime clearTime = clearTimeStamp.FromEpochSeconds();
         if (record.ClearTimestamp == 0) {
             record.ClearTimestamp = clearTimeStamp;
+            session.ConditionUpdate(ConditionType.dungeon_first_clear, codeLong: record.DungeonId);
         }
 
         if (updateUnion) {

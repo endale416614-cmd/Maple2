@@ -4,6 +4,19 @@ using Maple2.Model.Enum;
 namespace Maple2.Model.Metadata;
 
 public static class ItemOptionRarity {
+    /// <summary>Rarities (1-6) the item's option tables define; none for an item without option ids.</summary>
+    public static IEnumerable<int> Defined(ItemMetadataOption? option, ItemOptionConstantTable constants, ItemOptionStaticTable statics, ItemOptionRandomTable randoms) {
+        if (option == null) {
+            return [];
+        }
+
+        return OptionRarities(constants.Options, option.ConstantId)
+            .Concat(OptionRarities(statics.Options, option.StaticId))
+            .Concat(OptionRarities(randoms.Options, option.RandomId))
+            .Where(rarity => rarity is > 0 and < 7)
+            .Distinct();
+    }
+
     // Rarity of an item created without one. Boxes and consumables keep theirs in Option.ConstantId (1-6). For gear
     // ConstantId is an option table id, and drop tables leave the grade out for gear that exists at one rarity only
     // (raid gear is Epic, Legendary or Ascendant), so gear takes the lowest rarity its option tables define.
@@ -15,12 +28,7 @@ public static class ItemOptionRarity {
             return option.ConstantId;
         }
 
-        return OptionRarities(constants.Options, option.ConstantId)
-            .Concat(OptionRarities(statics.Options, option.StaticId))
-            .Concat(OptionRarities(randoms.Options, option.RandomId))
-            .Where(rarity => rarity is > 0 and < 7)
-            .DefaultIfEmpty(1)
-            .Min();
+        return Defined(option, constants, statics, randoms).DefaultIfEmpty(1).Min();
     }
 
     private static IEnumerable<int> OptionRarities<T>(IReadOnlyDictionary<int, IReadOnlyDictionary<int, T>> options, int id) {

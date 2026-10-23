@@ -101,10 +101,12 @@ public sealed class ShopManager {
     /// </summary>
     /// <param name="shopId">Shop ID</param>
     /// <param name="npcId">Npc ID. Optional parameter. This only is used for displaying the NPC's name on the shop window top bar.</param>
-    public void Load(int shopId, int npcId = 0) {
+    /// <returns>false when the shop is not in the data.</returns>
+    public bool Load(int shopId, int npcId = 0) {
         if (!session.ServerTableMetadata.ShopTable.Entries.TryGetValue(shopId, out ShopMetadata? metadata)) {
-            logger.Warning("Shop {Id} not found", shopId);
-            return;
+            // Original data: NA-only shops are not in the server data (Style Coin Shop 249 of Pietro 11004774 and the Style Coin 30001203).
+            logger.Debug("Shop {Id} not found", shopId);
+            return false;
         }
 
         if (metadata.EnableReset) {
@@ -125,6 +127,7 @@ public sealed class ShopManager {
                 session.Send(ShopPacket.LoadBuyBackItem(buyBackItems.Values.ToArray()));
             }
         }
+        return true;
     }
 
     private Shop GetInstancedShop(ShopMetadata metadata) {
@@ -490,6 +493,9 @@ public sealed class ShopManager {
             session.Send(ShopPacket.Update(shopItem.Id, shopItem.StockPurchased * shopItem.Metadata.SellUnit));
         }
 
+        if (shopItem.Metadata.Cost.Type == ShopCurrencyType.Meso && price > 0) {
+            session.ConditionUpdate(ConditionType.shop_buy, counter: price); // mesos spent (Shopaholic)
+        }
         session.Send(ShopPacket.Buy(shopItem, shopItem.Metadata.SellUnit * quantity, price));
     }
 

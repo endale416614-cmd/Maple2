@@ -153,6 +153,19 @@ public partial class MovementState {
         }
     }
 
+    /// <summary>Slides the NPC to <paramref name="position"/> (on the navmesh) over <paramref name="seconds"/>: a skill's pull.</summary>
+    private void PullTo(NpcTask task, Vector3 position, float seconds) {
+        emoteActionTask?.Cancel();
+        jumpStart = actor.Position;
+        jumpEnd = position;
+        jumpPeak = 0;
+        jumpDuration = Math.Max(seconds, 0.05f); // Gravity Rune pulls in 0.01 s: keep a few ticks
+        jumpElapsed = 0;
+        walkType = WalkType.Jump;
+        walkTask = task;
+        SetState(ActorState.Walk); // the walk update runs the slide; the current animation keeps playing
+    }
+
     private void StateWalkUpdate(long tickCount, long tickDelta) {
         if (walkType == WalkType.Jump) {
             StateJumpUpdate(tickCount, tickDelta);

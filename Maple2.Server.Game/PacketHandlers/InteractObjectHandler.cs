@@ -101,7 +101,7 @@ public class InteractObjectHandler : FieldPacketHandler {
 
             ICollection<Item> globalDropBoxItems = new List<Item>();
             foreach (int globalDropBoxId in interact.Value.Drop.GlobalDropBoxIds) {
-                globalDropBoxItems = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level, session.Field.ItemDrop.AllDrops);
+                globalDropBoxItems = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level, session.Field.ItemDrop.AllDrops, 1f, session);
             }
 
             foreach (Item item in globalDropBoxItems) {

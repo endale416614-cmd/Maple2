@@ -602,8 +602,8 @@ public class HousingManager {
             return false;
         }
 
-        if (isReplace && plot.Cubes.ContainsKey(position)) {
-            TryRemoveCube(plot, position, out _);
+        if (isReplace && plot.Cubes.ContainsKey(position) && !TryRemoveCube(plot, position, out _)) {
+            return false;
         }
 
         if (plot.MapId is Constant.DefaultHomeMapId && IsCoordOutsideArea(position)) {
@@ -698,10 +698,19 @@ public class HousingManager {
     }
 
     public bool TryRemoveCube(Plot plot, in Vector3B position, [NotNullWhen(true)] out PlotCube? cube) {
-        if (!plot.Cubes.Remove(position, out cube)) {
+        if (!plot.Cubes.TryGetValue(position, out cube)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_no_cube_to_remove));
             return false;
         }
+
+        // Storage first: a cube storage refuses stays on the plot instead of being lost.
+        if (!plot.IsPlanner && !session.Item.Furnishing.RetrieveCube(cube.Id)) {
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_be_removed));
+            cube = null;
+            return false;
+        }
+
+        plot.Cubes.Remove(position);
 
         if (cube.Interact?.PortalSettings is not null) {
             session.Field?.RemovePortal(cube.Interact.PortalSettings.PortalObjectId);
@@ -718,16 +727,9 @@ public class HousingManager {
             }
         }
 
-        if (plot.IsPlanner) {
-            return true;
+        if (!plot.IsPlanner) {
+            DeleteCube(cube);
         }
-
-        if (!session.Item.Furnishing.RetrieveCube(cube.Id)) {
-            logger.Error("Failed to deposit cube {CubeId} back into storage.", cube.Id);
-            return false;
-        }
-
-        DeleteCube(cube);
 
         return true;
     }

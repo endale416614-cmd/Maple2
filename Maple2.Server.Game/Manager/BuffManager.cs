@@ -71,10 +71,13 @@ public class BuffManager : IUpdatable {
     }
 
     public void AddBuff(IActor caster, IActor owner, int id, short level, long startTick, int stacks = 0, int durationMs = -1, bool notifyField = true, EventConditionType type = EventConditionType.Activate) {
-        if (!owner.Field.SkillMetadata.TryGetEffect(id, level, out AdditionalEffectMetadata? additionalEffect)) {
-            logger.Error("Invalid buff: {SkillId},{Level}", id, level);
+        if (!owner.Field.SkillMetadata.TryGetEffectOrLevel1(id, level, out AdditionalEffectMetadata? additionalEffect)) {
+            // Original data: about 38 effect ids that skills, AIs and map scripts apply have no row in the NA data, e.g. Overcome 11000101 names 11000102-11000106, which exist only behind the disabled feature CharacterBalance_01.
+            logger.Debug("Invalid buff: {SkillId},{Level}", id, level);
             return;
         }
+
+        level = additionalEffect.Level; // the level that applies, for the stack check and the packet
 
         // Offline cheat /godmode: monsters cannot debuff the player (stuns, slows, poisons...).
         if (owner is FieldPlayer { GodMode: true } && caster is FieldNpc { Value.Metadata.Basic.Friendly: 0 }

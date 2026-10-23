@@ -86,12 +86,14 @@ public class KillAllCommand : GameCommand {
 public class UnstuckCommand : GameCommand {
     private readonly GameSession session;
 
-    public UnstuckCommand(GameSession session) : base(AdminPermissions.None, "unstuck", "Teleport back to Henesys.") {
+    public UnstuckCommand(GameSession session) : base(AdminPermissions.None, "unstuck", "Restart a quest map, or go back to Henesys.") {
         this.session = session;
-        this.SetHandler<InvocationContext>(Handle);
+        var town = new Option<bool>(["--town", "-t"], () => false, "Go to Henesys even from a quest map.");
+        AddOption(town);
+        this.SetHandler<InvocationContext, bool>(Handle, town);
     }
 
-    private void Handle(InvocationContext ctx) {
+    private void Handle(InvocationContext ctx, bool town) {
         if (!OfflineCheats.Enabled) {
             ctx.Console.Error.WriteLine("Cheats are off. Set CheatCommands=true in launcher.ini and restart the game.");
             return;
@@ -102,6 +104,16 @@ public class UnstuckCommand : GameCommand {
 
         if (session.Player.IsDead) {
             session.Player.Revive(instant: true);
+        }
+
+        int mapId = OfflineCheats.UnstuckTarget(session.Field.MapId,
+            session.Field is Maple2.Server.Game.Manager.Field.DungeonFieldManager ? InstanceType.none : session.Field.FieldInstance.Type, town);
+        if (mapId != OfflineCheats.UnstuckMapId) {
+            ctx.Console.Out.WriteLine("Restarting this quest map from its start (/unstuck --town goes to Henesys)...");
+            session.Send(session.PrepareField(mapId)
+                ? FieldEnterPacket.Request(session.Player)
+                : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+            return;
         }
 
         ctx.Console.Out.WriteLine("Returning to Henesys...");

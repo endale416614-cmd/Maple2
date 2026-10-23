@@ -4,6 +4,7 @@ using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Trigger;
 
@@ -54,7 +55,12 @@ public partial class TriggerContext {
     }
 
     public void InitNpcRotation(int[] spawnIds) {
-        ErrorLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
+        if (TraceEnabled) DebugLog("[InitNpcRotation] spawnIds:{SpawnIds}", string.Join(", ", spawnIds));
+        foreach (FieldNpc npc in Field.EnumerateNpcs().Where(npc => spawnIds.Contains(npc.SpawnPointId))) {
+            if (Field.Entities.EventNpcSpawns.TryGetValue(npc.SpawnPointId, out EventSpawnPointNPC? spawn)) {
+                npc.Rotation = spawn.Rotation; // back to the spawn point's facing
+            }
+        }
     }
 
     public void LimitSpawnNpcCount(int limitCount, string desc) {
@@ -165,7 +171,28 @@ public partial class TriggerContext {
         if (TraceEnabled) WarnLog("[SetNpcEmotionSequence] spawnId:{SpawnId}, sequenceName:{SequenceName}, durationTick:{Duration}", spawnId, sequenceName, durationTick);
 
         FieldNpc? fieldNpc = Field.EnumerateNpcs().FirstOrDefault(npc => npc.SpawnPointId == spawnId);
-        fieldNpc?.Animate(sequenceName);
+        if (fieldNpc is null) {
+            return;
+        }
+        foreach ((string name, float delay) in SequenceChain(sequenceName, fieldNpc.Value.Animations)) {
+            if (delay <= 0) {
+                fieldNpc.Animate(name);
+            } else {
+                Events.Schedule(() => fieldNpc.Animate(name), TimeSpan.FromSeconds(delay));
+            }
+        }
+    }
+
+    /// <summary>set_npc_emotion_sequence can name a chain ("Attack_01_B,Attack_Idle_A"): each name with the delay after which it
+    /// starts, the sum of the earlier sequences' times (seconds; an unknown name counts 0).</summary>
+    public static List<(string Name, float Delay)> SequenceChain(string sequenceName, IReadOnlyDictionary<string, AnimationSequenceMetadata> sequences) {
+        var chain = new List<(string, float)>();
+        float delay = 0;
+        foreach (string name in sequenceName.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)) {
+            chain.Add((name, delay));
+            delay += sequences.TryGetValue(name, out AnimationSequenceMetadata? sequence) ? sequence.Time : 0;
+        }
+        return chain;
     }
 
     public void SetNpcRotation(int spawnId, float rotation) {
@@ -268,9 +295,16 @@ public partial class TriggerContext {
         return negate;
     }
 
+    /// <summary>npc_is_dead_by_string_id: an NPC with this stringID died since the last one spawned, and none is alive
+    /// (a phase swap removes the old phase alive, so it never counts).</summary>
+    public static bool DeadByStringId(IReadOnlySet<string> dead, IEnumerable<string?> aliveStringIds, string stringId) =>
+        dead.Contains(stringId) && !aliveStringIds.Contains(stringId);
+
     public bool NpcIsDeadByStringId(string stringId) {
-        ErrorLog("[NpcIsDeadByStringId] stringId:{Round}", stringId);
-        return false;
+        IEnumerable<string?> alive = Field.Mobs.Values.Concat(Field.Npcs.Values)
+            .Where(npc => !npc.IsDead)
+            .Select(npc => NpcSummons.StringId(npc.Value.Metadata.Id));
+        return DeadByStringId(Field.DeadStringIds, alive, stringId);
     }
     #endregion
 
@@ -300,7 +334,8 @@ public partial class TriggerContext {
 
     private void SpawnNpc(int spawnId, bool useSpawnAnimation = false) {
         if (!Field.Entities.EventNpcSpawns.TryGetValue(spawnId, out EventSpawnPointNPC? spawn)) {
-            logger.Error("[SpawnNpc] Invalid spawnId:{SpawnId}", spawnId);
+            // original data in 296 of 313 cases (63000041: 505, 507)
+            DebugLog("[SpawnNpc] Invalid spawnId:{SpawnId}", spawnId);
             return;
         }
 

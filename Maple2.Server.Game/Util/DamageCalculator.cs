@@ -120,13 +120,22 @@ public static class DamageCalculator {
                     ? SpecialAttribute.OffensivePhysicalDamage
                     : SpecialAttribute.OffensiveMagicalDamage;
                 attackTypeAmount = Math.Max(caster.Stats.Values[BasicAttribute.PhysicalAtk].Total, caster.Stats.Values[BasicAttribute.MagicalAtk].Total) * 0.5f;
-                resistance = Damage.CalculateResistance(target.Stats.Values[attackTypeAttribute].Total, caster.Stats.Values[piercingAttribute].Multiplier());
+                resistance = Damage.CalculateResistance(target.Stats.Values[Damage.ResistanceOf(attackTypeAttribute)].Total, caster.Stats.Values[piercingAttribute].Multiplier());
                 finalDamage = caster.Stats.Values[finalDamageAttribute].Multiplier();
                 break;
         }
 
         damageMultiplier *= attackTypeAmount * resistance * (finalDamage == 0 ? 1 : finalDamage);
         attackDamage *= damageMultiplier * Constant.AttackDamageFactor + property.Value;
+
+        // DefensiveProperty rates of a player's enabled buffs (Iron Shield 10100151: 25-80 % less damage); the ingest drops them.
+        if (target is FieldPlayer) {
+            bool magic = property.AttackType == AttackType.Magic || (property.AttackType == AttackType.All
+                && caster.Stats.Values[BasicAttribute.MagicalAtk].Total > caster.Stats.Values[BasicAttribute.PhysicalAtk].Total);
+            // shortcut: reductions only; debuffs that raise damage taken (Frozen +50 %, Ice Block 50003114 x6) wait for an in-game check.
+            attackDamage *= Damage.DamageTakenMultiplier(target.Buffs.EnumerateBuffs().Where(buff => buff.Enabled)
+                .Select(buff => Math.Max(0f, DefensiveEffects.Rate(buff.Id, buff.Level, magic))));
+        }
 
         // Apply any shields
         foreach (Buff buff in target.Buffs.EnumerateBuffs().Where(buff => buff.Metadata.Shield != null)) {

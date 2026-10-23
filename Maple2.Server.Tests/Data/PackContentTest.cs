@@ -79,14 +79,14 @@ namespace Maple2.Server.Tests.Data
             Assert.IsFalse(string.IsNullOrEmpty(contentPack), "contentPack is empty");
         }
 
-        // Pack 1.2.0-dev.b1 (BA-02): batch 1 of the unified content; each weekly batch raises these (BA-03).
+        // Pack 1.2.1-dev.b2 (BA-03): batches 1-2 of the unified content (cosmetics; weapons, armour, accessories); each batch raises these.
         [Test]
         public void Totals_AtLeastTheRegistry()
         {
             Assert.That(context.NpcMetadata.Count(), Is.GreaterThanOrEqualTo(7519));
             Assert.That(context.QuestMetadata.Count(), Is.GreaterThanOrEqualTo(4946));
             Assert.That(context.MapMetadata.Count(), Is.GreaterThanOrEqualTo(1200));
-            Assert.That(context.ItemMetadata.Count(), Is.GreaterThanOrEqualTo(37997));
+            Assert.That(context.ItemMetadata.Count(), Is.GreaterThanOrEqualTo(38206));
         }
 
         [Test]
@@ -138,6 +138,11 @@ namespace Maple2.Server.Tests.Data
             // Batch 1 (cosmetics); Earthworm Bait 20000284 comes with batch 3 (BA-03).
             var item2 = context.ItemMetadata.FirstOrDefault(i => i.Id == 10300186);
             Assert.IsNotNull(item2, "Item 10300186 (Tough Face (M)) not found");
+
+            // batch 2 (gear)
+            var item3 = context.ItemMetadata.FirstOrDefault(i => i.Id == 11200106);
+            Assert.IsNotNull(item3, "Item 11200106 (Old Arena Earrings) not found");
+            Assert.That(item3.Name, Is.EqualTo("Old Arena Earrings"));
         }
 
         [Test]

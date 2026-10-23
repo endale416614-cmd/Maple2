@@ -77,7 +77,11 @@ public partial class TriggerContext {
     }
 
     public void DungeonSetEndTime() {
-        ErrorLog("[DungeonSetEndTime]");
+        if (TraceEnabled) DebugLog("[DungeonSetEndTime]");
+        // The fight's end: the result time leaves out the ending talk (19 maps); the last call before the clear wins.
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.DungeonRoomRecord.EndTick = Field.FieldTick;
+        }
     }
 
     public void DungeonSetLapTime(int id, int lapTime) {
@@ -131,7 +135,9 @@ public partial class TriggerContext {
     }
 
     public void DarkStreamStartRound(int round, int uiDuration, int damagePenalty) {
-        ErrorLog("[DarkStreamStartRound]");
+        // No-op on purpose: the script's own 3 s timer starts the round; the penalty belongs to a Dark Stream score the
+        // offline server does not keep.
+        if (TraceEnabled) DebugLog("[DarkStreamStartRound] round:{Round}", round);
     }
 
     public void DarkStreamClearRound(int round) {

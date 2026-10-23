@@ -75,7 +75,8 @@ public class SkillInfo : IByteSerializable {
                 var subSkills = new List<Skill>(skillData.Sub.Length);
                 foreach (int subSkillId in skillData.Sub) {
                     if (!skillMetadata.TryGet(subSkillId, 1, out SkillMetadata? subMetadata)) {
-                        Log.Warning("Skipping invalid subSkillId:{SkillId}", subSkillId);
+                        // Original data: job.xml lists 9 sub skills with no skill file (Thief 10700082 under Haste).
+                        Log.Debug("Skipping invalid subSkillId:{SkillId}", subSkillId);
                         continue;
                     }
 

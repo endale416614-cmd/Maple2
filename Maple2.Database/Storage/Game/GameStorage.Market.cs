@@ -289,6 +289,12 @@ public partial class GameStorage {
             }
         }
 
+        /// <summary>Offline Black Market (BM-04): the level of the character saved last (the one most likely to play next); 1 without one.</summary>
+        public int LastPlayedLevel() {
+            return Context.Character.OrderByDescending(character => character.LastModified).ThenByDescending(character => character.Id)
+                .Select(character => (int?) character.Level).FirstOrDefault() ?? 1;
+        }
+
         public IEnumerable<BlackMarketListing> GetBlackMarketListings(long characterId) {
             Model.BlackMarketListing[] models = Context.BlackMarketListing.Where(listing => listing.CharacterId == characterId)
                 .AsEnumerable()

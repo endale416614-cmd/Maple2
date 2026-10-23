@@ -154,16 +154,11 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                         Block = new Ms2RegionSkill(skill.skillID, (short) skill.skillLevel, skill.Interval, skill.Position, skill.Rotation),
                     };
                     continue;
-                // case IMS2Breakable breakable: {
-                //     switch (breakable) {
-                //         case IMS2BreakableNIF nif:
-                //             yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                //                 Block = new Breakable(nif.IsVisible, (int) nif.TriggerBreakableID, nif.hideTimer, nif.resetTimer, nif.Position, nif.Rotation)
-                //             };
-                //             continue;
-                //     }
-                //     continue;
-                // }
+                case IMS2BreakableNIF { TriggerBreakableID: > 0 } nif: // scripted platforms (set_breakable), e.g. the Moonlight Fortress ship
+                    yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
+                        Block = new Breakable(nif.IsVisible, (int) nif.TriggerBreakableID, nif.hideTimer, nif.resetTimer, nif.Position, nif.Rotation, nif.Enabled),
+                    };
+                    continue;
                 case IMS2TriggerModel triggerModel:
                     string name = Path.GetFileNameWithoutExtension(triggerModel.XmlFilePath);
                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {

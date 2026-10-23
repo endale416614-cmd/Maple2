@@ -9,6 +9,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.Service;
 
@@ -38,7 +39,7 @@ public partial class ChannelService {
             return new TimeEventResponse();
         }
         foreach (GameSession session in server.GetSessions()) {
-            if (session.Field?.Metadata.Property.Type is >= MapType.None and <= MapType.Telescope or >= MapType.Alikar and <= MapType.Shelter) {
+            if (session.Field is { } field && GlobalPortalRule.Accepts(field.Metadata.Property.Type, field.FieldInstance.Type)) {
                 session.Send(GlobalPortalPacket.Announce(metadata, portal.EventId));
             }
         }

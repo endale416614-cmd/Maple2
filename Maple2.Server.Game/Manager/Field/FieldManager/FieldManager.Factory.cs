@@ -240,7 +240,8 @@ public partial class FieldManager {
                             continue;
                         }
 
-                        if (roomTimer.Expired(field.FieldTick)) {
+                        // An empty field's FieldTick stopped when its last player left.
+                        if (roomTimer.Expired(Environment.TickCount64)) {
                             logger.Debug("Field {MapId} {RoomId} room timer expired, disposing", field.MapId, field.RoomId);
                             field.Dispose();
                         } else {

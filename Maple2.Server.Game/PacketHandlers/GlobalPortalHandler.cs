@@ -8,6 +8,7 @@ using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Server.World.Service;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
@@ -39,6 +40,10 @@ public class GlobalPortal : FieldPacketHandler {
     private void HandleEnter(GameSession session, IByteReader packet) {
         int eventId = packet.ReadInt();
         int index = packet.ReadInt();
+
+        if (session.Field is not { } field || !GlobalPortalRule.Accepts(field.Metadata.Property.Type, field.FieldInstance.Type)) {
+            return; // a popup from the field before can still be clicked
+        }
 
         TimeEventResponse eventResponse = World.TimeEvent(new TimeEventRequest {
             JoinGlobalPortal = new TimeEventRequest.Types.JoinGlobalPortal {

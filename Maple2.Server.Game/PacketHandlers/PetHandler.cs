@@ -154,7 +154,7 @@ public class PetHandler : FieldPacketHandler {
         }
     }
 
-    private static void SummonPet(GameSession session, long petUid) {
+    public static void SummonPet(GameSession session, long petUid) {
         if (session.Field == null || session.Pet != null) {
             return;
         }

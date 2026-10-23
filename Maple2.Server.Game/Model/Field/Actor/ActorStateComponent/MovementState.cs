@@ -144,6 +144,20 @@ public partial class MovementState {
         return new NpcSkillCastTask(actor.TaskState, this, id, level, faceTarget, facePos, uid);
     }
 
+    /// <summary>A skill's pull toward <paramref name="center"/>: slides the NPC over <paramref name="seconds"/> as far as the
+    /// navmesh lets it go. Null when it cannot move.</summary>
+    public NpcTask? TryPull(Vector3 center, float seconds) {
+        if (walkType == WalkType.Jump) {
+            walkTask?.Cancel(); // lands a running jump or pull first, so the pull starts where the NPC really is
+        }
+        if (actor.Navigation?.PullToward(center, out Vector3 destination) != true) {
+            return null;
+        }
+        walkTask?.Cancel();
+        CastTask?.Cancel(); // a pull staggers: the interrupted cast does not resume
+        return new NpcPullTask(actor.TaskState, this) { Position = destination, Seconds = seconds };
+    }
+
     public NpcTask CleanupPatrolData(FieldPlayer player) {
         return new NpcCleanupPatrolDataTask(player, actor.TaskState, this);
     }

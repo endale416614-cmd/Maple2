@@ -366,6 +366,33 @@ public sealed class AgentNavigation {
         return SetPathAway(positionAwayNavMesh);
     }
 
+    /// <summary>Where a pull toward <paramref name="center"/> leaves the NPC: the center when the floor between is open, else
+    /// where a wall or ledge stops it. False when it cannot move (already there, off the mesh, bad input).</summary>
+    public bool PullToward(Vector3 center, out Vector3 destination) {
+        destination = npc.Position;
+        // From the NPC itself: the agent's position is synced only when a walk starts, so it can lag far behind.
+        if (!TryFindPoly(npc.Position, out long startRef, out RcVec3f position)
+            || !FindPullPoint(crowd.GetNavMeshQuery(), crowd.GetFilter(0), startRef, position, DotRecastHelper.ToNavMeshSpace(center), out RcVec3f reachable)
+            // MoveAlongSurface keeps the start's height: put the end on the mesh (slopes, stacked floors).
+            || !TryFindPoly(reachable, out _, out RcVec3f onMesh)) {
+            return false;
+        }
+        destination = DotRecastHelper.FromNavMeshSpace(onMesh);
+        return true;
+    }
+
+    public static bool FindPullPoint(DtNavMeshQuery query, IDtQueryFilter filter, long startRef, RcVec3f position, RcVec3f center, out RcVec3f reachable) {
+        reachable = position;
+        if (!position.IsFinite() || !center.IsFinite()) {
+            return false;
+        }
+        // across the ground (Y is up in navmesh space); the surface stops the slide at walls and ledges
+        var goal = new RcVec3f(center.X, position.Y, center.Z);
+        Span<long> visited = stackalloc long[16];
+        DtStatus status = query.MoveAlongSurface(startRef, position, goal, filter, out reachable, visited, out _, visited.Length);
+        return status.Succeeded() && RcVec3f.Distance(position, reachable) >= DotRecastHelper.MIN_TARGET_DIST;
+    }
+
     /// <summary>
     /// The point the agent at <paramref name="position"/> reaches running away from <paramref name="target"/> until it is
     /// <paramref name="distance"/> from it, all in navmesh space. False when it cannot move (cornered) or the input is bad.

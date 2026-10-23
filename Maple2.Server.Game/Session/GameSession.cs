@@ -25,6 +25,7 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Manager.Items;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.PacketHandlers;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Util.Sync;
 using Maple2.Server.World.Service;
@@ -232,6 +233,10 @@ public sealed partial class GameSession : Core.Network.Session {
         }
 
         int fieldId = mapId == 0 ? player.Character.MapId : mapId;
+        // A pocket realm's room does not outlive a logout: log in on the map below it (BT-35).
+        if (mapId == 0 && MapMetadata.TryGet(fieldId, out MapMetadata? savedMap)) {
+            fieldId = RoomTimer.LoginMapId(fieldId, savedMap.Property.Type is MapType.PocketRealm, player.Character.ReturnMaps);
+        }
         if (!PrepareField(fieldId, out FieldManager? fieldManager, portalId: portalId, ownerId: ownerId, roomId: roomId, position: position)) {
             Send(MigrationPacket.MoveResult(MigrationError.s_move_err_default));
             return false;
@@ -412,7 +417,10 @@ public sealed partial class GameSession : Core.Network.Session {
         Array.Clear(DismantleStaging);
         DismantleOpened = false;
         Trade?.Dispose();
-        Pet?.Dispose();
+        if (Pet != null) {
+            PetManager.Follow(CharacterId, Pet.Pet.Uid); // summoned again in the next field (EnterField)
+            Pet.Dispose();
+        }
         Instrument = null;
         GuideObject = null;
         HeldCube = null;
@@ -489,6 +497,9 @@ public sealed partial class GameSession : Core.Network.Session {
         Player.Value.Unlock.Maps.Add(Player.Value.Character.MapId);
         Config.LoadHotBars();
         Field.OnAddPlayer(Player);
+        if (PetManager.TryTakeFollowing(CharacterId, Field.Metadata.Limit.Pet, out long petUid)) {
+            PetHandler.SummonPet(this, petUid);
+        }
         ScheduleAutosave();
         Scheduler.Start();
         State = SessionState.Connected;
@@ -536,7 +547,8 @@ public sealed partial class GameSession : Core.Network.Session {
             GetGlobalPortal = new TimeEventRequest.Types.GetGlobalPortal(),
         });
 
-        if (globalEventResponse.Error == 0 && globalEventResponse.GlobalPortalInfo != null) {
+        if (globalEventResponse.Error == 0 && globalEventResponse.GlobalPortalInfo != null
+            && GlobalPortalRule.Accepts(Field.Metadata.Property.Type, Field.FieldInstance.Type)) {
             if (ServerTableMetadata.TimeEventTable.GlobalPortal.TryGetValue(globalEventResponse.GlobalPortalInfo.MetadataId, out GlobalPortalMetadata? portal)) {
                 Send(GlobalPortalPacket.Announce(portal, globalEventResponse.GlobalPortalInfo.EventId));
             }
@@ -645,7 +657,8 @@ public sealed partial class GameSession : Core.Network.Session {
                 // Static meso entry found
             } else if (TableMetadata.RewardContentTable.MesoEntries.TryGetValue(baseMetadata.MesoTableId, out Dictionary<int, long>? mesoTable)) {
                 if (!mesoTable.TryGetValue(Player.Value.Character.Level, out meso)) {
-                    Logger.Error("Failed to find meso for level {Level} in table {TableId}", Player.Value.Character.Level, baseMetadata.MesoTableId);
+                    // Original data: the weekly dungeon bonus meso tables 4-6 start at level 50.
+                    Logger.Debug("Failed to find meso for level {Level} in table {TableId}", Player.Value.Character.Level, baseMetadata.MesoTableId);
                 }
             }
             if (baseMetadata.MesoFactor > 0f) {
@@ -874,6 +887,7 @@ public sealed partial class GameSession : Core.Network.Session {
             if (OnLoop != null) OnLoop -= Scheduler.InvokeAll;
             server.OnDisconnected(this);
             LeaveField();
+            if (leavingGame) PetManager.Unfollow(CharacterId); // logout: no pet at the next login, as before
             State = SessionState.Disconnected;
 
             // Early base dispose to stop further network sends

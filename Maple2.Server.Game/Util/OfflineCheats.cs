@@ -1,5 +1,6 @@
 using Maple2.Database.Context;
 using System.Collections.Concurrent;
+using Maple2.Model.Enum;
 
 namespace Maple2.Server.Game.Util;
 
@@ -11,6 +12,11 @@ namespace Maple2.Server.Game.Util;
 public static class OfflineCheats {
     /// <summary>Henesys (02000076), where /unstuck sends the player.</summary>
     public const int UnstuckMapId = 2000076;
+
+    /// <summary>Where /unstuck goes: a solo instance (a quest map) is entered again fresh at its spawn, which replays its
+    /// scene and script; anything else, or /unstuck --town, goes to Henesys.</summary>
+    public static int UnstuckTarget(int mapId, InstanceType type, bool toTown) =>
+        !toTown && type == InstanceType.solo ? mapId : UnstuckMapId;
 
     public static readonly bool Enabled =
         OfflineProfile.Option("OFFLINE_CHEATS", true); // both modes

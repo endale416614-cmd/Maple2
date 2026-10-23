@@ -34,6 +34,8 @@ public partial class FieldManager {
     public ConcurrentDictionary<int, FieldPlayer> Players { get; } = [];
     public ConcurrentDictionary<int, FieldNpc> Npcs { get; } = [];
     public ConcurrentDictionary<int, FieldNpc> Mobs { get; } = [];
+    // stringIDs of NPCs that died here since the last NPC with that stringID spawned (npc_is_dead_by_string_id, NB-15).
+    public readonly HashSet<string> DeadStringIds = [];
     public ConcurrentDictionary<int, FieldPet> Pets { get; } = [];
 
     // Entities
@@ -106,7 +108,8 @@ public partial class FieldManager {
             }
         }
 
-        if (FieldInstance.Type == InstanceType.none || FieldInstance.SaveField) {
+        // A dungeon room is never a return map (9 room maps have no instancefield row and returned to themselves).
+        if (this is not DungeonFieldManager && (FieldInstance.Type == InstanceType.none || FieldInstance.SaveField)) {
             if (Metadata.Property.EnterReturnId != 0) {
                 player.Character.ReturnMaps.Push(Metadata.Property.EnterReturnId);
             }
@@ -156,6 +159,11 @@ public partial class FieldManager {
             Npcs[fieldNpc.ObjectId] = fieldNpc;
         } else {
             Mobs[fieldNpc.ObjectId] = fieldNpc;
+        }
+
+        // Handle string IDs for npc_is_dead_by_string_id (NB-15)
+        if (NpcSummons.StringId(npc.Id) is { } stringId) {
+            DeadStringIds.Remove(stringId); // a new fight: the old death no longer counts
         }
 
         return fieldNpc;
@@ -430,7 +438,8 @@ public partial class FieldManager {
         }
 
         if (spawnNpcs.Count <= 0) {
-            logger.Warning("No valid Npcs found from: {NpcIds}", string.Join(",", npcIds));
+            // Original data: some region spawns have no NPC in their level range (2000176 spawn 1, 2000004, 2000118).
+            logger.Debug("No valid Npcs found from: {NpcIds} for spawn {SpawnId} in map {MapId} (difficulty {Min}-{Max})", string.Join(",", npcIds), metadata.Id, MapId, metadata.MinDifficulty, metadata.MaxDifficulty);
             return null;
         }
 
@@ -837,11 +846,12 @@ public partial class FieldManager {
     private void SetBonusMapPortal(IList<MapMetadata> bonusMaps, Ms2RegionSpawn spawn) {
         // Spawn a hat within a random range of 5 min to 8 hours
         var delay = Random.Shared.Next(1, 97) * TimeSpan.FromMinutes(5);
+        Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, spawn), delay);
         MapMetadata bonusMapMetadata = bonusMaps[Random.Shared.Next(bonusMaps.Count)];
         IField? bonusMap = FieldFactory.Create(bonusMapMetadata.Id);
         bonusMap?.Init();
-        Console.WriteLine($"Creating bonus map {bonusMapMetadata.Id} at {spawn.Position} in {delay} ms.");
         if (bonusMap == null) {
+            logger.Warning("Could not create bonus map {BonusMapId} for map {MapId}", bonusMapMetadata.Id, MapId);
             return;
         }
         bonusMap.SetRoomTimer(RoomTimerType.Clock, 90000);
@@ -857,7 +867,7 @@ public partial class FieldManager {
         };
         fieldPortal.EndTick = (FieldTick + (long) TimeSpan.FromSeconds(30).TotalMilliseconds).Truncate32();
         Broadcast(PortalPacket.Add(fieldPortal));
-        Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, spawn), delay);
+        logger.Information("Bonus map {BonusMapId} portal opened in map {MapId} at {Position} for 30 s; next one in {Delay}", bonusMapMetadata.Id, MapId, spawn.Position, delay);
     }
 
     public void SetRoomTimer(RoomTimerType type, int duration) {
@@ -1046,6 +1056,9 @@ public partial class FieldManager {
         Scheduler.Schedule(() => {
             Broadcast(FieldPacket.RemovePet(objectId));
             Broadcast(ProxyObjectPacket.RemovePet(objectId));
+            if (pet.Navigation is not null) {
+                Navigation.Crowd.RemoveAgent(pet.Navigation.agent); // as RemoveNpc: every summon adds an agent
+            }
             pet.Dispose();
         }, removeDelay);
         return true;
@@ -1082,7 +1095,7 @@ public partial class FieldManager {
             added.Session.Send(LiftablePacket.Add(liftable));
         }
         added.Session.Send(LiftablePacket.Update(fieldLiftables.Values.Where(liftable => liftable.FinishTick == 0).ToList()));
-        added.Session.Send(BreakablePacket.Update(fieldBreakables.Values));
+        added.Session.Send(BreakablePacket.Update(fieldBreakables.Values.Where(breakable => breakable.InFieldList).ToList()));
         added.Session.Send(InteractObjectPacket.Load(fieldInteracts.Values));
         foreach (FieldInteract fieldInteract in fieldAdBalloons.Values) {
             added.Session.Send(InteractObjectPacket.Add(fieldInteract.Object));

@@ -1,6 +1,21 @@
-﻿namespace Maple2.Server.Core.Formulas;
+﻿using Maple2.Model.Enum;
+
+namespace Maple2.Server.Core.Formulas;
 
 public static class Damage {
+    /// <summary>Damage-taken multiplier of several DefensiveProperty rates: each buff multiplies by max(0, 1 - rate).</summary>
+    public static double DamageTakenMultiplier(IEnumerable<float> rates) {
+        double multiplier = 1;
+        foreach (float rate in rates) {
+            multiplier *= Math.Max(0, 1 - rate);
+        }
+        return multiplier;
+    }
+
+    /// <summary>The target stat that resists an attack stat: MagicalAtk is resisted by MagicalRes, anything else by PhysicalRes.</summary>
+    public static BasicAttribute ResistanceOf(BasicAttribute attack) =>
+        attack == BasicAttribute.MagicalAtk ? BasicAttribute.MagicalRes : BasicAttribute.PhysicalRes;
+
     public static double CalculateResistance(double targetPiercingResistance, double casterPiercingMultiplier) {
         return (1500.0 - Math.Max(0, targetPiercingResistance - 1500 * casterPiercingMultiplier)) / 1500;
     }

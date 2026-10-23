@@ -39,10 +39,54 @@ public sealed class AchievementManager {
         foreach (ImmutableList<Achievement> batch in characterValues.Values.Batch(BATCH_SIZE)) {
             session.Send(AchievementPacket.Load(batch));
         }
+
+        // Saves from before 1.2.1: level trophies counted level-ups, Trophy Maniac and the meta trophies missed grades, and first
+        // clears and lesson quests were never counted. Each catch-up only raises a counter to what the save holds: safe on every login.
+        Update(ConditionType.level, targetLong: session.Player.Value.Character.Level);
+        Update(ConditionType.trophy_point, count: session.Player.Value.Character.AchievementInfo.Total, codeLong: 20000000); // any trophy id is in the code range
+        List<Achievement> held = accountValues.Values.Concat(characterValues.Values).ToList();
+        foreach (ConditionType type in new[] { ConditionType.revise_achieve_multi_grade, ConditionType.revise_achieve_single_grade, ConditionType.hero_achieve }) {
+            // Pairs of trophy and grade, as the events count them.
+            Recount(type, condition => held.Sum(source => source.Grades.Keys.Count(earned => condition.Check(session, targetLong: earned, codeLong: source.Id))));
+        }
+        Recount(ConditionType.dungeon_first_clear, condition => session.Dungeon.Records.Values.Count(record => record.ClearTimestamp != 0 && condition.Check(session, codeLong: record.DungeonId)));
+        Recount(ConditionType.quest_revise_achieve, condition => condition.Codes?.Integers?.Count(id => session.Quest.TryGetQuest(id, out Quest? quest) && quest.State == QuestState.Completed) ?? 0);
+    }
+
+    /// <summary>Raises each trophy of the type to the number of events the save already holds (for events from before their emitter).</summary>
+    private void Recount(ConditionType type, Func<ConditionMetadata, long> count) {
+        foreach (AchievementMetadata metadata in session.AchievementMetadata.GetType(type)) {
+            IDictionary<int, Achievement> achievements = metadata.AccountWide ? accountValues : characterValues;
+            achievements.TryGetValue(metadata.Id, out Achievement? achievement);
+            if (achievement is { Completed: true }) {
+                continue;
+            }
+
+            AchievementMetadataGrade grade = achievement != null && metadata.Grades.TryGetValue(achievement.CurrentGrade, out AchievementMetadataGrade? current)
+                ? current
+                : metadata.Grades[metadata.Grades.Keys.Min()];
+            long events = count(grade.Condition);
+            long counter = achievement?.Counter ?? 0;
+            if (events <= counter) {
+                continue;
+            }
+
+            achievement ??= Create(metadata, grade, achievements);
+            if (!RankUp(type, achievement, events - counter)) {
+                session.Send(AchievementPacket.Update(achievement));
+            }
+        }
     }
 
     public bool TryGetAchievement(int achievementId, [NotNullWhen(true)] out Achievement? achievement) {
         return accountValues.TryGetValue(achievementId, out achievement) || characterValues.TryGetValue(achievementId, out achievement);
+    }
+
+    /// <summary>The next counter: states (gear score, level, best kill chain, trophies held) keep the highest value; the rest add up.</summary>
+    public static long NextCounter(ConditionType type, long counter, long value) {
+        return type is ConditionType.item_gear_score or ConditionType.level or ConditionType.killcount or ConditionType.trophy_point
+            ? Math.Max(counter, value)
+            : counter + value;
     }
 
     /// <summary>
@@ -67,22 +111,28 @@ public sealed class AchievementManager {
             }
 
             if (achievement == null) {
-                achievement = new Achievement(metadata) {
-                    CurrentGrade = grade.Grade,
-                    RewardGrade = grade.Grade,
-                };
-                using GameStorage.Request db = session.GameStorage.Context();
-                achievement = db.CreateAchievement(metadata.AccountWide ? session.AccountId : session.CharacterId, achievement);
-                if (achievement == null) {
-                    throw new InvalidOperationException($"Failed to create achievement: {metadata.Id}");
-                }
-                achievements.Add(metadata.Id, achievement);
+                achievement = Create(metadata, grade, achievements);
             }
 
-            if (!RankUp(conditionType, achievement, count)) {
+            // Level trophies want the level, which every emitter passes as the target.
+            if (!RankUp(conditionType, achievement, conditionType is ConditionType.level ? targetLong : count)) {
                 session.Send(AchievementPacket.Update(achievement));
             }
         }
+    }
+
+    private Achievement Create(AchievementMetadata metadata, AchievementMetadataGrade grade, IDictionary<int, Achievement> achievements) {
+        Achievement achievement = new Achievement(metadata) {
+            CurrentGrade = grade.Grade,
+            RewardGrade = grade.Grade,
+        };
+        using GameStorage.Request db = session.GameStorage.Context();
+        achievement = db.CreateAchievement(metadata.AccountWide ? session.AccountId : session.CharacterId, achievement);
+        if (achievement == null) {
+            throw new InvalidOperationException($"Failed to create achievement: {metadata.Id}");
+        }
+        achievements.Add(metadata.Id, achievement);
+        return achievement;
     }
 
     /// <summary>
@@ -94,11 +144,7 @@ public sealed class AchievementManager {
     /// <returns>False if there is no rank up possible or condition value has not been met.</returns>
     private bool RankUp(ConditionType conditionType, Achievement achievement, long count = 1) {
         // Are there more conditions that should be added here?
-        if (conditionType is ConditionType.item_gear_score) {
-            achievement.Counter = Math.Max(achievement.Counter, count); // Using Math.Max to ensure gear score doesn't decrease.
-        } else {
-            achievement.Counter += count;
-        }
+        achievement.Counter = NextCounter(conditionType, achievement.Counter, count);
 
         if (!achievement.Metadata.Grades.TryGetValue(achievement.CurrentGrade, out AchievementMetadataGrade? grade)) {
             return false;
@@ -109,6 +155,7 @@ public sealed class AchievementManager {
             if (achievement.Completed) {
                 break;
             }
+            int achievedGrade = achievement.CurrentGrade;
             achievement.Grades.Add(achievement.CurrentGrade, DateTime.Now.ToEpochSeconds());
             newGradesCount++;
 
@@ -134,9 +181,14 @@ public sealed class AchievementManager {
             GiveReward(achievement);
 
             session.Send(AchievementPacket.Update(achievement));
-            session.ConditionUpdate(ConditionType.revise_achieve_multi_grade, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
-            session.ConditionUpdate(ConditionType.revise_achieve_single_grade, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
-            session.ConditionUpdate(ConditionType.hero_achieve, codeLong: achievement.Id, targetLong: achievement.CurrentGrade);
+            session.ConditionUpdate(ConditionType.revise_achieve_multi_grade, codeLong: achievement.Id, targetLong: achievedGrade);
+            session.ConditionUpdate(ConditionType.revise_achieve_single_grade, codeLong: achievement.Id, targetLong: achievedGrade);
+            session.ConditionUpdate(ConditionType.hero_achieve, codeLong: achievement.Id, targetLong: achievedGrade);
+
+            // Trophy Maniac counts the trophies (grades) held: a state for trophies, one more for quests ("Obtain 10 trophies").
+            Update(ConditionType.trophy_point, count: session.Player.Value.Character.AchievementInfo.Total, codeLong: achievement.Id);
+            session.Quest.Update(ConditionType.trophy_point, codeLong: achievement.Id);
+
             if (!achievement.Metadata.Grades.TryGetValue(achievement.CurrentGrade, out grade)) {
                 break;
             }

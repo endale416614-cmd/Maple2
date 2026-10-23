@@ -22,6 +22,10 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     private static readonly HashSet<int> MonsterOnlySkills = [70000096];
 
     public IActor Caster { get; init; }
+    /// <summary>The id the client credits with this region's hits (the user/owner object id): the casting player, as before
+    /// upstream #637, so the hits show as the player's (numbers, enemy HP); map, trigger and monster regions keep the
+    /// region's own id, which #637 needed for their knockback.</summary>
+    public int UserId => Caster is FieldPlayer ? Caster.ObjectId : ObjectId;
     public SkillSource Source { get; init; } = SkillSource.Region;
     public int Interval { get; }
     public int FireCount { get; private set; }
@@ -133,7 +137,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                 SkillMetadataAttack attack = record.Attack;
                 record.TargetUid++;
                 var damage = new DamageRecord(record.Metadata, attack) {
-                    CasterId = ObjectId,
+                    CasterId = UserId,
                     OwnerId = ObjectId,
                     SkillId = Value.Id,
                     Level = Value.Level,

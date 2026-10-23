@@ -127,6 +127,9 @@ public class ItemUseHandler : FieldPacketHandler {
             case ItemFunction.CallAirTaxi:
                 HandleCallAirTaxi(session, packet, item);
                 break;
+            case ItemFunction.OpenInstrument:
+                // The client opens the instrument window itself; playing comes through InstrumentHandler (PlayInstrument).
+                break;
             default:
                 Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
                 return;
@@ -547,16 +550,13 @@ public class ItemUseHandler : FieldPacketHandler {
             lastClearEpicQuestId = 0;
         }
 
-        int currentLevel = session.Player.Value.Character.Level;
         session.Player.Value.Character.Level = level;
         session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));
         session.Stats.Refresh();
 
         session.Quest.LevelPotion(level - 1, lastClearEpicQuestId);
 
-        for (int i = currentLevel; i < level; i++) {
-            session.ConditionUpdate(ConditionType.level, targetLong: i);
-        }
+        session.ConditionUpdate(ConditionType.level, targetLong: level); // The new level (level trophies keep the highest; quests test level >= target).
 
         session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
             AccountId = session.AccountId,

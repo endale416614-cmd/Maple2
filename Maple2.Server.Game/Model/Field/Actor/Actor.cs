@@ -32,6 +32,9 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
     protected readonly ConcurrentDictionary<int, DamageRecordTarget> DamageDealers = new();
 
+    /// <summary>All damage taken so far, also what a boss HP floor held back (npc_damage).</summary>
+    public long DamageTaken => DamageDealers.Values.Sum(record => record.Damage.Sum(entry => entry.Amount));
+
     public int ObjectId { get; }
     public virtual Vector3 Position { get => Transform.Position; set => Transform.Position = value; }
     public virtual Vector3 Rotation {

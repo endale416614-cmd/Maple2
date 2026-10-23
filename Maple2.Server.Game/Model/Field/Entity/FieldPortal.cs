@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Model;
 
@@ -22,7 +23,7 @@ public class FieldPortal : FieldEntity<Portal> {
     }
 
     public override void Update(long tickCount) {
-        if (EndTick != 0 && tickCount > EndTick) {
+        if (EndTick != 0 && tickCount.TicksSince(EndTick) > 0) {
             Field.RemovePortal(ObjectId);
         }
     }

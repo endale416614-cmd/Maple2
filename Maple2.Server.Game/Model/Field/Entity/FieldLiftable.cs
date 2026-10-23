@@ -20,6 +20,14 @@ public class FieldLiftable : FieldEntity<Liftable> {
         Count = Value.ItemStackCount;
     }
 
+    /// <summary>When a put-down liftable goes away: on a target box after its FinishTime (delivered), anywhere else after its
+    /// ItemLifetime, where 0 means it stays until picked up again (52000004's pizza must be put down to break a wall).
+    /// Never 0, which marks the map's own liftables.</summary>
+    public static long FinishTickFor(long now, Liftable liftable, bool onTargetBox) {
+        int lifetime = onTargetBox ? liftable.FinishTime : liftable.ItemLifetime;
+        return lifetime > 0 || onTargetBox ? now + lifetime : long.MaxValue;
+    }
+
     public LiftableCube? Pickup() {
         if (Count <= 0 || State != LiftableState.Default) {
             return null;

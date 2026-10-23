@@ -17,6 +17,11 @@ using Serilog;
 namespace Maple2.Server.Game.Manager;
 
 public sealed class QuestManager {
+    /// <summary>Follow-ups the client data marks autoStart: accepted as soon as <paramref name="questId"/> completes, without their start NPC.</summary>
+    public static IEnumerable<QuestMetadata> AutoStartAfter(IEnumerable<QuestMetadata> quests, int questId) =>
+        quests.Where(next => next.Basic.AutoStart && next.Basic.Type != QuestType.FieldMission
+                             && next.EventMissionType == QuestEventMissionType.none && next.Require.Quest.Contains(questId));
+
     private const int BATCH_SIZE = 200;
     private readonly GameSession session;
 
@@ -45,6 +50,10 @@ public sealed class QuestManager {
     public void Load() {
         session.Send(QuestPacket.LoadExploration(session.Config.ExplorationProgress));
 
+        // Saves from before DL-10 kept item_exist counters at 0 for items already held (the inventory loads first).
+        foreach (Quest quest in accountValues.Values.Concat(characterValues.Values).Where(quest => quest.State != QuestState.Completed)) {
+            CountHeldItems(quest);
+        }
         foreach (ImmutableList<Quest> batch in accountValues.Values.Batch(BATCH_SIZE)) {
             session.Send(QuestPacket.LoadQuestStates(batch));
         }
@@ -70,11 +79,10 @@ public sealed class QuestManager {
                 continue;
             }
 
-            if (metadata.Basic.CompleteNpc != 0) {
-                continue;
-            }
-
-            if (metadata.Basic.CompleteMaps != null && metadata.Basic.CompleteMaps.Length != 0) {
+            // Talk-to-complete quests start on their own only as follow-ups (they name a prerequisite), e.g. 40002737,
+            // which 52000159 waits for while its NPC stands in 52000158.
+            if (metadata.Require.Quest.Length == 0 &&
+                (metadata.Basic.CompleteNpc != 0 || metadata.Basic.CompleteMaps is { Length: > 0 })) {
                 continue;
             }
 
@@ -111,6 +119,17 @@ public sealed class QuestManager {
         }
     }
 
+    /// <summary>A quest condition that still needs this item (quest-limited drops, constraintsQuest).</summary>
+    public static bool StillNeeds(ConditionMetadata condition, int counter, int itemId) =>
+        condition.Type is ConditionType.item_exist or ConditionType.item_collect or ConditionType.item_pickup
+        && counter < condition.Value && condition.Codes?.Integers?.Contains(itemId) == true;
+
+    /// <summary>Whether a started quest of the player still needs the item.</summary>
+    public bool NeedsItem(int itemId) =>
+        characterValues.Values.Concat(accountValues.Values)
+            .Where(quest => quest.State == QuestState.Started)
+            .Any(quest => quest.Conditions.Values.Any(condition => StillNeeds(condition.Metadata, condition.Counter, itemId)));
+
     /// <summary>
     /// Adds a quest to the quest manager.
     /// </summary>
@@ -126,7 +145,7 @@ public sealed class QuestManager {
     /// <summary>
     /// Starts a new quest (or prexisting if repeatable).
     /// </summary>
-    public QuestError Start(int questId, bool bypassRequirements = false) {
+    public QuestError Start(int questId, bool bypassRequirements = false, FieldNpc? npc = null) {
         if (characterValues.ContainsKey(questId) || accountValues.ContainsKey(questId)) {
             // TODO: see if you can start the quest again
             return QuestError.s_quest_error_accept_fail;
@@ -172,12 +191,28 @@ public sealed class QuestManager {
         }
 
         session.ConditionUpdate(ConditionType.quest_accept, codeLong: quest.Id);
+        // Items held before accepting count for item_exist (the Start packet carries the counters).
+        CountHeldItems(quest);
         session.Send(QuestPacket.Start(quest));
         if (quest.Metadata.SummonPortal != null) {
-            SummonPortal(quest);
+            SummonPortal(quest, npc ?? session.NpcScript?.Npc);
         }
         return QuestError.none;
     }
+
+    /// <summary>Items held count for item_exist, at accept and when the quests load.</summary>
+    private void CountHeldItems(Quest quest) {
+        long mapId = session.Field?.MapId ?? session.Player.Value.Character.MapId;
+        foreach (Quest.Condition condition in quest.Conditions.Values.Where(condition => condition.Metadata.Type == ConditionType.item_exist)) {
+            long held = session.Item.Inventory.Filter(item => !item.IsExpired() && condition.Metadata.Check(session, "", mapId, "", item.Id))
+                .Sum(item => (long) item.Amount);
+            condition.Counter = HeldCounter(condition.Counter, condition.Metadata.Value, held);
+        }
+    }
+
+    /// <summary>item_exist is held, not summed: the counter is the matching amount the player holds, capped at the target,
+    /// and never goes down (Kono's scrap quest ignored the 3 scrap held before accepting).</summary>
+    public static int HeldCounter(int counter, long target, long held) => (int) Math.Min(target, Math.Max(counter, held));
 
     /// <summary>
     /// Updates all possible quests with the given condition type.
@@ -189,9 +224,11 @@ public sealed class QuestManager {
     /// <param name="codeString">condition code parameter in string.</param>
     /// <param name="codeLong">condition code parameter in long.</param>
     public void Update(ConditionType type, long counter = 1, string targetString = "", long targetLong = 0, string codeString = "", long codeLong = 0) {
-        IEnumerable<Quest> quests = characterValues.Values.Where(quest => quest.State != QuestState.Completed)
+        // A list: a field mission completed below can start its autoStart follow-up, which adds to the log.
+        List<Quest> quests = characterValues.Values.Where(quest => quest.State != QuestState.Completed)
             .Concat(accountValues.Values.Where(quest => quest.State != QuestState.Completed))
-            .Where(x => x.Conditions.Values.Any(quest => quest.Metadata.Type == type));
+            .Where(x => x.Conditions.Values.Any(quest => quest.Metadata.Type == type))
+            .ToList();
         foreach (Quest quest in quests) {
             // TODO: Not sure if ProgressMap really means that only progress counts in this map. It doesn't make sense for some quests.
             // Testing only on FieldMission for now.
@@ -221,7 +258,7 @@ public sealed class QuestManager {
                 }
 
                 int previousCounter = condition.Counter;
-                condition.Counter = (int) Math.Min(condition.Metadata.Value, condition.Counter + counter);
+                condition.Counter = type == ConditionType.item_exist ? HeldCounter(condition.Counter, condition.Metadata.Value, counter) : (int) Math.Min(condition.Metadata.Value, condition.Counter + (int) counter);
 
                 // Only send update every 5 increments for throttleStates
                 if (throttleStates.Contains(type)) {
@@ -383,6 +420,7 @@ public sealed class QuestManager {
         session.ConditionUpdate(ConditionType.quest_clear_by_chapter, codeLong: quest.Metadata.Basic.ChapterId);
         session.ConditionUpdate(ConditionType.quest, codeLong: quest.Metadata.Id);
         session.ConditionUpdate(ConditionType.quest_clear, codeLong: quest.Metadata.Id);
+        session.ConditionUpdate(ConditionType.quest_revise_achieve, codeLong: quest.Metadata.Id); // trophies over quest sets (Lessons Learned)
         if (quest.Metadata.Basic.Type == QuestType.FieldMission) {
             session.ConditionUpdate(ConditionType.field_mission);
         }
@@ -393,6 +431,7 @@ public sealed class QuestManager {
         session.Send(QuestPacket.Complete(quest));
         TryJobAdvance(quest.Id);
         CompleteChapter(quest.Id);
+        foreach (QuestMetadata next in AutoStartAfter(session.QuestMetadata.GetQuests(), quest.Id)) { Start(next.Id); } // Start refuses a quest already in the log or not yet allowed
         return true;
     }
 
@@ -608,16 +647,17 @@ public sealed class QuestManager {
         Load();
     }
 
-    private void SummonPortal(Quest quest) {
+    private void SummonPortal(Quest quest, FieldNpc? npc) {
         if (session.Field is null) return;
-        if (session.NpcScript?.Npc == null) {
-            logger.Warning("Cannot summon quest portal for quest {QuestId}: No NPC script context", quest.Id);
+        if (npc == null) {
+            // The player can still walk back to the NPC.
+            logger.Debug("No NPC to summon the portal of quest {QuestId} at (accepted without its dialog)", quest.Id);
             return;
         }
 
-        FieldPortal portal = session.Field.SpawnPortal(quest.Metadata.SummonPortal!, session.NpcScript.Npc, session.Player);
+        FieldPortal portal = session.Field.SpawnPortal(quest.Metadata.SummonPortal!, npc, session.Player);
         session.Send(PortalPacket.Add(portal));
-        session.Send(QuestPacket.SummonPortal(session.NpcScript.Npc.ObjectId, portal.Value.Id, portal.StartTick));
+        session.Send(QuestPacket.SummonPortal(npc.ObjectId, portal.Value.Id, portal.StartTick));
     }
 
     /// <summary>

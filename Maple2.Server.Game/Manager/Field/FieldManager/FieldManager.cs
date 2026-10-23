@@ -25,6 +25,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.DotRecast;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
@@ -75,6 +76,7 @@ public partial class FieldManager : IField {
     private readonly List<(FieldPacketHandler handler, GameSession session, ByteReader reader)> queuedPackets;
     private bool initialized;
 
+    private int disposing;
     public bool Disposed { get; private set; }
 
     private readonly ILogger logger = Log.Logger.ForContext<FieldManager>();
@@ -167,6 +169,11 @@ public partial class FieldManager : IField {
         foreach ((Guid guid, BreakableActor breakable) in Entities.BreakableActors) {
             AddBreakable(guid.ToString("N"), breakable);
         }
+        foreach ((Guid guid, Breakable breakable) in Entities.Breakables) {
+            if (AddBreakable(guid.ToString("N"), new BreakableActor(breakable.Visible, breakable.Id, breakable.HideTime, breakable.ResetTime, 0, breakable.Position, breakable.Rotation)) is { } added) {
+                added.SetScripted(breakable.Enabled);
+            }
+        }
         foreach ((Guid guid, Liftable liftable) in Entities.Liftables) {
             AddLiftable(guid.ToString("N"), liftable);
         }
@@ -177,6 +184,14 @@ public partial class FieldManager : IField {
         foreach (SpawnPointNPC spawnPointNpc in Entities.NpcSpawns) {
             AddSpawnPointNpc(spawnPointNpc);
         }
+
+        // offline-spawns.json: spawn points the data lacks although quests need their NPCs (QF-06).
+        foreach (OfflineSpawns.Spawn extra in OfflineSpawns.ForMap(MapId)) {
+            if (Entities.RegionSpawns.TryGetValue(extra.RegionId, out Ms2RegionSpawn? region) && NpcMetadata.TryGet(extra.NpcId, out _)) {
+                AddSpawnPointNpc(OfflineSpawns.ToSpawnPoint(extra, region));
+            }
+        }
+
         InitQuestNpcFallback();
 
         foreach (SpawnPointPC spawnPoint in Entities.PlayerSpawns) {
@@ -276,6 +291,11 @@ public partial class FieldManager : IField {
     /// <returns>Returns a globally unique ObjectId</returns>
     public static int NextGlobalId() => Interlocked.Increment(ref _globalIdCounter);
 
+    /// <summary>The portal a player arrives at through a map portal: the target portal, or -1 (a spawn point) for target 0.
+    /// Portal ids start at 1; Blaknov No. 1's Cargo Car portal 2 targets portal 0 of the Cabin, whose only Id-0 portal is a
+    /// disabled placeholder beside the train (DL-13).</summary>
+    public static int ArrivalPortalId(int targetPortalId) => targetPortalId > 0 ? targetPortalId : -1;
+
     /// <summary>
     /// Generates an ObjectId unique to this specific map instance.
     /// </summary>
@@ -374,7 +394,13 @@ public partial class FieldManager : IField {
         }
 
         player.FallDamage(Constants.FallBoundingAddedDistance);
-        player.MoveToPosition(player.LastGroundPosition.Align() + new Vector3(0, 0, 150f), default);
+        Vector3 target = player.LastGroundPosition.Align() + new Vector3(0, 0, 150f);
+        // No ground of this map to return to (the player never stood on it): MoveToPosition refuses an off-navmesh target,
+        // so the fall and this damage would repeat on every sync. A spawn point instead.
+        if (!ValidPosition(target) && TryGetPlayerSpawn(-1, out FieldPlayerSpawnPoint? spawn)) {
+            target = spawn.Position + new Vector3(0, 0, 25);
+        }
+        player.MoveToPosition(target, default);
     }
 
     public bool ValidPosition(Vector3 position) {
@@ -585,8 +611,16 @@ public partial class FieldManager : IField {
                 return true;
             case PortalType.DungeonReturnToLobby:
                 if (this is not DungeonFieldManager dungeonField || dungeonField.Lobby is null) {
-                    logger.Warning("DungeonReturnToLobby portal used in non-dungeon map {MapId}", MapId);
-                    return false;
+                    if (Metadata.Property.Type is not MapType.PocketRealm) {
+                        logger.Warning("DungeonReturnToLobby portal used in non-dungeon map {MapId}", MapId);
+                        return false;
+                    }
+                    // A pocket realm's MS2RoomLeavePortal: out to the map below the room, as its 90 s timer does (BT-35).
+                    int returnMapId = RoomTimer.ReturnMapId(session.Player.Value.Character.ReturnMaps, MapId);
+                    session.Send(session.PrepareField(returnMapId)
+                        ? FieldEnterPacket.Request(session.Player)
+                        : FieldEnterPacket.Error(MigrationError.s_move_err_default));
+                    return true;
                 }
                 session.Send(session.PrepareField(dungeonField.Lobby.MapId, portalId: 2, roomId: dungeonField.Lobby.RoomId)
                     ? FieldEnterPacket.Request(session.Player)
@@ -627,9 +661,7 @@ public partial class FieldManager : IField {
             return true;
         }
 
-        session.ConditionUpdate(ConditionType.map, codeLong: srcPortal.TargetMapId);
-
-        session.Send(session.PrepareField(srcPortal.TargetMapId, portalId: srcPortal.TargetPortalId)
+        session.Send(session.PrepareField(srcPortal.TargetMapId, portalId: ArrivalPortalId(srcPortal.TargetPortalId))
             ? FieldEnterPacket.Request(session.Player)
             : FieldEnterPacket.Error(MigrationError.s_move_err_default));
         return true;
@@ -779,7 +811,8 @@ public partial class FieldManager : IField {
     }
 
     public void Dispose() {
-        if (Disposed) {
+        // One teardown: the dispose loop and a DestroyDungeon call can overlap.
+        if (Interlocked.Exchange(ref disposing, 1) != 0) {
             return;
         }
 
@@ -791,8 +824,11 @@ public partial class FieldManager : IField {
         } catch (Exception e) {
             logger.Error(e, "Failed to cancel FieldManager thread, cancel.Cancel() threw an exception. Disposed: {Disposed}", Disposed);
         }
+        // Called from this field's own update, the loop ends after this frame; joining would wait for itself.
+        if (Thread.CurrentThread != thread) {
+            thread.Join();
+        }
         cancel.Dispose();
-        thread.Join();
         Navigation.Dispose();
 
         Disposed = true;

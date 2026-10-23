@@ -68,6 +68,16 @@ public class NpcMetadataStorage : MetadataStorage<int, NpcMetadata>, ISearchable
         }
     }
 
+    /// <summary>The sequences by name whatever the case: scripts ask for ChatUP_A where the model has ChatUp_A (the client
+    /// gets sequence ids, never names). The first of two names that differ only by case wins.</summary>
+    public static AnimationMetadata IgnoreCase(AnimationMetadata animation) {
+        var sequences = new Dictionary<string, AnimationSequenceMetadata>(StringComparer.OrdinalIgnoreCase);
+        foreach ((string name, AnimationSequenceMetadata sequence) in animation.Sequences) {
+            sequences.TryAdd(name, sequence);
+        }
+        return animation with { Sequences = sequences };
+    }
+
     public AnimationMetadata? GetAnimation(string model) {
         if (AniCache.TryGet(model, out AnimationMetadata? animation)) {
             return animation;
@@ -81,6 +91,7 @@ public class NpcMetadataStorage : MetadataStorage<int, NpcMetadata>, ISearchable
             return null;
         }
 
+        animation = IgnoreCase(animation);
         AniCache.AddReplace(model, animation);
 
         return animation;

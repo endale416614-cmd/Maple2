@@ -1,0 +1,10 @@
+{
+  // Spawn points the map data lacks although quests need their NPCs (both modes). Each spawns Count of NpcId at region spawn
+  // RegionId of MapId and refills every RegenSeconds. An educated reconstruction: the original spawn data is missing.
+  "Spawns": [
+    { "MapId": 2000017, "NpcId": 29000022, "Count": 4, "RegionId": 6, "RegenSeconds": 30,
+      "Note": "Wiggler, Sylvan Woods Trail: quest 10001680 Only You Can Preserve the Forest (kill 10)" },
+    { "MapId": 2000115, "NpcId": 23000008, "Count": 1, "RegionId": 15, "RegenSeconds": 900,
+      "Note": "Devilin Chief, South Royal Road: quest 30000207 Notorious Monsters: The Devilish Commander" }
+  ]
+}
