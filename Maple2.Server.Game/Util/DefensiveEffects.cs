@@ -8,7 +8,7 @@ namespace Maple2.Server.Game.Util;
 /// DefensiveProperty damage-taken rates of additional effects (DL-03): Iron Shield 10100151 takes 25-80 % less damage, Iron
 /// Defense 10100061 10 %. The ingest drops them, so tools/data/defensive_effects.py writes them from the client XML into
 /// defensive-effects.json (DEFENSIVE_EFFECTS_FILE, default next to the solution); PvP-only rows are left out. Both modes.
-/// shortcut: the ingest drops DefensiveProperty; move the rates into AdditionalEffectMetadataStatus with the next data rebuild.
+/// TODO: the ingest drops DefensiveProperty; move the rates into AdditionalEffectMetadataStatus with the next data rebuild.
 /// </summary>
 public static class DefensiveEffects {
     public sealed record Config(Dictionary<int, Dictionary<short, float[]>> Effects);

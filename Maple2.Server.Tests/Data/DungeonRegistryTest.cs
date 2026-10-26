@@ -14,7 +14,7 @@ using Microsoft.EntityFrameworkCore;
 namespace Maple2.Server.Tests.Data;
 
 /// <summary>
-/// Dungeon registry (directive 6.3): one CSV row per dungeon room with what the data says about entry (lobby and field
+/// Dungeon registry: one CSV row per dungeon room with what the data says about entry (lobby and field
 /// maps, player counts), the encounter (NPC spawns and triggers in its fields), completion detection (a dungeon_clear
 /// trigger action) and rewards (drop boxes known to the individual item drop table), with a status and reasons; plus a
 /// Markdown summary. A report generator like DataSweepTest: data findings never fail the test, only a crash does.

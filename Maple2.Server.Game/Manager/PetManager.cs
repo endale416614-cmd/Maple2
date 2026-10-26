@@ -19,7 +19,7 @@ public sealed class PetManager : IDisposable {
     private readonly ItemCollection items;
 
     // The summoned pet per character between leaving a field and entering the next, also across migrations (dungeon, home).
-    // shortcut: process-wide, fine while one Game process hosts every session (offline); several game processes need it
+    // TODO: process-wide, fine while one Game process hosts every session (offline); several game processes need it
     // in the World instead.
     private static readonly ConcurrentDictionary<long, long> Following = new();
 

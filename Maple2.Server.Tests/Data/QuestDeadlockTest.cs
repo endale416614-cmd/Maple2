@@ -10,7 +10,7 @@ namespace Maple2.Server.Tests.Data;
 
 [Category("Data")]
 public class QuestDeadlockTest {
-    // Directive 15: the event system must not block progression. Event-only quests (an EventTag needs an active QuestTag
+    // The event system must not block progression. Event-only quests (an EventTag needs an active QuestTag
     // event; event missions start only through their event) never start offline, so no other quest may need one first.
     [Test]
     public void NoQuestOutsideTheEventsNeedsAnEventQuest() {

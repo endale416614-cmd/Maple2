@@ -132,7 +132,7 @@ public static class DamageCalculator {
         if (target is FieldPlayer) {
             bool magic = property.AttackType == AttackType.Magic || (property.AttackType == AttackType.All
                 && caster.Stats.Values[BasicAttribute.MagicalAtk].Total > caster.Stats.Values[BasicAttribute.PhysicalAtk].Total);
-            // shortcut: reductions only; debuffs that raise damage taken (Frozen +50 %, Ice Block 50003114 x6) wait for an in-game check.
+            // TODO: reductions only; debuffs that raise damage taken (Frozen +50 %, Ice Block 50003114 x6) wait for an in-game check.
             attackDamage *= Damage.DamageTakenMultiplier(target.Buffs.EnumerateBuffs().Where(buff => buff.Enabled)
                 .Select(buff => Math.Max(0f, DefensiveEffects.Rate(buff.Id, buff.Level, magic))));
         }

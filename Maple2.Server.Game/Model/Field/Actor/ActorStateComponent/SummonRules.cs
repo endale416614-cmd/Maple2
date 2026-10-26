@@ -31,7 +31,7 @@ public static class SummonRules {
         return anchor + new Vector3(Scatter(spread.X), Scatter(spread.Y), 0);
     }
 
-    // shortcut: the parser leaves lifeTime in seconds as written but turns decimals (15.6) into milliseconds, so the values mix
+    // TODO: the parser leaves lifeTime in seconds as written but turns decimals (15.6) into milliseconds, so the values mix
     // units; below 6,000 they are seconds, above milliseconds. Upgrade when the ingest keeps the unit (with the next data rebuild).
     public static TimeSpan LifeTime(long value) => value >= 6000 ? TimeSpan.FromMilliseconds(value) : TimeSpan.FromSeconds(value);
 }
