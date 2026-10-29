@@ -26,6 +26,7 @@ using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Util;
+using Maple2.Tools.Collision;
 using Maple2.Tools.DotRecast;
 using Maple2.Tools.Extensions;
 using Maple2.Tools.Scheduler;
@@ -611,12 +612,8 @@ public partial class FieldManager : IField {
                 return true;
             case PortalType.DungeonReturnToLobby:
                 if (this is not DungeonFieldManager dungeonField || dungeonField.Lobby is null) {
-                    if (Metadata.Property.Type is not MapType.PocketRealm) {
-                        logger.Warning("DungeonReturnToLobby portal used in non-dungeon map {MapId}", MapId);
-                        return false;
-                    }
-                    // A pocket realm's MS2RoomLeavePortal: out to the map below the room, as its 90 s timer does (BT-35).
-                    int returnMapId = RoomTimer.ReturnMapId(session.Player.Value.Character.ReturnMaps, MapId);
+                    // Not a dungeon run: a pocket realm's MS2RoomLeavePortal (BT-35) or a solo quest instance's (BT-57) goes out to the map below the room.
+                    int returnMapId = RoomTimer.LeaveMapId(session.Player.Value.Character.ReturnMaps, MapId);
                     session.Send(session.PrepareField(returnMapId)
                         ? FieldEnterPacket.Request(session.Player)
                         : FieldEnterPacket.Error(MigrationError.s_move_err_default));
@@ -737,24 +734,94 @@ public partial class FieldManager : IField {
         return playerPathDummies.TryRemove(new KeyValuePair<int, FieldNpc>(player.ObjectId, dummy));
     }
 
-    public void VibrateObjects(DamageRecord record, Vector3 position) {
-        if (record.AttackMetadata.BrokenOffence == 0) {
+    /// <summary>Vibrates the cubes in the attack's cube prisms (<see cref="SkillUtils.GetCubePrism"/>), each once.</summary>
+    public void VibrateObjects(DamageRecord record, IReadOnlyList<Prism> prisms) {
+        if (record.AttackMetadata.BrokenOffence == 0 || AccelerationStructure is null) {
             // No items are going to vibrate/break.
             return;
         }
 
-        float rangeDistance = record.AttackMetadata.Range.Distance;
-        if (AccelerationStructure is null) {
-            return;
+        int broken = 0;
+        foreach (FieldVibrateEntity cube in CubesIn(AccelerationStructure, prisms)) {
+            if (Vibrate(cube, record)) {
+                broken++;
+            }
         }
 
-        List<FieldVibrateEntity> vibrateObjects = AccelerationStructure.QueryVibrateObjectsCenterList(position, 2 * new Vector3(rangeDistance, rangeDistance, rangeDistance));
-        foreach (FieldVibrateEntity vibrate in vibrateObjects) {
-            if (vibrate.BreakDefense < record.AttackMetadata.BrokenOffence) {
-                // TODO Keep a record of when the vibrate object was broken. Don't send if it's currently broken and respawning.
-            }
-            Broadcast(VibratePacket.Attack(vibrate.Id.Id, record));
+        if (broken > 0) {
+            logger.Information("Skill {SkillId}:{Level} broke {Count} cubes in map {MapId}", record.SkillId, record.Level, broken, MapId);
         }
+    }
+
+    /// <summary>Tells the field the cube vibrates, unless it is still broken, and keeps its break when the attack beats it. The vibrate counts for the hitter's vibrate_object conditions. True if it broke.</summary>
+    public bool Vibrate(FieldVibrateEntity cube, DamageRecord record, GameSession? hitter = null) {
+        long now = Environment.TickCount64;
+        if (brokenVibrates.InForce(cube.Id.Id, now)) {
+            return false;
+        }
+
+        // Each vibrate of a player's reported hit counts once with the cube's tag; a still-broken cube and NPC or region hits count for nobody (original captures).
+        hitter?.ConditionUpdate(ConditionType.vibrate_object, codeString: cube.MaterialTag);
+
+        int tick = Environment.TickCount;
+        Broadcast(VibratePacket.Attack(cube.Id.Id, record, tick));
+        if (!Breaks(cube, record.AttackMetadata.BrokenOffence)) {
+            return false;
+        }
+
+        brokenVibrates.Add(cube.Id.Id, record, tick, BrokenUntil(now, cube));
+        return true;
+    }
+
+    public static bool Breaks(FieldVibrateEntity cube, int brokenOffence) {
+        return cube.BreakTick != 0 && brokenOffence > cube.BreakDefense;
+    }
+
+    /// <summary>When (Environment.TickCount64) a cube broken at <paramref name="breakTick64"/> is back: the client hides it after at least 3000 ms and restores it after its reset timer.</summary>
+    public static long BrokenUntil(long breakTick64, FieldVibrateEntity cube) {
+        // The 500 is the client's rise of a restored cube, during which it drops a Vibrate.
+        return breakTick64 + Math.Max(cube.BreakTick, 3000) + cube.ResetTimer + 500;
+    }
+
+    /// <summary>The cube as the client collides it: a square turned by its Z rotation (a cube turned on X or Y keeps its Bounds).</summary>
+    public static Prism CubeFootprint(FieldVibrateEntity cube) {
+        Vector3 min = cube.Bounds.Min;
+        Vector3 max = cube.Bounds.Max;
+        if (MathF.Abs(cube.Rotation.X) + MathF.Abs(cube.Rotation.Y) > 0.5f) {
+            return new Prism(new BoundingBox(new Vector2(min.X, min.Y), new Vector2(max.X, max.Y)), min.Z, max.Z - min.Z);
+        }
+
+        float side = FieldAccelerationStructure.BLOCK_SIZE * cube.Scale;
+        return new Prism(new Rectangle(new Vector2(cube.Position.X, cube.Position.Y), side, side, cube.Rotation.Z), min.Z, max.Z - min.Z);
+    }
+
+    /// <summary>True if the cube prism (never a range of type None) reaches the cube.</summary>
+    public static bool Vibrates(Prism prism, FieldVibrateEntity cube) {
+        return !ReferenceEquals(prism.Polygon, IPolygon.Null) && prism.Intersects(CubeFootprint(cube));
+    }
+
+    /// <summary>The cubes the prisms reach, each once (a query may offer a cube twice). Cubes are queried in the prism's box padded by 1:
+    /// a cube whose face lies exactly on the box's minimum is not offered.</summary>
+    public static List<FieldVibrateEntity> CubesIn(FieldAccelerationStructure structure, IReadOnlyList<Prism> prisms) {
+        var cubes = new List<FieldVibrateEntity>();
+        var seen = new HashSet<int>();
+        foreach (Prism prism in prisms) {
+            if (ReferenceEquals(prism.Polygon, IPolygon.Null)) {
+                continue;
+            }
+
+            (float minX, float maxX) = prism.Polygon.AxisProjection(Vector2.UnitX);
+            (float minY, float maxY) = prism.Polygon.AxisProjection(Vector2.UnitY);
+            Vector3 min = new(minX - 1, minY - 1, prism.Height.Min - 1);
+            Vector3 max = new(maxX + 1, maxY + 1, prism.Height.Max + 1);
+            foreach (FieldVibrateEntity cube in structure.QueryVibrateObjectsList(min, max)) {
+                if (Vibrates(prism, cube) && seen.Add(cube.VibrateIndex)) {
+                    cubes.Add(cube);
+                }
+            }
+        }
+
+        return cubes;
     }
 
     private static Home? GetHome(GameSession session, FieldPortal fieldPortal) {

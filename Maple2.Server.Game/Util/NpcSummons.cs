@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Maple2.Model.Enum;
+using Maple2.Model.Game;
 using Maple2.Tools;
 using Serilog;
 
@@ -12,10 +14,12 @@ namespace Maple2.Server.Game.Util;
 /// Also carries skill probabilities for useNpcProb selects (DL-05).
 /// Also carries races for npc_race conditions (DL-30).
 /// Also carries the skills of usable NPCs, such as the Pirate Cannons (DL-52).
+/// Also carries what function cubes do that the ingest drops (client object XML): the NPC a SpawnNPC cube's spawner names
+/// (HS-02, the housing assistants) and the buff a cube gives on use (SV-01, the souvenirs' firstAdditionalEffect).
 /// </summary>
 public static class NpcSummons {
     public sealed record Config(Dictionary<int, int[]> Summons, Dictionary<int, string>? StringIds = null, Dictionary<int, int[]>? SkillProbs = null, Dictionary<int, string>? Races = null,
-        Dictionary<int, int[]>? InteractSkills = null);
+        Dictionary<int, int[]>? InteractSkills = null, Dictionary<int, int>? CubeSpawns = null, Dictionary<int, int[]>? CubeBuffs = null);
 
     private static readonly Lazy<Config?> LazyConfig = new(Load);
 
@@ -42,6 +46,15 @@ public static class NpcSummons {
 
     /// <summary>The NPC's skill probabilities in skill order (client NPC XML skill/@probs, two or more skills), or null.</summary>
     public static int[]? SkillProbs(int npcId) => LazyConfig.Value?.SkillProbs?.GetValueOrDefault(npcId);
+
+    /// <summary>The NPC an assistant's cube spawns (its spawner's npcID; every assistant's spawner has npcCount 1), or null. Only
+    /// assistants (housing category Maid): the Monster Boxes respawn on a timer and name NPC ids the NA data gives other NPCs.</summary>
+    public static int? AssistantNpcId(PlotCube cube) =>
+        cube is { Metadata.Housing.HousingCategory: HousingCategory.Maid, Interact: not null }
+        && LazyConfig.Value?.CubeSpawns?.TryGetValue(cube.Interact.Metadata.Id, out int npcId) == true ? npcId : null;
+
+    /// <summary>The buff a function cube gives on use, [additional effect id, level], or null.</summary>
+    public static int[]? CubeBuff(int cubeId) => LazyConfig.Value?.CubeBuffs?.GetValueOrDefault(cubeId);
 
     private static Config? Load() {
         string path = Environment.GetEnvironmentVariable("SUMMON_NPCS_FILE") ?? Path.Combine(Paths.SOLUTION_DIR, "summon-npcs.json");

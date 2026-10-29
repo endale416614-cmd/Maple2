@@ -380,7 +380,9 @@ public sealed class NpcScriptManager {
             if (newItem == null) {
                 continue;
             }
-            session.Item.Inventory.Add(newItem, true);
+            if (!session.Item.Inventory.Add(newItem, true)) {
+                session.Item.MailItem(newItem);
+            }
             items.Add(newItem);
         }
 

@@ -33,6 +33,8 @@ public partial class WorldService {
                 return Task.FromResult(UpdateGuildMember(request.RequestorId, request.UpdateMember));
             case GuildRequest.GuildOneofCase.CheckIn:
                 return Task.FromResult(CheckInGuild(request.RequestorId, request.CheckIn));
+            case GuildRequest.GuildOneofCase.Donate:
+                return Task.FromResult(DonateGuild(request.RequestorId, request.Donate));
             case GuildRequest.GuildOneofCase.UpdateLeader:
                 return Task.FromResult(UpdateGuildLeader(request.RequestorId, request.UpdateLeader));
             case GuildRequest.GuildOneofCase.UpdateNotice:
@@ -174,6 +176,19 @@ public partial class WorldService {
         }
 
         return new GuildResponse { GuildId = checkIn.GuildId };
+    }
+
+    private GuildResponse DonateGuild(long requestorId, GuildRequest.Types.Donate donate) {
+        if (!guildLookup.TryGet(donate.GuildId, out GuildManager? manager)) {
+            return new GuildResponse { Error = (int) GuildError.s_guild_err_null_guild };
+        }
+
+        GuildError error = manager.Donate(requestorId, donate.Count, donate.Meso);
+        if (error != GuildError.none) {
+            return new GuildResponse { Error = (int) error };
+        }
+
+        return new GuildResponse { GuildId = donate.GuildId };
     }
 
     private GuildResponse UpdateGuildLeader(long requestorId, GuildRequest.Types.UpdateLeader leader) {

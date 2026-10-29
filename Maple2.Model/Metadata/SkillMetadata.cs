@@ -53,6 +53,7 @@ public record SkillMetadataLevel(
     SkillMetadataAutoTargeting? AutoTargeting,
     SkillMetadataConsume Consume,
     SkillMetadataDetect Detect,
+    SkillMetadataSensor? Sensor,
     SkillMetadataRecovery Recovery,
     SkillEffectMetadata[] Skills,
     SkillMetadataMotion[] Motions);
@@ -83,6 +84,8 @@ public record SkillMetadataDetect(
     bool IncludeCaster, // range & arrow can use 2, but detect & sensor only use 0 & 1
     float Distance);
 
+public record SkillMetadataSensor(SkillMetadataRange Range, int StartDelay, bool ForceInvoke);
+
 public record SkillMetadataRecovery(
     long SpValue,
     float SpRate);
@@ -96,7 +99,9 @@ public record SkillMetadataMotionProperty(
     string SequenceName,
     float SequenceSpeed,
     float MoveDistance,
-    bool FaceTarget);
+    float MoveAngle,
+    bool FaceTarget,
+    int LoopCount);
 
 public record SkillMetadataAttack(
     string Point,

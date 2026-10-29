@@ -45,12 +45,22 @@ public sealed class AchievementManager {
         Update(ConditionType.level, targetLong: session.Player.Value.Character.Level);
         Update(ConditionType.trophy_point, count: session.Player.Value.Character.AchievementInfo.Total, codeLong: 20000000); // any trophy id is in the code range
         List<Achievement> held = accountValues.Values.Concat(characterValues.Values).ToList();
-        foreach (ConditionType type in new[] { ConditionType.revise_achieve_multi_grade, ConditionType.revise_achieve_single_grade, ConditionType.hero_achieve }) {
+        foreach (ConditionType type in new[] { ConditionType.revise_achieve_multi_grade, ConditionType.revise_achieve_single_grade, ConditionType.hero_achieve, ConditionType.hero_achieve_grade }) {
             // Pairs of trophy and grade, as the events count them.
             Recount(type, condition => held.Sum(source => source.Grades.Keys.Count(earned => condition.Check(session, targetLong: earned, codeLong: source.Id))));
         }
         Recount(ConditionType.dungeon_first_clear, condition => session.Dungeon.Records.Values.Count(record => record.ClearTimestamp != 0 && condition.Check(session, codeLong: record.DungeonId)));
         Recount(ConditionType.quest_revise_achieve, condition => condition.Codes?.Integers?.Count(id => session.Quest.TryGetQuest(id, out Quest? quest) && quest.State == QuestState.Completed) ?? 0);
+        // Saves from before 1.2.2: field missions were reported without their id, so the exploration trophies never counted.
+        Recount(ConditionType.field_mission, condition => MissionIds(condition.Codes).Count(id => session.Quest.TryGetQuest(id, out Quest? quest) && quest.State == QuestState.Completed));
+    }
+
+    /// <summary>The missions a field_mission trophy names: its Integers, or every id in its Range.</summary>
+    public static IEnumerable<int> MissionIds(ConditionMetadata.Parameters? codes) {
+        if (codes?.Integers != null) {
+            return codes.Integers;
+        }
+        return codes?.Range is { } range ? Enumerable.Range(range.Min, range.Max - range.Min + 1) : Enumerable.Empty<int>();
     }
 
     /// <summary>Raises each trophy of the type to the number of events the save already holds (for events from before their emitter).</summary>
@@ -188,6 +198,8 @@ public sealed class AchievementManager {
             // Trophy Maniac counts the trophies (grades) held: a state for trophies, one more for quests ("Obtain 10 trophies").
             Update(ConditionType.trophy_point, count: session.Player.Value.Character.AchievementInfo.Total, codeLong: achievement.Id);
             session.Quest.Update(ConditionType.trophy_point, codeLong: achievement.Id);
+            // Merciless, Grandmaster and Dedicated Rumbler count other trophies' grades (the original sends it after Trophy Maniac).
+            session.ConditionUpdate(ConditionType.hero_achieve_grade, codeLong: achievement.Id, targetLong: achievedGrade);
 
             if (!achievement.Metadata.Grades.TryGetValue(achievement.CurrentGrade, out grade)) {
                 break;

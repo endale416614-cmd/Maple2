@@ -12,6 +12,8 @@ using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
 namespace Maple2.Server.World.Containers;
 
 public class GuildManager : IDisposable {
+    private const int DonationContribution = 1; // guildcontribution.xml: donation
+
     public required GameStorage GameStorage { get; init; }
     public required ChannelClientLookup ChannelClients { get; init; }
     public required TableMetadataStorage TableMetadata { get; init; }
@@ -25,8 +27,18 @@ public class GuildManager : IDisposable {
     }
 
     public void Dispose() {
+        Save();
+    }
+
+    // The launcher stops the World server without a Dispose, so a change is saved when it is made.
+    private void Save() {
         using GameStorage.Request db = GameStorage.Context();
         db.SaveGuild(Guild);
+    }
+
+    public void ResetWeeklyContribution() {
+        Guild.ClearWeeklyContribution();
+        Save();
     }
 
     public void Broadcast(GuildRequest request) {
@@ -191,6 +203,7 @@ public class GuildManager : IDisposable {
             }
 
             member.Rank = (byte) rankId;
+            Save();
             Broadcast(new GuildRequest {
                 UpdateMember = new GuildRequest.Types.UpdateMember {
                     RequestorId = requestor.CharacterId,
@@ -205,6 +218,7 @@ public class GuildManager : IDisposable {
             }
 
             member.Message = message;
+            Save();
             Broadcast(new GuildRequest {
                 UpdateMember = new GuildRequest.Types.UpdateMember {
                     RequestorId = requestor.CharacterId,
@@ -217,11 +231,19 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
+    private static long DayStart() {
+        DateTimeOffset today = DateTimeOffset.UtcNow.Date;
+        return today.ToUnixTimeSeconds();
+    }
+
     public GuildError CheckIn(long requestorId) {
         const int contribution = 10;
 
         if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
             return GuildError.s_guild_err_null_member;
+        }
+        if (requestor.CheckedInToday(DayStart())) {
+            return GuildError.s_guild_err_unknown;
         }
 
         requestor.CheckinTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
@@ -231,6 +253,7 @@ public class GuildManager : IDisposable {
         GuildTable.Property property = GuildProperty();
         Guild.Experience += property.CheckInExp;
         Guild.Funds += property.CheckInFund;
+        Save();
 
         Broadcast(new GuildRequest {
             UpdateContribution = new GuildRequest.Types.UpdateContribution {
@@ -245,6 +268,47 @@ public class GuildManager : IDisposable {
                 CharacterId = requestor.CharacterId,
                 Contribution = contribution,
                 CheckInTime = requestor.CheckinTime,
+            },
+        });
+
+        return GuildError.none;
+    }
+
+    public GuildError Donate(long requestorId, int count, int meso) {
+        if (!Guild.Members.TryGetValue(requestorId, out GuildMember? requestor)) {
+            return GuildError.s_guild_err_null_member;
+        }
+
+        GuildTable.Property property = GuildProperty();
+        long dayStart = DayStart();
+        if (count < 1 || meso < 0 ||
+            (long) requestor.DonationsToday(dayStart) + count > property.DonateMax ||
+            (long) Guild.Funds + meso > property.FundMax) {
+            return GuildError.s_guild_err_unknown;
+        }
+
+        int contribution = count * DonationContribution;
+        requestor.DailyDonationCount = requestor.DonationsToday(dayStart) + count;
+        requestor.DonationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        requestor.WeeklyContribution += contribution;
+        requestor.TotalContribution += contribution;
+        Guild.Funds += meso;
+        Save();
+
+        Broadcast(new GuildRequest {
+            UpdateContribution = new GuildRequest.Types.UpdateContribution {
+                ContributorId = requestor.CharacterId,
+                GuildExp = Guild.Experience,
+                GuildFund = Guild.Funds,
+            },
+        });
+        Broadcast(new GuildRequest {
+            UpdateMember = new GuildRequest.Types.UpdateMember {
+                RequestorId = requestor.CharacterId,
+                CharacterId = requestor.CharacterId,
+                Contribution = contribution,
+                DailyDonationCount = requestor.DailyDonationCount,
+                DonationTime = requestor.DonationTime,
             },
         });
 
@@ -267,6 +331,7 @@ public class GuildManager : IDisposable {
         Guild.LeaderCharacterId = newLeader.CharacterId;
         Guild.LeaderAccountId = newLeader.AccountId;
         Guild.LeaderName = newLeader.Name;
+        Save();
 
         Broadcast(new GuildRequest {
             UpdateLeader = new GuildRequest.Types.UpdateLeader {
@@ -288,6 +353,7 @@ public class GuildManager : IDisposable {
         }
 
         Guild.Notice = message;
+        Save();
         Broadcast(new GuildRequest {
             UpdateNotice = new GuildRequest.Types.UpdateNotice {
                 RequestorName = requestor.Name,
@@ -308,10 +374,7 @@ public class GuildManager : IDisposable {
         }
 
         Guild.Emblem = emblem;
-
-        using (GameStorage.Request db = GameStorage.Context()) {
-            db.SaveGuild(Guild);
-        }
+        Save();
 
         Broadcast(new GuildRequest {
             UpdateEmblem = new GuildRequest.Types.UpdateEmblem {
@@ -345,6 +408,7 @@ public class GuildManager : IDisposable {
             OwnerName = ownerName,
             ResourceId = resourceId,
         });
+        Save();
 
         Broadcast(new GuildRequest {
             UpdatePoster = new GuildRequest.Types.UpdatePoster {
@@ -376,8 +440,6 @@ public class GuildManager : IDisposable {
     }
 
     private GuildTable.Property GuildProperty() {
-        return TableMetadata.GuildTable.Properties
-            .OrderBy(entry => entry.Value.Experience)
-            .MinBy(entry => entry.Value.Experience > Guild.Experience).Value;
+        return TableMetadata.GuildTable.PropertyFor(Guild.Experience);
     }
 }

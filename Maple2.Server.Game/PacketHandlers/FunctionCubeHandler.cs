@@ -9,6 +9,7 @@ using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -72,11 +73,13 @@ public class FunctionCubeHandler : FieldPacketHandler {
                     return;
                 }
 
-                bool isInDefaultState = fieldInteract.InteractCube.State == fieldInteract.InteractCube.Metadata.DefaultState;
-                fieldInteract.InteractCube.State = isInDefaultState ? InteractCubeState.InUse : fieldInteract.InteractCube.Metadata.DefaultState;
-                fieldInteract.InteractCube.InteractingCharacterId = isInDefaultState ? session.CharacterId : 0;
+                bool switchedOn = fieldInteract.Switch(session.CharacterId);
                 session.Field?.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldInteract.InteractCube));
                 session.Field?.Broadcast(FunctionCubePacket.UseFurniture(session.CharacterId, fieldInteract.InteractCube));
+                // SV-01: a souvenir gives its buff on every switch-on (its timer turns it off again, FieldFunctionInteract.AutoStateTarget).
+                if (switchedOn && NpcSummons.CubeBuff(fieldInteract.Value.Id) is [int buffId, int level]) {
+                    session.Player.Buffs.AddBuff(session.Player, session.Player, buffId, (short) level, fieldInteract.Field.FieldTick, notifyField: true);
+                }
                 break;
         }
     }

@@ -541,6 +541,11 @@ public class HousingManager {
         logger.Error("Failed to delete cube {CubeId} at position {Position}.", cube.Id, cube.Position);
     }
 
+    // buy_cube counts the mesos spent
+    public static long BuyCubeCounter(FurnishingShopTable.Entry entry) {
+        return entry.FurnishingTokenType == FurnishingCurrencyType.Meso ? entry.Price : 0;
+    }
+
     public bool TryPlaceCube(HeldCube cube, Plot plot, ItemMetadata itemMetadata, in Vector3B position, float rotation,
                              [NotNullWhen(true)] out PlotCube? result, bool isReplace = false) {
         result = null;
@@ -602,9 +607,7 @@ public class HousingManager {
             return false;
         }
 
-        if (isReplace && plot.Cubes.ContainsKey(position) && !TryRemoveCube(plot, position, out _)) {
-            return false;
-        }
+        bool replacing = isReplace && plot.Cubes.ContainsKey(position);
 
         if (plot.MapId is Constant.DefaultHomeMapId && IsCoordOutsideArea(position)) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_area_limit));
@@ -625,9 +628,13 @@ public class HousingManager {
                 return false;
             }
             Item? existingItem = session.Item.Furnishing.GetItem(cube.ItemId);
-            int existingCubeCount = plot.Cubes.Count(x => x.Value.ItemId == cube.ItemId);
+            int existingCubeCount = plot.Cubes.Count(x => x.Value.ItemId == cube.ItemId) - (replacing && plot.Cubes[position].ItemId == cube.ItemId ? 1 : 0);
             if (shopEntry is null && (existingItem is null || existingCubeCount >= existingItem.Amount)) {
                 session.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
+                return false;
+            }
+
+            if (replacing && !TryRemoveCube(plot, position, out _)) {
                 return false;
             }
 
@@ -645,38 +652,68 @@ public class HousingManager {
             return true;
         }
 
+        bool owned = session.Item.Furnishing.GetCube(cube.Id) is { Amount: > 0 };
+        if (!owned) {
+            if (shopEntry is null) {
+                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
+                return false;
+            }
+
+            if (!session.Item.Furnishing.CanAdd(itemMetadata, cube.Template)) {
+                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
+                return false;
+            }
+
+            if (!session.Item.Furnishing.CanPurchase(shopEntry)) {
+                return false;
+            }
+        }
+
+        if (replacing) {
+            PlotCube old = plot.Cubes[position];
+            if (!session.Item.Furnishing.CanAdd(old.Metadata, old.Template)) {
+                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_cant_be_removed));
+                return false;
+            }
+        }
+
         result = CreateCube(plot, itemMetadata, functionCubeMetadata, cube.Template, position, rotation);
         if (result is null) {
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return false;
         }
 
-        if (!session.Item.Furnishing.TryAddCube(cube.Id, result)) {
-            long itemUid = session.Item.Furnishing.AddCube(cube);
+        long itemUid = 0;
+        if (!owned) {
+            itemUid = session.Item.Furnishing.AddCube(cube);
             if (itemUid == 0) {
                 DeleteCube(result);
                 session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_for_sale));
                 return false;
             }
 
-            if (shopEntry is null) {
-                DeleteCube(result);
-                session.Send(CubePacket.Error(UgcMapError.s_err_cannot_buy_limited_item_more));
-                return false;
-            }
-
-            if (!session.Item.Furnishing.PurchaseCube(shopEntry)) {
+            if (!session.Item.Furnishing.PurchaseCube(shopEntry!)) {
                 DeleteCube(result);
                 return false;
             }
 
             session.Send(CubePacket.PurchaseCube(session.Player.ObjectId));
-            // Now that we have purchased the cube, it must be placeable.
-            if (!session.Item.Furnishing.TryAddCube(itemUid, result)) {
-                DeleteCube(result);
-                session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_owned_item));
-                return false;
+            long spent = BuyCubeCounter(shopEntry!);
+            if (spent > 0) {
+                session.ConditionUpdate(ConditionType.buy_cube, counter: spent);
             }
+        }
+
+        // TODO: the replaced cube and a bought cube are checked against the storage one at a time and the replaced cube for room only, so with one free slot that both need, or a retrieve that still fails, the bought cube is paid, stays in storage and the replace is refused, upgrade when the check counts both.
+        if (replacing && !TryRemoveCube(plot, position, out _)) {
+            DeleteCube(result);
+            return false;
+        }
+
+        if (!session.Item.Furnishing.TryAddCube(owned ? cube.Id : itemUid, result)) {
+            DeleteCube(result);
+            session.Send(CubePacket.Error(UgcMapError.s_ugcmap_not_owned_item));
+            return false;
         }
 
         if (functionCubeMetadata is not null) {

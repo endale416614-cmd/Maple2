@@ -25,6 +25,11 @@ public class ItemBoxManager {
         BoxCount = 0;
     }
 
+    // 20301245 Music Star's Weapon Box has the parameters "1,,330001788"; an empty or non-numeric field is 0.
+    public static int[] ParseParameters(string parameters) {
+        return parameters.Split(',').Select(field => int.TryParse(field, out int value) ? value : 0).ToArray();
+    }
+
     public ItemBoxError Open(Item item, int count = 1, int index = -1) {
         if (string.IsNullOrEmpty(item.Metadata.Function?.Parameters)) {
             logger.Error("Item {ItemId} has no parameters for item box function", item.Id);
@@ -45,7 +50,7 @@ public class ItemBoxManager {
             }
             return OpenItemBox(item, globalDropBoxId, 0, 0, individualDropBoxId, 1, count);
         }
-        int[] itemBoxParams = item.Metadata.Function.Parameters.Split(',').Select(int.Parse).ToArray();
+        int[] itemBoxParams = ParseParameters(item.Metadata.Function.Parameters);
         return item.Metadata.Function?.Type switch {
             ItemFunction.SelectItemBox => SelectItemBox(item, itemBoxParams[0], itemBoxParams[1], index, count),
             ItemFunction.OpenItemBox => OpenItemBox(item, itemBoxParams[0], itemBoxParams[1], itemBoxParams[2], itemBoxParams[3], itemBoxParams.Length == 5 ? itemBoxParams[4] : 1, count),
@@ -128,7 +133,7 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        if (entryDict.Count == 0) {
+        if (!session.Field.ItemDrop.CanGiveItem(entryDict)) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -170,7 +175,7 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        if (boxEntry.Count == 0) {
+        if (!session.Field.ItemDrop.CanGiveItem(boxEntry)) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -218,7 +223,7 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        if (entryDic.Count == 0 && globalDropEntries.Count == 0) {
+        if (!session.Field.ItemDrop.CanGiveItem(entryDic) && globalDropEntries.Count == 0) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -273,7 +278,7 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        if (entryDict.Count == 0) {
+        if (!session.Field.ItemDrop.CanGiveItem(entryDict)) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -318,7 +323,7 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        if (entryDict.Count == 0) {
+        if (!session.Field.ItemDrop.CanGiveItem(entryDict)) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 

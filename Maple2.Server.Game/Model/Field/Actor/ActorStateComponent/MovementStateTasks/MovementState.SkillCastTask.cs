@@ -39,16 +39,16 @@ public partial class MovementState {
         }
     }
 
-    private void SkillCastFaceTarget(SkillRecord cast, IActor target, int faceTarget) {
+    private void SkillCastFaceTarget(SkillMetadata skill, byte motion, IActor target, int faceTarget) {
         Vector3 offset = target.Position - actor.Position;
         float distance = offset.LengthSquared();
 
         if (faceTarget != 1) {
-            if (!cast.Motion.MotionProperty.FaceTarget || cast.Metadata.Data.AutoTargeting is null) {
+            if (!skill.Data.Motions[motion].MotionProperty.FaceTarget || skill.Data.AutoTargeting is null) {
                 return;
             }
 
-            var autoTargeting = cast.Metadata.Data.AutoTargeting;
+            var autoTargeting = skill.Data.AutoTargeting;
 
             bool shouldFaceTarget = autoTargeting.MaxDistance == 0 || distance <= autoTargeting.MaxDistance;
             shouldFaceTarget |= autoTargeting.MaxHeight == 0 || offset.Y <= autoTargeting.MaxHeight;
@@ -89,6 +89,15 @@ public partial class MovementState {
 
         Velocity = new Vector3(0, 0, 0);
 
+        // The NPC turns before its SkillUse goes out, so the packet carries the new facing as the original's does.
+        if (actor.Field.SkillMetadata.TryGet(id, level, out SkillMetadata? skill) && motion < skill.Data.Motions.Length) {
+            if (task.FacePos != new Vector3(0, 0, 0)) {
+                actor.Transform.LookTo(Vector3.Normalize(task.FacePos - actor.Position));
+            } else if (actor.BattleState.Target is not null) {
+                SkillCastFaceTarget(skill, motion, actor.BattleState.Target, task.FaceTarget);
+            }
+        }
+
         SkillRecord? cast = actor.CastSkill(id, level, uid, (int) actor.Field.FieldTick, motionPoint: motion);
 
         if (cast is null) {
@@ -97,25 +106,15 @@ public partial class MovementState {
             return;
         }
 
-        if (!actor.Animation.TryPlaySequence(cast.Motion.MotionProperty.SequenceName, cast.Motion.MotionProperty.SequenceSpeed, AnimationType.Skill, out AnimationSequenceMetadata? sequence, skill: cast.Metadata)) {
+        if (!actor.Animation.TryPlaySequence(cast.Motion.MotionProperty.SequenceName, cast.Motion.MotionProperty.SequenceSpeed, AnimationType.Skill, out AnimationSequenceMetadata? sequence, skill: cast.Metadata, loopCount: cast.Motion.MotionProperty.LoopCount)) {
             task.Cancel();
 
             return;
         }
 
-        if (task.FacePos != new Vector3(0, 0, 0)) {
-            actor.Transform.LookTo(Vector3.Normalize(task.FacePos - actor.Position));
-        } else if (actor.BattleState.Target is not null) {
-            SkillCastFaceTarget(cast, actor.BattleState.Target, task.FaceTarget);
-        }
-
         CastTask = task;
         castSkill = cast;
         task.Cast = cast;
-
-        //if (faceTarget && actor.BattleState.Target is not null) {
-        //    actor.Transform.LookTo(Vector3.Normalize(actor.BattleState.Target.Position - actor.Position));
-        //}
 
         SetState(ActorState.PcSkill);
 

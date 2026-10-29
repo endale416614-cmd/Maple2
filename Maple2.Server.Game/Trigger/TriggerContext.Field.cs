@@ -558,7 +558,13 @@ public partial class TriggerContext {
         if (TraceEnabled) DebugLog("[ObjectInteracted] interactIds:{Ids}, state:{State}", string.Join(", ", interactIds), state);
         foreach (FieldInteract interact in Field.EnumerateInteract()) {
             // Most scripts wait for 0 after use, some for 2 (Tria Battlefield 52000068 waits for 2 on 10001074-10001076).
-            if (interactIds.Contains(interact.Value.Id) && (interact.State == state || state == InteractState.Hidden && interact.Reacted)) {
+            // A wait for 0 needs a use: objects a script parks in 0 were never used (BT-71, Katramus Gardens 02000293's doors).
+            bool matches = state switch {
+                InteractState.Normal => interact.State == InteractState.Normal && interact.Reacted,
+                InteractState.Hidden => interact.State == InteractState.Hidden || interact.Reacted,
+                _ => interact.State == state,
+            };
+            if (interactIds.Contains(interact.Value.Id) && matches) {
                 return true;
             }
         }

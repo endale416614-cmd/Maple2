@@ -1,4 +1,5 @@
-﻿using Maple2.Model.Enum;
+﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -101,7 +102,9 @@ public class InteractObjectHandler : FieldPacketHandler {
 
             ICollection<Item> globalDropBoxItems = new List<Item>();
             foreach (int globalDropBoxId in interact.Value.Drop.GlobalDropBoxIds) {
-                globalDropBoxItems = session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level, session.Field.ItemDrop.AllDrops, 1f, session);
+                foreach (Item item in session.Field.ItemDrop.GetGlobalDropItems(globalDropBoxId, session.Player.Value.Character.Level, session.Field.ItemDrop.AllDrops, 1f, session)) {
+                    globalDropBoxItems.Add(item);
+                }
             }
 
             foreach (Item item in globalDropBoxItems) {
@@ -122,6 +125,29 @@ public class InteractObjectHandler : FieldPacketHandler {
                 session.Field.DropItem(interact.Position with {
                     Z = interact.Position.Z + interact.Value.Drop.DropHeight,
                 }, interact.Rotation, item, owner: interact, characterId: session.CharacterId);
+            }
+
+            foreach (InteractObjectMetadataSpawn spawn in InteractSpawn.Roll(interact.Value.Spawn, Random.Shared)) {
+                if (!session.Field.NpcMetadata.TryGet(spawn.Id, out NpcMetadata? npcMetadata)) {
+                    continue;
+                }
+
+                for (int i = 0; i < spawn.Count; i++) {
+                    float angle = Random.Shared.NextSingle() * MathF.PI * 2;
+                    float distance = Random.Shared.NextSingle() * spawn.Radius;
+                    Vector3 position = interact.Position + new Vector3(MathF.Cos(angle) * distance, MathF.Sin(angle) * distance, 0);
+                    // SpawnNpc does not check the position: a point off the navmesh gets the object's own position.
+                    FieldNpc? npc = session.Field.SpawnNpc(npcMetadata, session.Field.ValidPosition(position) ? position : interact.Position, interact.Rotation);
+                    if (npc == null) {
+                        continue;
+                    }
+
+                    session.Field.Broadcast(FieldPacket.AddNpc(npc));
+                    session.Field.Broadcast(ProxyObjectPacket.AddNpc(npc));
+                    if (spawn.LifeTime > 0) {
+                        session.Field.RemoveNpc(npc.ObjectId, TimeSpan.FromMilliseconds(spawn.LifeTime));
+                    }
+                }
             }
 
             foreach (InteractObjectMetadataEffect.InvokeEffect invokeEffect in interact.Value.AdditionalEffect.Invoke) {

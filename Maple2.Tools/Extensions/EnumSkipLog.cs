@@ -56,6 +56,9 @@ public static class EnumSkipLog {
         return false;
     }
 
+    // A value that is not an enum name, for the same log.
+    public static void Note(string entry) => entries.Enqueue(entry);
+
     public static IReadOnlyCollection<string> Entries => entries.ToList().AsReadOnly();
 
     public static void Clear() {

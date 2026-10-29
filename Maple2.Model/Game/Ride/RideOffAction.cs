@@ -16,9 +16,22 @@ public class RideOffAction : IByteSerializable {
         this.type = type;
     }
 
+    protected RideOffAction(RideOffType type, bool forced) : this(type) {
+        this.forced = forced;
+    }
+
     public virtual void WriteTo(IByteWriter writer) {
         writer.Write<RideOffType>(type);
         writer.WriteBool(forced);
+    }
+}
+
+// The client runs its follow-up action from these fields, so the echo repeats the ones it sent.
+public class RideOffActionEcho(RideOffType type, bool forced, byte[] fields) : RideOffAction(type, forced) {
+
+    public override void WriteTo(IByteWriter writer) {
+        base.WriteTo(writer);
+        writer.WriteBytes(fields);
     }
 }
 

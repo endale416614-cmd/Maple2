@@ -58,6 +58,13 @@ public class BattleState {
         return "unknown";
     }
 
+    /// <summary>setData aiBattleTime: from <paramref name="tickCount"/> the combat clock reads <paramref name="battleMs"/> (0 restarts it).
+    /// Out of battle it stays 0 and starts with the next battle.</summary>
+    public void SetBattleTime(long tickCount, long battleMs) {
+        // TODO: 0 means out of battle, so a jump to battleMs within battleMs of the machine's boot (FieldTick is Environment.TickCount64) reads as out of battle until the battle ends; upgrade if the clock gets its own in-battle flag.
+        BattleStartTick = InBattle && !actor.IsDead ? tickCount - battleMs : 0;
+    }
+
     public void Update(long tickCount) {
         if (actor.IsDead || !InBattle) {
             BattleStartTick = 0;

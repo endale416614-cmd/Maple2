@@ -213,11 +213,32 @@ public class GuildManager : IDisposable {
             return false;
         }
 
+        if (checkInTime > 0) {
+            member.CheckinTime = checkInTime;
+        }
         member.WeeklyContribution += contribution;
         member.TotalContribution += contribution;
 
         session.Send(GuildPacket.GuildContribution(member, contribution));
         session.Send(GuildPacket.CheckInTime(member.Name, checkInTime));
+        return true;
+    }
+
+    public bool UpdateMemberDonation(long characterId, int contribution, int dailyDonationCount, long donationTime) {
+        GuildMember? member = GetMember(characterId);
+        if (member == null) {
+            return false;
+        }
+
+        member.DailyDonationCount = dailyDonationCount;
+        member.DonationTime = donationTime;
+        member.WeeklyContribution += contribution;
+        member.TotalContribution += contribution;
+
+        session.Send(GuildPacket.GuildContribution(member, contribution));
+        if (member.CharacterId == session.CharacterId) {
+            session.Send(GuildPacket.Donated(member));
+        }
         return true;
     }
 
@@ -230,6 +251,7 @@ public class GuildManager : IDisposable {
         int addFunds = funds - Guild.Funds;
         Guild.Experience = exp;
         Guild.Funds = funds;
+        UpdateProperties();
 
         session.Send(GuildPacket.GuildExperience(Guild.Experience));
         session.Send(GuildPacket.GuildFunds(Guild.Funds));
@@ -327,9 +349,7 @@ public class GuildManager : IDisposable {
     [MemberNotNull(nameof(Properties))]
     private void UpdateProperties() {
         int experience = Guild?.Experience ?? 0;
-        Properties = session.TableMetadata.GuildTable.Properties
-            .OrderBy(entry => entry.Value.Experience)
-            .MinBy(entry => entry.Value.Experience > experience).Value;
+        Properties = session.TableMetadata.GuildTable.PropertyFor(experience);
 
         if (Guild != null) {
             Guild.Capacity = Properties.Capacity;

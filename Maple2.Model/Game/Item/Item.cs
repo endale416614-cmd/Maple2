@@ -179,16 +179,14 @@ public class Item : IByteSerializable, IByteDeserializable {
     }
 
     private long GetExpiryTime() {
-        if (Metadata.Life.ExpirationTimestamp > 0) {
-#if DEBUG
-            return (long) (DateTime.Now.AddYears(1).ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds;
-#else
+        long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        // Offline, a data end date that has passed means no expiry (every one in the data is a past event's end).
+        if (Metadata.Life.ExpirationTimestamp > now) {
             return Metadata.Life.ExpirationTimestamp;
-#endif
         }
 
         if (Metadata.Life.ExpirationDuration > 0) {
-            return (long) (DateTime.Now.ToUniversalTime() - DateTime.UnixEpoch).TotalSeconds + Metadata.Life.ExpirationDuration;
+            return now + Metadata.Life.ExpirationDuration;
         }
         return 0;
     }

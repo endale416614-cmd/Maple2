@@ -179,14 +179,27 @@ public sealed class QuestManager {
         Add(quest);
 
         // TODO: Confirm inventory can hold all the items.
+        int chaosOnyx = 0;
         foreach (QuestMetadataReward.Item acceptReward in metadata.AcceptReward.EssentialItem) {
             Item? reward = session.Field?.ItemDrop.CreateItem(acceptReward.Id, acceptReward.Rarity, acceptReward.Amount);
             if (reward == null) {
                 logger.Error("Failed to create quest reward {RewardId}", acceptReward.Id);
                 continue;
             }
+            chaosOnyx += EnchantChaosOnyx(metadata, reward);
             if (!session.Item.Inventory.Add(reward, true)) {
                 logger.Error("Failed to add quest reward {RewardId} to inventory", acceptReward.Id);
+                session.Item.MailItem(reward);
+            }
+        }
+        if (chaosOnyx > 0) {
+            int chaosOnyxId = session.ServerTableMetadata.ConstantsTable.ChaosOnixItemID;
+            Item? onyx = session.Field?.ItemDrop.CreateItem(chaosOnyxId, amount: chaosOnyx); // its default grade (Epic), as dismantling and drops create it, so it stacks with theirs
+            if (onyx == null) {
+                logger.Error("Failed to create quest reward {RewardId}", chaosOnyxId);
+            } else if (!session.Item.Inventory.Add(onyx, true)) {
+                logger.Error("Failed to add quest reward {RewardId} to inventory", chaosOnyxId);
+                session.Item.MailItem(onyx);
             }
         }
 
@@ -194,6 +207,9 @@ public sealed class QuestManager {
         // Items held before accepting count for item_exist (the Start packet carries the counters).
         CountHeldItems(quest);
         session.Send(QuestPacket.Start(quest));
+        if (ResendsState(quest.Metadata.GoToDungeon)) {
+            session.Send(QuestPacket.LoadQuestStates([quest]));
+        }
         if (quest.Metadata.SummonPortal != null) {
             SummonPortal(quest, npc ?? session.NpcScript?.Npc);
         }
@@ -213,6 +229,20 @@ public sealed class QuestManager {
     /// <summary>item_exist is held, not summed: the counter is the matching amount the player holds, capped at the target,
     /// and never goes down (Kono's scrap quest ignored the 3 scrap held before accepting).</summary>
     public static int HeldCounter(int counter, long target, long held) => (int) Math.Min(target, Math.Max(counter, held));
+
+    /// <summary>The tracker builds the Teleport button of a GoToDungeon quest from the quest-state list, which the Start packet does not carry.</summary>
+    public static bool ResendsState(QuestMetadataGoToDungeon goToDungeon) => goToDungeon.MapId != 0;
+
+    /// <summary>QE-01 (BT-43): the Chaos Onyx an accept reward adds for gear it gives to enchant. The original reward gives only the Onyx and
+    /// Crystal Fragments of the enchants the quest asks (90000610: 150 and 5); our Ophelia cost also asks Chaos Onyx (4 for its Drama Suit).</summary>
+    public static int EnchantChaosOnyx(QuestMetadata metadata, Item reward) {
+        long enchants = metadata.Conditions.Where(condition => condition.Type == ConditionType.enchant_result).Sum(condition => condition.Value);
+        if (enchants == 0 || reward.Inventory != InventoryType.Gear || !reward.Metadata.Limit.EnableEnchant) {
+            return 0;
+        }
+        // TODO: the first enchant's cost times the enchants asked, exact up to 3 (enchants 1 to 3 cost the same); sum each level's cost if a quest asks more.
+        return (int) enchants * Core.Formulas.Enchant.GetEnchantCost(reward).Where(cost => cost.Tag == ItemTag.ChaosOnix).Sum(cost => cost.Amount);
+    }
 
     /// <summary>
     /// Updates all possible quests with the given condition type.
@@ -422,7 +452,7 @@ public sealed class QuestManager {
         session.ConditionUpdate(ConditionType.quest_clear, codeLong: quest.Metadata.Id);
         session.ConditionUpdate(ConditionType.quest_revise_achieve, codeLong: quest.Metadata.Id); // trophies over quest sets (Lessons Learned)
         if (quest.Metadata.Basic.Type == QuestType.FieldMission) {
-            session.ConditionUpdate(ConditionType.field_mission);
+            session.ConditionUpdate(ConditionType.field_mission, codeLong: quest.Metadata.Id); // exploration trophies name their missions
         }
 
         quest.EndTime = DateTime.Now.ToEpochSeconds();

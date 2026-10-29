@@ -34,7 +34,8 @@ using Serilog;
 using WorldClient = Maple2.Server.World.Service.World.WorldClient;
 
 // Force Globalization to en-US because we use periods instead of commas for decimals
-CultureInfo.CurrentCulture = new("en-US");
+// The default also covers the threads that do not inherit this one's culture, such as Kestrel's request threads (BT-132).
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.CurrentCulture = new("en-US");
 
 DotEnv.Load();
 

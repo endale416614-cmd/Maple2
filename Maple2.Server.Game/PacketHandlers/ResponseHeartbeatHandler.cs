@@ -15,9 +15,8 @@ public class ResponseHeartbeatHandler : PacketHandler<GameSession> {
 
         int latency = Environment.TickCount - serverTick;
         if (latency > Constant.MaxAllowedLatency) {
-#if !DEBUG
-            session.Disconnect();
-#endif
+            // HB-01 (BT-128): a slow login, map change or map load delays the reply; a closed client ends its session at the socket.
+            Logger.Information("Heartbeat reply from {Session} handled {Latency} ms after the request", session, latency);
             return;
         }
 

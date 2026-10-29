@@ -8,6 +8,7 @@ using Maple2.Model.Validators;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Core.PacketHandlers;
+using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 using Maple2.Server.World.Service;
@@ -626,6 +627,24 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     private void HandleUsePersonalBuff(GameSession session, IByteReader packet) {
         int buffId = packet.ReadInt();
+        Guild? guild = session.Guild.Guild;
+        if (guild == null || session.Field == null) {
+            return;
+        }
+
+        // A guild without that buff gives level 0, which has no row.
+        GuildTable.Buff? buff = TableMetadata.GuildTable.PersonalBuff(buffId, guild.Buffs.FirstOrDefault(owned => owned.Id == buffId).Level);
+        if (buff == null) {
+            return;
+        }
+        if (session.Currency.CanAddMeso(-buff.Cost) != -buff.Cost) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_money));
+            return;
+        }
+
+        session.Currency.Meso -= buff.Cost;
+        session.Player.Buffs.AddBuff(session.Player, session.Player, buff.Id, buff.Level, session.Field.FieldTick, durationMs: buff.DurationMs());
+        session.Send(GuildPacket.UsePersonalBuff(buffId));
     }
 
     private void HandleUpgradeBuff(GameSession session, IByteReader packet) {
@@ -678,6 +697,57 @@ public class GuildHandler : PacketHandler<GameSession> {
 
     private void HandleDonate(GameSession session, IByteReader packet) {
         int count = packet.ReadInt();
+        Guild? guild = session.Guild.Guild;
+        if (guild == null) {
+            return; // Not in a guild.
+        }
+
+        GuildMember? self = session.Guild.GetMember(session.CharacterId);
+        if (self == null || count < 1) {
+            return;
+        }
+
+        GuildTable.Property properties = session.Guild.Properties;
+        DateTimeOffset today = DateTimeOffset.UtcNow.Date;
+        if ((long) self.DonationsToday(today.ToUnixTimeSeconds()) + count > properties.DonateMax) {
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert, new InterfaceText("s_guild_err_donateMax")));
+            return;
+        }
+
+        long cost = (long) count * Constants.guildDonateMeso;
+        if (guild.Funds + cost > properties.FundMax) {
+            session.Send(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert, new InterfaceText("s_guild_err_donate_guildFundMax")));
+            return;
+        }
+        if (session.Currency.CanAddMeso(-cost) != -cost) {
+            session.Send(GuildPacket.Error(GuildError.s_guild_err_no_money));
+            return;
+        }
+
+        try {
+            var request = new GuildRequest {
+                RequestorId = session.CharacterId,
+                Donate = new GuildRequest.Types.Donate {
+                    GuildId = guild.Id,
+                    Count = count,
+                    Meso = (int) cost,
+                },
+            };
+
+            GuildResponse response = World.Guild(request);
+            var error = (GuildError) response.Error;
+            if (error != GuildError.none) {
+                session.Send(GuildPacket.Error(error));
+                return;
+            }
+
+            session.Currency.Meso -= cost;
+            session.Exp.AddExp(ExpType.guildUserExp, properties.DonatePlayerExpRate * count);
+            Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, properties.DonateCoin * count);
+            if (guildCoin != null) {
+                session.Item.Inventory.Add(guildCoin, true);
+            }
+        } catch (RpcException) { /* ignored */ }
     }
 
     private void HandleUpgradeNpc(GameSession session, IByteReader packet) {

@@ -40,4 +40,37 @@ public class SessionCloseTest {
             listener.Stop();
         }
     }
+
+    // A frozen client reads nothing while the server's sends fill its socket; the session must wait for it (BT-134).
+    [Test]
+    public void Send_ClientReadsNothingForSevenSeconds_SessionKeepsTheConnection() {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try {
+            using var client = new TcpClient { ReceiveBufferSize = 8192 };
+            client.Connect((IPEndPoint) listener.LocalEndpoint);
+            using var session = new TestSession(listener.AcceptTcpClient());
+
+            const int count = 400;
+            byte[] packet = new byte[16 * 1024];
+            packet[0] = 0x01;
+            for (int i = 0; i < count; i++) {
+                session.Send(packet);
+            }
+            Thread.Sleep(7000); // the client reads nothing: its socket fills and the send worker waits
+
+            client.ReceiveTimeout = 5000;
+            var buffer = new byte[64 * 1024];
+            long total = 0;
+            int read;
+            Assert.DoesNotThrow(() => {
+                while (total < (long) count * packet.Length && (read = client.GetStream().Read(buffer, 0, buffer.Length)) > 0) {
+                    total += read;
+                }
+            }, "the session reset the connection while the client was not reading");
+            Assert.That(total, Is.GreaterThanOrEqualTo((long) count * packet.Length), "the session ended before the client read its packets");
+        } finally {
+            listener.Stop();
+        }
+    }
 }

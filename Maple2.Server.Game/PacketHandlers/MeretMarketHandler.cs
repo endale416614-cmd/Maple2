@@ -417,9 +417,10 @@ public class MeretMarketHandler : FieldPacketHandler {
         byte section = packet.ReadByte();
         byte tabId = packet.ReadByte();
 
+        // The client pages a Featured-style tab itself, so the order decides what each page shows: not the cache's hash order (BT-123).
         IList<MarketItem> entries = ToMarketSection(section) switch {
-            MeretMarketSection.All => session.GetPremiumMarketItems(tabId).Cast<MarketItem>().ToList(),
-            MeretMarketSection.Premium => session.GetPremiumMarketItems(tabId).Cast<MarketItem>().ToList(),
+            MeretMarketSection.All => session.GetPremiumMarketItems(tabId).OrderBy(item => OfflineEconomy.FeaturedOrder(item.Id)).Cast<MarketItem>().ToList(),
+            MeretMarketSection.Premium => session.GetPremiumMarketItems(tabId).OrderBy(item => OfflineEconomy.FeaturedOrder(item.Id)).Cast<MarketItem>().ToList(),
             MeretMarketSection.Ugc => [],
             MeretMarketSection.RedMeret => [],
             _ => [],

@@ -76,7 +76,7 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
             state?.OnExit();
             state = nextState;
             Context.StartTick = Field.FieldTick;
-            TriggerRing.Add($"{Field.Metadata.XBlock} {Value.Name} {state.Name}"); // state changes only (R12-21)
+            TriggerRing.Add($"{Field.Metadata.XBlock} {Value.Name}", state.Name, tickCount); // state changes only (R12-21)
             if (TriggerContext.TraceEnabled) Context.DebugLog("[OnEnter] {State}", state.Name);
             nextState = state.OnEnter();
 

@@ -6,6 +6,13 @@
    "Find": "quest_ids=\"10001028\"",
    "Replace": "quest_ids=\"10001028,60100070\"",
    "Note": "Cave Depths exit also for the live quest 60100070 The End of Nelph (GMS and KMS check only the retired 10001028)"
+  },
+  {
+   "XBlock": "63000024_cs",
+   "Trigger": "wakeup01",
+   "Find": "<transition state=\"MoveToGetWeapon01\" />",
+   "Replace": "<transition state=\"QuestStart01\" />",
+   "Note": "Disciple's Room: a Soul Binder who comes back with 90000443 Mystical Jewel started goes on to the quest's waits; GMS's script has no MoveToGetWeapon01, so it stopped there and the exit portal stayed shut (BT-139)"
   }
  ]
 }

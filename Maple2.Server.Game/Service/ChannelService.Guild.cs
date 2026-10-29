@@ -123,7 +123,9 @@ public partial class ChannelService {
             if (update.HasMessage) {
                 session.Guild.UpdateMemberMessage(update.CharacterId, update.Message);
             }
-            if (update.HasContribution || update.HasCheckInTime) {
+            if (update.HasDonationTime) {
+                session.Guild.UpdateMemberDonation(update.CharacterId, update.Contribution, update.DailyDonationCount, update.DonationTime);
+            } else if (update.HasContribution || update.HasCheckInTime) {
                 session.Guild.UpdateMemberContribution(update.CharacterId, update.CheckInTime, update.Contribution);
             }
         }

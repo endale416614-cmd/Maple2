@@ -14,6 +14,7 @@ public class AnimationRecord {
     public long LoopEndTick { get; set; }
     public bool IsLooping { get; set; }
     public bool LoopOnlyOnce { get; set; }
+    public int LoopCount { get; set; }
     public SkillMetadata? Skill { get; private set; }
 
     public AnimationRecord() {
@@ -25,11 +26,26 @@ public class AnimationRecord {
         Type = AnimationType.Misc;
     }
 
-    public AnimationRecord(AnimationSequenceMetadata sequence, float speed, AnimationType type, SkillMetadata? skill = null) : this() {
+    public AnimationRecord(AnimationSequenceMetadata sequence, float speed, AnimationType type, SkillMetadata? skill = null, int loopCount = 0) : this() {
         Sequence = sequence;
         Speed = speed;
         Type = type;
         Skill = skill;
+        LoopCount = loopCount;
+        IsLooping = loopCount > 0;
+    }
+
+    /// <summary>
+    /// Called after the sequence time wrapped back to the loop start once.
+    /// </summary>
+    public void LoopPassed() {
+        if (LoopOnlyOnce || LoopCount == 1) {
+            IsLooping = false;
+            LoopOnlyOnce = false;
+            LoopCount = 0;
+        } else if (LoopCount > 1) {
+            LoopCount--;
+        }
     }
 
     public struct LoopData {

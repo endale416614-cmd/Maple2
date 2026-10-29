@@ -64,7 +64,7 @@ public class FieldNpc : Actor<Npc> {
     public short SequenceCounter { get; set; }
     #endregion
 
-    public required Vector3 Origin { get; init; }
+    public required Vector3 Origin { get; set; }
 
     public FieldMobSpawn? Owner { get; init; }
     public override IPrism Shape => new Prism(
@@ -432,6 +432,7 @@ public class FieldNpc : Actor<Npc> {
         WorldBossDeathCallback?.Invoke(this);
         Owner?.Despawn(ObjectId);
         RemoveSlaves(); // slaves leave with their summoner (NB-10)
+        AiState.OnDeath(); // after RemoveSlaves: the slaves its death steps summon stay
         SendControl = false;
 
         // Handle string IDs for npc_is_dead_by_string_id (NB-15)
@@ -620,6 +621,12 @@ public class FieldNpc : Actor<Npc> {
     /// <summary>The kill's trophy and quest conditions for one credited player.</summary>
     private void CountKill(FieldPlayer player) {
         player.Session.ConditionUpdate(ConditionType.npc, codeLong: Value.Id, targetLong: Field.MapId);
+        // Per-boss trophies: "Help defeat" counts every credited player, "Land the final blow" the one whose hit took the last HP.
+        player.Session.ConditionUpdate(ConditionType.npc_assist_bonus, codeLong: Value.Id);
+        // TODO: a final blow by a pet credits no one, upgrade when a pet's hits carry its owner.
+        if (player.ObjectId == lastAttackerObjectId) {
+            player.Session.ConditionUpdate(ConditionType.npc_lasthit, codeLong: Value.Id);
+        }
         // Race trophies and quests key on the client's raceString, not the Korean spawn tags (MainTags).
         if (NpcSummons.Race(Value.Id) is { } race) {
             player.Session.ConditionUpdate(ConditionType.npc_race, codeString: race);

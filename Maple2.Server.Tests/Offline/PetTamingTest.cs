@@ -58,6 +58,7 @@ public class PetTamingTest {
         Assert.That(OfflinePets.IsTamingItem("PetTaming", 94000001, 94000001), Is.True, "Dryad Pet Candy throw");
         Assert.That(OfflinePets.IsTamingItem("PetTaming", 94000001, 94000002), Is.False, "the splash is not the item's own skill");
         Assert.That(OfflinePets.IsTamingItem("PetTrap", 93000001, 93000001), Is.True, "Dryad G1 Snare throw");
+        // IT-04: potions are no taming item; FieldPlayer.UsesUpOnCast uses them up in both modes, with or without the useItem flag.
         Assert.That(OfflinePets.IsTamingItem("PS", 90000015, 90000015), Is.False, "potions use the data's useItem flag");
     }
 }

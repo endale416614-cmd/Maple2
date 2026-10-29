@@ -67,10 +67,14 @@ public class RoomTimer : IUpdatable {
         return returnMaps.Peek();
     }
 
+    /// <summary>Where a room's leave portal sends a player: the map below the room, else Lith Harbor when the room is all that is left on the stack.</summary>
+    public static int LeaveMapId(LimitedStack<int> returnMaps, int roomMapId) {
+        int below = ReturnMapId(returnMaps, roomMapId);
+        return below != roomMapId ? below : Constant.DefaultReturnMapId;
+    }
+
     /// <summary>Where a character saved inside a pocket realm logs in: the map below the room, else Lith Harbor (a room does not outlive a logout).</summary>
     public static int LoginMapId(int savedMapId, bool pocketRealm, LimitedStack<int> returnMaps) {
-        if (!pocketRealm) return savedMapId;
-        int below = ReturnMapId(returnMaps, savedMapId);
-        return below != savedMapId ? below : Constant.DefaultReturnMapId;
+        return pocketRealm ? LeaveMapId(returnMaps, savedMapId) : savedMapId;
     }
 }

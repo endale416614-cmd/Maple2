@@ -26,6 +26,10 @@ public class GuildMember : IByteSerializable, IDisposable {
 
     public CancellationTokenSource? TokenSource;
 
+    public int DonationsToday(long dayStart) => DonationTime >= dayStart ? DailyDonationCount : 0;
+
+    public bool CheckedInToday(long dayStart) => CheckinTime >= dayStart;
+
     public void WriteTo(IByteWriter writer) {
         writer.WriteByte(TYPE);
         writer.WriteByte(Rank);

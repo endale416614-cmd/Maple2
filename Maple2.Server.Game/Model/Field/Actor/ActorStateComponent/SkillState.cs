@@ -69,6 +69,19 @@ public class SkillState {
         // Apply damage to targets server-side for NPC attacks
         // Always use the attack range prism to resolve targets so spatial checks are respected
         Tools.Collision.Prism attackPrism = attack.Range.GetPrism(actor.Position, actor.Rotation.Z);
+        // TODO: no tested rule fits projectile (MagicPath) attacks, so they vibrate no cubes; upgrade when one does.
+        if (attack.BrokenOffence != 0 && attack.MagicPathId == 0) {
+            var vibrate = new DamageRecord(cast.Metadata, attack) {
+                SkillUid = cast.CastUid,
+                SkillId = cast.SkillId,
+                Level = cast.Level,
+                MotionPoint = cast.MotionPoint,
+                AttackPoint = cast.AttackPoint,
+                Position = actor.Position,
+            };
+            actor.Field.VibrateObjects(vibrate, [attack.Range.GetCubePrism(actor.Position, actor.Rotation.Z)]);
+        }
+
         var resolvedTargets = new List<IActor>();
         int queryLimit = attack.TargetCount > 0 ? attack.TargetCount : 1;
         foreach (IActor target in actor.Field.GetTargets(actor, [attackPrism], attack.Range, queryLimit)) {

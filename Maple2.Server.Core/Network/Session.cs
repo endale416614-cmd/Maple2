@@ -27,7 +27,9 @@ public abstract class Session : IDisposable {
     private const int STOP_TIMEOUT = 2000;
 
     // Send timeout to prevent indefinite blocking (in milliseconds)
-    private const int SEND_TIMEOUT_MS = 5000;
+    // A frozen client (a long map load, a suspended process) reads nothing while a busy field's sends fill its socket in
+    // seconds; only a client that reads nothing for 2 minutes is ended here (BT-134).
+    private const int SEND_TIMEOUT_MS = 120000;
     // How long a closing connection waits for the client to close its side before it is reset
     private const int CLOSE_DRAIN_TIMEOUT_MS = 3000;
 

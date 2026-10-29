@@ -16,7 +16,7 @@ public static class SkillUtils {
             float adjustedAngle = angle + range.RotateZDegree + 180;
             float length = range.Distance + range.RangeAdd.Y;
             float width = range.Width + range.RangeAdd.X;
-            Vector2 origin = Origin(position, range.RangeOffset, adjustedAngle);
+            Vector2 origin = Origin(position, range.RangeOffset, angle + 180);
             return new Prism(new Rectangle(origin, width, length, adjustedAngle),
                 position.Z + range.RangeOffset.Z, range.Height + range.RangeAdd.Z);
         }
@@ -30,7 +30,7 @@ public static class SkillUtils {
         }
 
         float adjustedAngle = angle + range.RotateZDegree + 180;
-        Vector2 origin = Origin(position, range.RangeOffset, adjustedAngle);
+        Vector2 origin = Origin(position, range.RangeOffset, angle + 180);
         float boxWidth = range.Width + range.RangeAdd.X;
         IPolygon polygon = range.Type switch {
             // Box projects forward from caster (0 to distance), same as Frustum but with equal widths.
@@ -44,9 +44,30 @@ public static class SkillUtils {
         return new Prism(polygon, position.Z + range.RangeOffset.Z, range.Height + range.RangeAdd.Z);
     }
 
-    /// <summary>The range's origin: its offset turns with the caster like the shape does (offset Y is forward).</summary>
-    public static Vector2 Origin(in Vector3 position, in Vector3 rangeOffset, float adjustedAngle) =>
-        new Vector2(position.X, position.Y) + Vector2.Transform(new Vector2(rangeOffset.X, rangeOffset.Y), Matrix3x2.CreateRotation(adjustedAngle * MathF.PI / 180));
+    /// <summary>The area whose breakable cubes an attack vibrates: the range turned backward by RangeAdd.Y and downward by RangeAdd.Z.</summary>
+    public static Prism GetCubePrism(this SkillMetadataRange range, in Vector3 position, float angle) {
+        if (range.Type == SkillRegion.None) {
+            return new Prism(IPolygon.Null, 0, 0);
+        }
+
+        float adjustedAngle = angle + range.RotateZDegree + 180;
+        Vector2 origin = Origin(position, range.RangeOffset, angle + 180);
+        Vector2 backOrigin = Origin(new Vector3(origin, 0), new Vector3(0, -range.RangeAdd.Y, 0), adjustedAngle);
+        float boxWidth = range.Width + range.RangeAdd.X;
+        IPolygon polygon = range.Type switch {
+            SkillRegion.Box => new Trapezoid(backOrigin, boxWidth, boxWidth, range.Distance + range.RangeAdd.Y, adjustedAngle),
+            SkillRegion.Cylinder => new Circle(origin, range.Distance),
+            SkillRegion.Frustum => new Trapezoid(backOrigin, range.Width, range.EndWidth, range.Distance + range.RangeAdd.Y, adjustedAngle),
+            SkillRegion.HoleCylinder => new HoleCircle(origin, range.Width, range.EndWidth),
+            _ => throw new ArgumentOutOfRangeException($"Invalid range type: {range.Type}"),
+        };
+
+        return new Prism(polygon, position.Z + range.RangeOffset.Z - range.RangeAdd.Z, range.Height + range.RangeAdd.Z);
+    }
+
+    /// <summary>The range's origin: the offset turns with the caster only (angle = facing + 180; offset Y is forward); RotateZDegree turns the shape about this origin, not the offset.</summary>
+    public static Vector2 Origin(in Vector3 position, in Vector3 rangeOffset, float angle) =>
+        new Vector2(position.X, position.Y) + Vector2.Transform(new Vector2(rangeOffset.X, rangeOffset.Y), Matrix3x2.CreateRotation(angle * MathF.PI / 180));
 
     /// <summary>Most targets one attack may hit. Pierce and boomerang: BounceCount counts the first target (Rapid Shot's
     /// client sends at most 4; Lock-on "hits up to 8 targets"). Range and chain: the first target plus BounceCount more.</summary>

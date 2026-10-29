@@ -176,7 +176,11 @@ public class InventoryManager {
             }
 
             if (add.Type.IsFurnishing) {
-                session.Item.Furnishing.AddStorage(add, add.Template);
+                // A full furnishing storage refuses the item, so the caller keeps it.
+                if (session.Item.Furnishing.AddStorage(add, add.Template) == 0) {
+                    return false;
+                }
+
                 session.Item.Inventory.Discard(add);
                 return true;
             }
@@ -350,6 +354,10 @@ public class InventoryManager {
 
     public bool CanAdd(Item item, int amount = -1) {
         lock (session.Item) {
+            if (item.Type.IsFurnishing) {
+                return session.Item.Furnishing.CanAdd(item.Metadata, item.Template, Math.Max(1, amount < 0 ? item.Amount : amount));
+            }
+
             if (tabs.TryGetValue(item.Inventory, out ItemCollection? items)) {
                 return items.OpenSlots > 0 || items.GetStackResult(item, amount) == 0;
             }

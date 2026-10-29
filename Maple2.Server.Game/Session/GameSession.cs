@@ -326,7 +326,7 @@ public sealed partial class GameSession : Core.Network.Session {
         Send(TimeSyncPacket.Reset(GameClock.UtcNow));
         Send(TimeSyncPacket.Set(GameClock.UtcNow));
 
-        Stats.Refresh();
+        Stats.Refresh(fill: true);
 
         Send(RequestPacket.TickSync(Environment.TickCount));
 

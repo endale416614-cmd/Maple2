@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading;
 using Maple2.Tools.Scheduler;
 using Serilog;
@@ -28,12 +29,21 @@ public class EventQueueTests {
         var queue = new EventQueue(logger);
         queue.Start();
         bool called = false;
+        var stopwatch = Stopwatch.StartNew();
         queue.Schedule(() => called = true, TimeSpan.FromMilliseconds(50));
         queue.InvokeAll();
         Assert.That(called, Is.False);
-        Thread.Sleep(60);
+
+        // Poll with a timeout; one fixed sleep can miss the Windows timer step under load
+        for (int i = 0; i < 100 && !called; i++) {
+            Thread.Sleep(10);
+            queue.InvokeAll();
+        }
+        long elapsedMs = stopwatch.ElapsedMilliseconds;
         queue.InvokeAll();
         Assert.That(called, Is.True);
+        // TickCount64 moves in steps of about 16 ms, so the 50 ms delay can end after about 34 ms
+        Assert.That(elapsedMs, Is.GreaterThanOrEqualTo(30));
     }
 
     [Test]

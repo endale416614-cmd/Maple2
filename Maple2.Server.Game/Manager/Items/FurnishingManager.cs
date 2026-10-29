@@ -111,34 +111,62 @@ public class FurnishingManager {
         }
     }
 
-    public bool PurchaseCube(FurnishingShopTable.Entry furnishingShopMetadata) {
-        if (!furnishingShopMetadata.Buyable) {
-            return false;
-        }
-
-        if (furnishingShopMetadata.Price <= 0 || OfflineCheats.IsFreebies(session.CharacterId)) {
-            return true;
-        }
-
+    public bool CanAdd(ItemMetadata metadata, UgcItemLook? template, int amount = 1) {
         lock (session.Item) {
-            long negAmount;
-            switch (furnishingShopMetadata.FurnishingTokenType) {
+            return storage.OpenSlots > 0 || FindStack(metadata, template, amount) != null;
+        }
+    }
+
+    public short FreeSlots() {
+        lock (session.Item) {
+            return storage.OpenSlots;
+        }
+    }
+
+    public bool CanPurchase(FurnishingShopTable.Entry entry) {
+        lock (session.Item) {
+            if (!entry.Buyable) {
+                return false;
+            }
+
+            if (entry.Price <= 0 || OfflineCheats.IsFreebies(session.CharacterId)) {
+                return true;
+            }
+
+            switch (entry.FurnishingTokenType) {
                 case FurnishingCurrencyType.Meso:
-                    negAmount = -furnishingShopMetadata.Price;
-                    if (session.Currency.CanAddMeso(negAmount) != negAmount) {
+                    if (session.Currency.CanAddMeso(-entry.Price) != -entry.Price) {
                         session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_meso_balance));
                         return false;
                     }
-
-                    session.Currency.Meso -= furnishingShopMetadata.Price;
                     break;
                 case FurnishingCurrencyType.Meret:
-                    negAmount = -furnishingShopMetadata.Price;
-                    if (session.Currency.CanAddMeret(negAmount) != negAmount) {
+                    if (session.Currency.CanAddMeret(-entry.Price) != -entry.Price) {
                         session.Send(CubePacket.Error(UgcMapError.s_err_ugcmap_not_enough_merat_balance));
                         return false;
                     }
+                    break;
+            }
 
+            return true;
+        }
+    }
+
+    public bool PurchaseCube(FurnishingShopTable.Entry furnishingShopMetadata) {
+        lock (session.Item) {
+            if (!CanPurchase(furnishingShopMetadata)) {
+                return false;
+            }
+
+            if (furnishingShopMetadata.Price <= 0 || OfflineCheats.IsFreebies(session.CharacterId)) {
+                return true;
+            }
+
+            switch (furnishingShopMetadata.FurnishingTokenType) {
+                case FurnishingCurrencyType.Meso:
+                    session.Currency.Meso -= furnishingShopMetadata.Price;
+                    break;
+                case FurnishingCurrencyType.Meret:
                     session.Currency.Meret -= furnishingShopMetadata.Price;
                     break;
             }
@@ -234,12 +262,16 @@ public class FurnishingManager {
         return AddStorage(item);
     }
 
+    private Item? FindStack(ItemMetadata metadata, UgcItemLook? template, int amount) {
+        return storage.FirstOrDefault(existing => existing.Id == metadata.Id && existing.Template?.Url == template?.Url && existing.Amount + amount <= metadata.Property.SlotMax);
+    }
+
     public long AddStorage(Item item, UgcItemLook? template = null) {
         int amount = Math.Max(1, item.Amount); // The whole stack: a reward or purchase of several adds them all.
 
         lock (session.Item) {
             // A full stack (assistants have SlotMax 1) starts a new one.
-            Item? stored = storage.FirstOrDefault(existing => existing.Id == item.Id && existing.Template?.Url == template?.Url && existing.Amount + amount <= item.Metadata.Property.SlotMax);
+            Item? stored = FindStack(item.Metadata, template, amount);
             if (stored == null) {
                 if (storage.OpenSlots <= 0) {
                     logger.Error("Furnishing storage is full, cannot add item: {ItemId}", item.Id);

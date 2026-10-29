@@ -5,7 +5,7 @@ using Maple2.Model.Enum;
 namespace Maple2.Server.Game.Util;
 
 /// <summary>
-/// Offline edition player cheats, ON unless OFFLINE_CHEATS=false (launcher.ini: CheatCommands=false).
+/// Offline edition player cheats: on in Adapted, off under Legacy (the original had none); OFFLINE_CHEATS (launcher.ini: CheatCommands) wins over the mode either way.
 /// Chat commands for every player (no admin rights needed): /godmode, /killall, /unstuck, /freebies, /allboxes. Meant to get past
 /// quests or situations that the emulator cannot finish properly.
 /// </summary>
@@ -18,8 +18,12 @@ public static class OfflineCheats {
     public static int UnstuckTarget(int mapId, InstanceType type, bool toTown) =>
         !toTown && type == InstanceType.solo ? mapId : UnstuckMapId;
 
+    /// <summary>/unstuck on an open field map (not a dungeon, solo instance, home or guild house) goes to the map's own spawn point.</summary>
+    public static bool UnstuckToSpawn(InstanceType type, bool dungeon, bool toTown) =>
+        !toTown && !dungeon && type == InstanceType.none;
+
     public static readonly bool Enabled =
-        OfflineProfile.Option("OFFLINE_CHEATS", true); // both modes
+        OfflineProfile.Flag("OFFLINE_CHEATS", true);
 
     // By character id, so cheats survive map changes and dungeon migrations (new session) until the servers stop.
     private static readonly ConcurrentDictionary<long, byte> GodModeCharacters = new();

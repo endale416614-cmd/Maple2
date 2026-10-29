@@ -55,6 +55,12 @@ public class Guild : IByteSerializable {
     [SetsRequiredMembers]
     public Guild(long id, string name, GuildMember leader) : this(id, name, leader.AccountId, leader.CharacterId, leader.Name) { }
 
+    public void ClearWeeklyContribution() {
+        foreach (GuildMember member in Members.Values) {
+            member.WeeklyContribution = 0;
+        }
+    }
+
     public void WriteTo(IByteWriter writer) {
         writer.WriteLong(Id);
         writer.WriteUnicodeString(Name);

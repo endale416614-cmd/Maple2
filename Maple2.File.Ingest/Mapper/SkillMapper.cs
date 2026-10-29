@@ -39,6 +39,13 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     Detect: new SkillMetadataDetect(
                         IncludeCaster: level.detectProperty?.includeCaster == 1,
                         Distance: level.detectProperty?.distance ?? 0),
+                    // targetSelectType picks targets by buff, which the sensor does not model
+                    Sensor: level.sensorProperty != null && !string.IsNullOrEmpty(level.sensorProperty.rangeType) && level.sensorProperty.targetSelectType == 0
+                        ? new SkillMetadataSensor(
+                            Range: Convert(level.sensorProperty),
+                            StartDelay: level.sensorProperty.sensorStartDelay,
+                            ForceInvoke: level.sensorProperty.sensorForceInvokeByInterval)
+                        : null,
                     Recovery: new SkillMetadataRecovery(
                         SpValue: level.recoveryProperty.spValue,
                         SpRate: level.recoveryProperty.spRate),
@@ -48,7 +55,9 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                             SequenceName: motion.motionProperty.sequenceName,
                             SequenceSpeed: motion.motionProperty.sequenceSpeed,
                             MoveDistance: motion.motionProperty.movedistance,
-                            FaceTarget: motion.motionProperty.faceTarget),
+                            MoveAngle: motion.motionProperty.moveangle,
+                            FaceTarget: motion.motionProperty.faceTarget,
+                            LoopCount: motion.motionProperty.loopCount),
                         Attacks: motion.attack.Select(attack => new SkillMetadataAttack(
                             Point: attack.point,
                             PointGroup: attack.pointGroupID,

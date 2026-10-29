@@ -45,6 +45,8 @@ public record FieldVibrateEntity(
     BoundingBox3 Bounds,
     int BreakDefense,
     int BreakTick,
+    string MaterialTag,
+    int ResetTimer,
     int VibrateIndex) : FieldEntity(Id, Position, Rotation, Scale, Bounds);
 
 public record FieldSpawnTile(

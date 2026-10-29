@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.CommandLine.Invocation;
 using System.CommandLine.IO;
+using System.Numerics;
 using System.Text;
 using Maple2.Database.Storage;
 using Maple2.Model;
@@ -82,13 +83,13 @@ public class KillAllCommand : GameCommand {
     }
 }
 
-/// <summary>/unstuck: revives the player if needed and sends them to Henesys.</summary>
+/// <summary>/unstuck: revives the player if needed, then restarts a quest map, returns to the start of a field map, or sends them to Henesys.</summary>
 public class UnstuckCommand : GameCommand {
     private readonly GameSession session;
 
-    public UnstuckCommand(GameSession session) : base(AdminPermissions.None, "unstuck", "Restart a quest map, or go back to Henesys.") {
+    public UnstuckCommand(GameSession session) : base(AdminPermissions.None, "unstuck", "Restart a quest map, go back to this map's start, or go to Henesys.") {
         this.session = session;
-        var town = new Option<bool>(["--town", "-t"], () => false, "Go to Henesys even from a quest map.");
+        var town = new Option<bool>(["--town", "-t"], () => false, "Go to Henesys even from a quest map or a field map.");
         AddOption(town);
         this.SetHandler<InvocationContext, bool>(Handle, town);
     }
@@ -106,8 +107,19 @@ public class UnstuckCommand : GameCommand {
             session.Player.Revive(instant: true);
         }
 
-        int mapId = OfflineCheats.UnstuckTarget(session.Field.MapId,
-            session.Field is Maple2.Server.Game.Manager.Field.DungeonFieldManager ? InstanceType.none : session.Field.FieldInstance.Type, town);
+        bool dungeon = session.Field is Maple2.Server.Game.Manager.Field.DungeonFieldManager;
+        // An open field map: back to its own spawn point, so a player below its low ground can go on from the start.
+        if (OfflineCheats.UnstuckToSpawn(session.Field.FieldInstance.Type, dungeon, town)
+            && session.Field.TryGetPlayerSpawn(-1, out FieldPlayerSpawnPoint? spawn)) {
+            Vector3 target = spawn.Position + new Vector3(0, 0, 25);
+            if (session.Field.ValidPosition(target)) {
+                ctx.Console.Out.WriteLine("Returning to this map's start (/unstuck --town goes to Henesys)...");
+                session.Player.MoveToPosition(target, spawn.Rotation);
+                return;
+            }
+        }
+
+        int mapId = OfflineCheats.UnstuckTarget(session.Field.MapId, dungeon ? InstanceType.none : session.Field.FieldInstance.Type, town);
         if (mapId != OfflineCheats.UnstuckMapId) {
             ctx.Console.Out.WriteLine("Restarting this quest map from its start (/unstuck --town goes to Henesys)...");
             session.Send(session.PrepareField(mapId)

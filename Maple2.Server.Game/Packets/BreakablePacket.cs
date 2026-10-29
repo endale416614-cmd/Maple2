@@ -13,18 +13,22 @@ public static class BreakablePacket {
         Update = 1,
     }
 
+    private const int CycleLeadMs = 100;
+
+    // The client adds its server-synced clock to this offset; the lead starts the cycle just after the enable.
+    public static int CycleOffset(long baseTick) => (CycleLeadMs - baseTick).Truncate32();
+
     public static ByteWriter Update(ICollection<FieldBreakable> breakables) {
         var pWriter = Packet.Of(SendOp.Breakable);
         pWriter.Write<Command>(Command.BatchUpdate);
 
-        long currentTick = Environment.TickCount64;
         pWriter.WriteInt(breakables.Count);
         foreach (FieldBreakable breakable in breakables) {
             pWriter.WriteString(breakable.EntityId);
             pWriter.Write<BreakableState>(breakable.State);
             pWriter.WriteBool(breakable.Visible);
             if (breakable.BaseTick > 0) {
-                pWriter.WriteInt((currentTick - breakable.BaseTick).Truncate32());
+                pWriter.WriteInt(CycleOffset(breakable.BaseTick));
                 pWriter.WriteInt(breakable.BaseTick.Truncate32());
             } else {
                 pWriter.WriteInt();
@@ -42,7 +46,7 @@ public static class BreakablePacket {
         pWriter.Write<BreakableState>(breakable.State);
         pWriter.WriteBool(breakable.Visible);
         if (breakable.BaseTick > 0) {
-            pWriter.WriteInt((Environment.TickCount64 - breakable.BaseTick).Truncate32());
+            pWriter.WriteInt(CycleOffset(breakable.BaseTick));
             pWriter.WriteInt(breakable.BaseTick.Truncate32());
         } else {
             pWriter.WriteInt();

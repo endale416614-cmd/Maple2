@@ -158,26 +158,52 @@ public sealed class AgentNavigation {
 
     public bool HasPath => currentPath != null && currentPath.Count > 0;
 
-    public bool UpdatePosition() {
-        if (!field.FindNearestPoly(npc.Position, out _, out RcVec3f position)) {
-            Logger.Error("Failed to find valid position from {Source} => {Position}", npc.Position, position);
+    public bool UpdatePosition() => UpdatePosition(npc.Position);
+
+    /// <summary>Puts the NPC and its agent on the navmesh at <paramref name="position"/>. False, and the NPC stays where it is,
+    /// when no polygon is within reach of it.</summary>
+    public bool UpdatePosition(Vector3 position) {
+        if (!FindOnMesh(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(position), out RcVec3f onMesh)) {
+            Logger.Debug("No navmesh within reach of {Position}: the NPC stays at {Current}", position, npc.Position);
             return false;
         }
 
-        agent.npos = position;
-        npc.Position = DotRecastHelper.FromNavMeshSpace(position);
+        agent.npos = onMesh;
+        npc.Position = DotRecastHelper.FromNavMeshSpace(onMesh);
         return true;
     }
 
-    public bool UpdatePosition(Vector3 position) {
-        if (!field.FindNearestPoly(position, out _, out RcVec3f rcPosition)) {
-            Logger.Error("Failed to find valid position from {Source} => {Position}", npc.Position, rcPosition);
+    /// <summary>Puts the NPC down after a jump or a pull from <paramref name="start"/> to <paramref name="end"/>: on the navmesh
+    /// at the end, else back where it took off. False when neither is on the navmesh.</summary>
+    public bool Land(Vector3 start, Vector3 end) {
+        if (!FindLanding(crowd.GetNavMeshQuery(), crowd.GetFilter(0), DotRecastHelper.ToNavMeshSpace(start), DotRecastHelper.ToNavMeshSpace(end), out RcVec3f landing)) {
             return false;
         }
 
-        agent.npos = rcPosition;
-        npc.Position = DotRecastHelper.FromNavMeshSpace(rcPosition);
+        agent.npos = landing;
+        npc.Position = DotRecastHelper.FromNavMeshSpace(landing);
         return true;
+    }
+
+    /// <summary>FieldManager.FindNearestPoly's search box in navmesh space: 200 units across and 400 up and down.</summary>
+    public static readonly RcVec3f SearchExtents = new(2, 4, 2);
+
+    /// <summary>
+    /// The navmesh point nearest <paramref name="point"/> within <see cref="SearchExtents"/>, all in navmesh space. False when no
+    /// polygon is in the box: Detour then reports success with ref 0 and hands the point back unchanged, and a move must not keep
+    /// that point (BT-67).
+    /// </summary>
+    public static bool FindOnMesh(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f point, out RcVec3f onMesh) {
+        onMesh = point;
+        return point.IsFinite()
+            && query.FindNearestPoly(point, SearchExtents, filter, out long polyRef, out onMesh, out _).Succeeded()
+            && polyRef != 0;
+    }
+
+    /// <summary>Where a jump from <paramref name="start"/> to <paramref name="end"/> lands, in navmesh space: on the navmesh at the
+    /// end, else on it at the start. False when neither is on the navmesh.</summary>
+    public static bool FindLanding(DtNavMeshQuery query, IDtQueryFilter filter, RcVec3f start, RcVec3f end, out RcVec3f landing) {
+        return FindOnMesh(query, filter, end, out landing) || FindOnMesh(query, filter, start, out landing);
     }
 
     public Vector3 GetAgentPosition() {

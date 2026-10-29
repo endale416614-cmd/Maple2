@@ -17,10 +17,13 @@ public class AiState {
     private Node? battle;
     private Node? battleEnd;
     private bool scriptedEvent;
+    private bool battleEndOnlyDead;
+    private bool battleEndRan;
 
     private List<StackEntry> aiStack = new List<StackEntry>();
     private NpcTask? currentTask = null;
     private long currentLimitTick = 0;
+    private bool keepBattleTask;
 
     private AiMetadata? lastEvaluated;
     private DecisionTreeType currentTree;
@@ -60,6 +63,13 @@ public class AiState {
     public static int[] SelectWeights(int[] nodeProb, bool useNpcProb, int[]? npcProbs, int skillCount) =>
         useNpcProb && npcProbs is { Length: > 0 } && npcProbs.Length == skillCount && npcProbs.Sum() > 0 ? npcProbs : nodeProb;
 
+    /// <summary>isKeepBattle holds the battle only while its node's task runs; a scripted-event NPC always holds it.</summary>
+    public static bool HoldsBattle(bool scriptedEvent, bool keepBattleTaskRunning) => scriptedEvent || keepBattleTaskRunning;
+
+    /// <summary>The battle-end steps run at death unless they already ran at the last battle's end (no battle since),
+    /// and at a battle end while alive unless the block is onlyDead.</summary>
+    public static bool RunsBattleEnd(bool atDeath, bool onlyDead, bool ranSinceBattle) => atDeath ? !ranSinceBattle : !onlyDead;
+
     /// <summary>combatTime: the battle time (ms), taken modulo loop when there is one, is from begin up to but not including end
     /// (no end: the end of the loop, or no end at all without a loop).</summary>
     public static bool InCombatWindow(long battleMs, long begin, long loop, long end) {
@@ -70,6 +80,13 @@ public class AiState {
         long until = end > 0 ? end : loop > 0 ? loop : long.MaxValue;
         return time >= begin && time < until;
     }
+
+    /// <summary>skillRange, trace and runaway: a skill's detect distance, or its first attack's range when it has none
+    /// (the AI files' "fake skill" range checks, such as 50009998 with only a 250 box).</summary>
+    // TODO: the first attack's Range.Distance, without RangeAdd or RangeOffset and not a longer later attack; take the longest attack if a play check finds a gate that never opens.
+    public static float SkillDistance(SkillMetadataLevel data) =>
+        data.Detect.Distance > 0 ? data.Detect.Distance
+            : data.Motions.SelectMany(motion => motion.Attacks).Select(attack => attack.Range.Distance).FirstOrDefault();
 
     public AiState(FieldNpc actor, string aiPath) {
         this.actor = actor;
@@ -100,6 +117,7 @@ public class AiState {
 
         if (AiMetadata.BattleEnd.Length != 0) {
             battleEnd = new Node("battle", AiMetadata.BattleEnd);
+            battleEndOnlyDead = AiMetadata.BattleEnd[0] is OnlyDead;
         }
 
         if (AiMetadata.Reserved.Length != 0) {
@@ -153,7 +171,11 @@ public class AiState {
     }
 
     public void Update(long tickCount) {
-        if (IsWaitingOnTask(tickCount)) {
+        bool waiting = IsWaitingOnTask(tickCount);
+        actor.BattleState.KeepBattle = HoldsBattle(scriptedEvent, keepBattleTask && waiting);
+
+        if (waiting) {
+            (currentTask as MovementState.NpcStandbyTask)?.Face(); // the original keeps a waiting NPC facing its target
             return;
         }
 
@@ -178,26 +200,28 @@ public class AiState {
             return;
         }
 
-        if (scriptedEvent) {
-            actor.BattleState.KeepBattle = true;
-        }
-
         bool isInBattle = actor.BattleState.InBattle;
 
         if (!isInBattle) {
             if (currentTree == DecisionTreeType.Battle) {
                 aiStack.Clear();
 
-                currentTree = battleEnd is not null ? DecisionTreeType.BattleEnd : DecisionTreeType.None;
-            } else if (currentTree == DecisionTreeType.BattleEnd && aiStack.Count == 0) {
-                currentTree = DecisionTreeType.None;
+                bool runs = battleEnd is not null && RunsBattleEnd(false, battleEndOnlyDead, battleEndRan);
+                battleEndRan |= runs;
+                currentTree = runs ? DecisionTreeType.BattleEnd : DecisionTreeType.None;
             }
 
-            return;
-        } else if (currentTree == DecisionTreeType.BattleEnd) {
-            aiStack.Clear();
+            if (currentTree != DecisionTreeType.BattleEnd) {
+                return;
+            }
+        } else {
+            battleEndRan = false;
 
-            currentTree = DecisionTreeType.None;
+            if (currentTree == DecisionTreeType.BattleEnd) {
+                aiStack.Clear();
+
+                currentTree = DecisionTreeType.None;
+            }
         }
 
         if (isInBattle && battle is not null) {
@@ -210,11 +234,13 @@ public class AiState {
 
         lastEvaluated = AiMetadata;
 
-        foreach (var node in reservedNodes.ToList()) {
-            if (ProcessCondition((dynamic) node)) {
-                aiStack.Clear();
-                reservedNodes.Remove(node);
-                Push(node);
+        if (isInBattle) {
+            foreach (var node in reservedNodes.ToList()) {
+                if (ProcessCondition((dynamic) node)) {
+                    aiStack.Clear();
+                    reservedNodes.Remove(node);
+                    Push(node);
+                }
             }
         }
 
@@ -226,6 +252,38 @@ public class AiState {
             }
         }
 
+        RunStack(tickCount, false);
+
+        if (currentTree == DecisionTreeType.BattleEnd && aiStack.Count == 0) {
+            currentTree = DecisionTreeType.None;
+        }
+    }
+
+    /// <summary>The NPC died: its battle-end steps run to their end at once, tasks they start are cancelled.</summary>
+    public void OnDeath() {
+        // A battle that started after the last battle end counts, even if no in-battle update cleared battleEndRan yet.
+        if (battleEnd is null || !RunsBattleEnd(true, battleEndOnlyDead, battleEndRan && !actor.BattleState.InBattle)) {
+            return;
+        }
+
+        currentTask?.Cancel();
+        aiStack.Clear();
+        try {
+            Push(battleEnd);
+            RunStack(actor.Field.FieldTick, true);
+        } catch (Exception exception) {
+            Logger.Error(exception, "Battle-end steps of {Npc}[{NpcId}] script '{AiPath}' failed at death", actor.Value.Metadata.Name, actor.Value.Id, AiMetadata!.Name);
+        }
+
+        currentTask?.Cancel();
+        currentTask = null;
+        currentLimitTick = 0;
+        keepBattleTask = false;
+        aiStack.Clear();
+        currentTree = DecisionTreeType.None;
+    }
+
+    private void RunStack(long tickCount, bool toEnd) {
         while (aiStack.Count > 0) {
             StackEntry entry = aiStack.Last();
 
@@ -238,23 +296,28 @@ public class AiState {
                 continue;
             }
 
-            int nextIndex = entry.LockIndex ? entry.Node.Entries.Length : index + 1;
-
             aiStack[last] = new StackEntry() {
                 Node = entry.Node,
-                Index = nextIndex,
-                LockIndex = entry.LockIndex,
+                Index = index + 1,
             };
 
             Process(entry.Node.Entries[index]);
 
-            if (IsWaitingOnTask(tickCount)) {
+            if (toEnd) {
+                currentTask?.Cancel(); // a later task node must not orphan this one
+                currentTask = null;
+            } else if (IsWaitingOnTask(tickCount)) {
                 break;
             }
         }
     }
 
-    private void SetNodeTask(NpcTask? task, long limit = 0) {
+    private void SetNodeTask(NpcTask? task, long limit = 0, bool keepBattle = false) {
+        keepBattleTask = keepBattle;
+        if (keepBattle) {
+            actor.BattleState.KeepBattle = true;
+        }
+
         currentTask = task;
         currentLimitTick = limit == 0 ? 0 : actor.Field.FieldTick + limit;
     }
@@ -262,7 +325,6 @@ public class AiState {
     private struct StackEntry {
         public Node Node;
         public int Index;
-        public bool LockIndex;
     }
 
     private void Push(Node node) {
@@ -348,7 +410,7 @@ public class AiState {
         return lastTick < actor.Field.FieldTick;
     }
 
-    private bool PerformOperation(AiConditionOp op, int value, int currentValue) {
+    public static bool PerformOperation(AiConditionOp op, int value, int currentValue) {
         switch (op) {
             case AiConditionOp.Equal:
                 return value == currentValue;
@@ -374,7 +436,7 @@ public class AiState {
 
             ProcessNode((dynamic) entry);
 
-            if (node.Entries.Length > 0 && aiStack.Last().Node is not SelectNode && aiStack.Last().Node != node && CanEvaluateNode(node.Entries[0])) {
+            if (node.Entries.Length > 0 && node is not SelectNode && aiStack.Last().Node != node && CanEvaluateNode(node.Entries[0])) {
                 Push(node);
             }
 
@@ -402,7 +464,7 @@ public class AiState {
                 return;
             }
 
-            distance = skill.Data.Detect.Distance; // naive impl, might need to revisit
+            distance = SkillDistance(skill.Data);
         }
 
         float speed = 1;
@@ -425,11 +487,7 @@ public class AiState {
 
         NpcTask task = actor.CastAiSkill(skill.Id, skill.Level, node.FaceTarget, node.FacePos);
 
-        if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
-        }
-
-        SetNodeTask(task, node.Limit);
+        SetNodeTask(task, node.Limit, node.IsKeepBattle);
     }
 
     private void ProcessNode(TeleportNode node) {
@@ -450,16 +508,17 @@ public class AiState {
     }
 
     private void ProcessNode(StandbyNode node) {
-        NpcTask task = actor.MovementState.TryStandby(null, false);
+        NpcTask task = actor.MovementState.TryStandby(actor.BattleState.Target, false, node.Animation, node.FaceTarget, node.FacePos);
 
-        if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
-        }
-
-        SetNodeTask(task, node.Limit);
+        SetNodeTask(task, node.Limit, node.IsKeepBattle);
     }
 
     private void ProcessNode(SetDataNode node) {
+        if (node.Key == "aiBattleTime") {
+            actor.BattleState.SetBattleTime(actor.Field.FieldTick, node.Value);
+            return;
+        }
+
         actor.AiExtraData[node.Key] = node.Value;
     }
 
@@ -504,13 +563,9 @@ public class AiState {
         string sequence = node.Type == NodeJumpType.JumpB ? "Jump_B" : "Jump_A";
         NpcTask task = actor.MovementState.TryJumpTo(node.Pos, actor.BattleState.InBattle, node.Speed, node.HeightMultiplier, sequence);
 
-        if (node.IsKeepBattle) {
-            actor.BattleState.KeepBattle = true;
-        }
-
         // Airtime plus slack; if the jump never finishes, the AI cancels it and the NPC lands at the target.
         float distance = Vector2.Distance(new Vector2(actor.Position.X, actor.Position.Y), new Vector2(node.Pos.X, node.Pos.Y));
-        SetNodeTask(task, (long) (distance / Math.Max(node.Speed, 1) * 1000) + 2000);
+        SetNodeTask(task, (long) (distance / Math.Max(node.Speed, 1) * 1000) + 2000, node.IsKeepBattle);
     }
 
     private void ProcessNode(SelectNode node) {
@@ -533,13 +588,6 @@ public class AiState {
 
         (Entry entry, int index) selected = weightedEntries.Get();
 
-        aiStack[aiStack.Count - 1] = new StackEntry {
-            Node = node,
-            Index = selected.index,
-            LockIndex = true,
-        };
-
-        Push(selected.entry);
         Process(selected.entry);
     }
 
@@ -582,7 +630,7 @@ public class AiState {
                 return;
             }
 
-            distance = skill.Data.Detect.Distance; // naive impl, might need to revisit
+            distance = SkillDistance(skill.Data);
         }
 
         if (distance <= 0) {
@@ -721,7 +769,7 @@ public class AiState {
 
         float targetDistance = (actor.BattleState.Target.Position - actor.Position).LengthSquared();
         // +10 to account for the npc moving to skill range distance & allowing for it to attack slightly outside
-        float detectDistance = skill.Data.Detect.Distance + 10;
+        float detectDistance = SkillDistance(skill.Data) + 10;
 
         return detectDistance * detectDistance >= targetDistance; // naive, need to implement more sophisticated collision detection
     }
@@ -747,7 +795,7 @@ public class AiState {
     }
 
     private bool ProcessCondition(SlaveCountOpCondition node) {
-        return false;
+        return PerformOperation(node.SlaveCountOp, node.SlaveCount, LiveSlaves().Count);
     }
 
     private bool ProcessCondition(HpOverCondition node) {
@@ -807,20 +855,21 @@ public class AiState {
         }
 
         bool linked = node.Master != NodeSummonMaster.None;
+        bool atDeath = actor.IsDead; // the death steps summon although the summoner is dead
         int live = actor.Field.EnumerateNpcs().Count(npc => npc.Summoner == actor && npc.IsSlave == linked && (!linked || npc.SummonGroup == node.Group));
         int count = SummonRules.Count(node.NpcCount, node.NpcCountMax, live, linked);
         for (int i = 0; i < count; i++) {
             if (node.DelayTick > 0) {
-                actor.Field.Scheduler.Schedule(() => Summon(node, metadata!, linked), TimeSpan.FromMilliseconds(node.DelayTick));
+                actor.Field.Scheduler.Schedule(() => Summon(node, metadata!, linked, atDeath), TimeSpan.FromMilliseconds(node.DelayTick));
             } else {
-                Summon(node, metadata!, linked);
+                Summon(node, metadata!, linked, atDeath);
             }
         }
     }
 
-    private void Summon(SummonNode node, NpcMetadata metadata, bool linked) {
-        if (actor.IsDead) {
-            return; // a delayed summon whose summoner died meanwhile
+    private void Summon(SummonNode node, NpcMetadata metadata, bool linked, bool atDeath) {
+        if (actor.IsDead && !atDeath) {
+            return; // a delayed summon ordered while alive whose summoner died meanwhile
         }
 
         Vector3 position = SummonRules.Position(actor.Position, actor.BattleState.Target?.Position, node.SummonPos, node.SummonPosOffset,

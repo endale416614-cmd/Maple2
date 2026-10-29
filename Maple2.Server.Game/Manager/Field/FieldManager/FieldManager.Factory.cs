@@ -60,6 +60,8 @@ public partial class FieldManager {
             FieldManager? field;
             try {
                 field = GetInternal(mapId, ownerId, roomId);
+                // FD-01 (BT-130): the caller uses the field now, often a player who is loading into it; the dispose loop counts only entered players.
+                if (field != null) field.fieldEmptySince = null;
             } finally {
                 mapLock.Release();
             }

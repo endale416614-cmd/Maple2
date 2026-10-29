@@ -15,8 +15,9 @@ using Microsoft.EntityFrameworkCore;
 namespace Maple2.Server.Tests.Data;
 
 /// <summary>
-/// Read-only integrity sweep over maple-data.db. It is a report generator: data findings never fail the test, only crashes in the
-/// sweep code do. Writes sweep-report.md to the test working directory. Skipped when no data DB is found (see <see cref="DataDb"/>).
+/// Read-only integrity sweep over maple-data.db. Writes sweep-report.md to the test working directory, then fails when a check
+/// has more errors than its threshold for that data (SW-01: base or pack), so a new error fails and the known ones do not.
+/// Skipped when no data DB is found (see <see cref="DataDb"/>).
 /// </summary>
 [Category("Data")]
 [NonParallelizable]
@@ -26,6 +27,16 @@ public class DataSweepTest {
     private record Finding(Severity Severity, string Check, string Message);
 
     private const int MaxListed = 300; // per severity and check; counts stay exact
+
+    // Error counts per check on the 1.2.2 data (SW-01 triage, RB-01 DBs); a check not listed allows 0. A fix that lowers a count lowers its threshold.
+    private static readonly Dictionary<string, int> BaseThresholds = new() {
+        ["Quest references"] = 31, ["Portal -> map"] = 81, ["Trigger names"] = 3, ["Navmesh files"] = 2,
+    };
+    private static readonly Dictionary<string, int> PackThresholds = new() {
+        ["Quest references"] = 22, ["Portal -> map"] = 76, ["Trigger names"] = 3, ["Navmesh files"] = 2,
+    };
+    // TODO: the pack data is told by its map 52000189 (Prisoner's Tower, CONTENT_REGISTRY); use data-build.json if a pack ever drops it.
+    private const int PackMarkerMapId = 52000189;
 
     private readonly List<Finding> findings = [];
 
@@ -107,7 +118,21 @@ public class DataSweepTest {
         File.WriteAllText(outPath, report);
         TestContext.Out.WriteLine(string.Join('\n', report.Split('\n').TakeWhile(line => !line.StartsWith("## Errors"))));
         Assert.That(File.Exists(outPath), Is.True);
+        bool pack = mapIds.Contains(PackMarkerMapId);
+        var counts = findings.Where(f => f.Severity == Severity.Error).GroupBy(f => f.Check).Select(g => (g.Key, g.Count()));
+        Assert.That(OverThresholds(counts, pack ? PackThresholds : BaseThresholds), Is.Empty, $"error counts above the SW-01 thresholds for the {(pack ? "pack" : "base")} data; the new lines are in {outPath}");
     }
+
+    [Test]
+    public void GateFailsOnARisenCount() {
+        var thresholds = new Dictionary<string, int> { ["Portal -> map"] = 76 };
+        Assert.That(OverThresholds([("Portal -> map", 76)], thresholds), Is.Empty);
+        Assert.That(OverThresholds([("Portal -> map", 77)], thresholds), Is.EqualTo(new[] { "Portal -> map: 77 errors, threshold 76" }));
+        Assert.That(OverThresholds([("Item option tables", 1)], thresholds), Is.EqualTo(new[] { "Item option tables: 1 errors, threshold 0" }));
+    }
+
+    private static List<string> OverThresholds(IEnumerable<(string Check, int Errors)> counts, IReadOnlyDictionary<string, int> thresholds) =>
+        counts.Where(c => c.Errors > thresholds.GetValueOrDefault(c.Check)).Select(c => $"{c.Check}: {c.Errors} errors, threshold {thresholds.GetValueOrDefault(c.Check)}").ToList();
 
     private void CheckQuests(MetadataContext context, TableMetadataStorage tables, HashSet<int> npcIds, HashSet<int> mapIds, Dictionary<int, string> xblockByMap, Dictionary<string, HashSet<int>> portalIdsByXBlock) {
         const string check = "Quest references";
@@ -256,8 +281,9 @@ public class DataSweepTest {
     private void CheckNavmeshes(List<(int Id, string XBlock)> maps, HashSet<string> xblocksWithNpcSpawns) {
         const string check = "Navmesh files";
         string? dir = FindNavmeshDir();
-        if (dir == null) {
-            Add(Severity.Info, check, "Navmeshes folder not found (submodule not checked out); check skipped");
+        // an uninitialized submodule leaves an empty folder
+        if (dir == null || !Directory.EnumerateFiles(dir, "*.navmesh").Any()) {
+            Add(Severity.Info, check, "Navmeshes folder not found or empty (submodule not checked out); check skipped");
             return;
         }
         var files = Directory.EnumerateFiles(dir, "*.navmesh").Select(file => Path.GetFileNameWithoutExtension(file)).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -301,7 +327,8 @@ public class DataSweepTest {
                 }
                 if (table.TryGetValue(id, out IReadOnlyDictionary<int, T>? byId)) {
                     rarities.UnionWith(byId.Keys);
-                } else if (id == item.Id) {
+                } else if (id == item.Id || constants.ContainsKey(id) || statics.ContainsKey(id) || randoms.ContainsKey(id)) {
+                    // The item XML names one option code for every kind (its own id or its base item's); a kind without a row has no options of that kind (ItemStatsCalculator).
                     implicitNone++; // ingest default: option id = item id, no table row means no options of this kind
                 } else {
                     Add(Severity.Error, check, $"gear {item.Id} ({item.Name}) references {name} option id {id}, which is missing from the {name} table");
@@ -324,7 +351,7 @@ public class DataSweepTest {
         if (gearWithoutRarity.Count > 0) {
             Add(Severity.Warning, check, $"{gearWithoutRarity.Count} gear items (GearScore > 0) resolve no rarity 1-6 from their option tables (e.g. {string.Join(", ", gearWithoutRarity.Take(5))})");
         }
-        Add(Severity.Info, check, $"{gear} equippable items ({combatGear} with GearScore > 0); {noOption} without an Option block; {implicitNone} implicit option ids (id = item id, no table row) ignored");
+        Add(Severity.Info, check, $"{gear} equippable items ({combatGear} with GearScore > 0); {noOption} without an Option block; {implicitNone} option ids without a row of their kind ignored (the item's own id, or an id with rows of another kind)");
         for (int rarity = 1; rarity <= 6; rarity++) {
             Add(Severity.Info, check, $"rarity {rarity}: {byRarity[rarity]} GearScore>0 items have at least one option table row");
         }

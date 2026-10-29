@@ -33,6 +33,7 @@ public class Buff : IUpdatable, IByteSerializable {
     public long ShieldHealth { get; set; }
 
     public bool Enabled { get; private set; }
+    public bool HasStats => Metadata.Status.Values.Count > 0 || Metadata.Status.Rates.Count > 0 || Metadata.Status.SpecialValues.Count > 0 || Metadata.Status.SpecialRates.Count > 0 || Metadata.Status.Conversion != null;
 
     private bool activated;
     private readonly bool canExpire;

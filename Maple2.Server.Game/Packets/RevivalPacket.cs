@@ -31,6 +31,14 @@ public static class RevivalPacket {
         return pWriter;
     }
 
+    // source: KMS2_DEV client, scenestategame.cpp OnAutoRevive reads one int, the countdown in milliseconds
+    public static ByteWriter AutoRevive(int milliseconds) {
+        var pWriter = Packet.Of(SendOp.AutoRevive);
+        pWriter.WriteInt(milliseconds);
+
+        return pWriter;
+    }
+
     public static ByteWriter Tombstone(Tombstone tombstone) {
         var pWriter = Packet.Of(SendOp.Tombstone);
         pWriter.WriteClass<Tombstone>(tombstone);

@@ -87,6 +87,8 @@ message GuildRequest {
     optional string message = 4;
     optional int32 contribution = 5;
     optional int64 check_in_time = 6;
+    optional int32 daily_donation_count = 7;
+    optional int64 donation_time = 8;
   }
   message UpdateContribution {
     int64 contributorId = 1;

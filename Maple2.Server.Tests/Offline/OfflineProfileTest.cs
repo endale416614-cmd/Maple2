@@ -1,5 +1,7 @@
+using System.IO;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Tools;
 
 namespace Maple2.Server.Tests.Offline;
 
@@ -27,6 +29,17 @@ public class OfflineProfileTest {
     [TestCase("garbage", true, true, TestName = "Both-mode option unparsable uses its default")]
     public void Option(string? flag, bool defaultValue, bool expected) {
         Assert.That(OfflineProfile.ResolveOption(flag, defaultValue), Is.EqualTo(expected));
+    }
+
+    [TestCase("Legacy", null, false, TestName = "Legacy turns the cheat commands off")]
+    [TestCase("Legacy", "true", true, TestName = "CheatCommands=true wins under Legacy")]
+    [TestCase("Adapted", null, true, TestName = "Adapted keeps the cheat commands")]
+    [TestCase("Adapted", "false", false, TestName = "CheatCommands=false wins under Adapted")]
+    [TestCase(null, null, true, TestName = "No mode keeps the cheat commands")]
+    public void Cheats(string? mode, string? cheatCommands, bool expected) {
+        string source = File.ReadAllText(Path.Combine(Paths.SOLUTION_DIR, "Maple2.Server.Game", "Util", "OfflineCheats.cs"));
+        Assert.That(source, Does.Contain("OfflineProfile.Flag(\"OFFLINE_CHEATS\", true)"), "OfflineCheats.Enabled is a mode flag");
+        Assert.That(OfflineProfile.Resolve(mode, cheatCommands, adaptedDefault: true), Is.EqualTo(expected));
     }
 
     [TestCase(26001001, 4, 1, false, true, TestName = "Legacy: a solo player is refused at a guild raid")]

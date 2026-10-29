@@ -1,5 +1,6 @@
 ﻿using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model.Skill;
+using Maple2.Tools.VectorMath;
 using System.Numerics;
 using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 
@@ -13,6 +14,11 @@ public partial class MovementState {
     private string castMoveEndKeyframe = string.Empty;
     private float castMoveLastTick = -1;
     private bool castMoveFinished;
+
+    // The motion's moveangle turns the move away from the front axis, the way a larger rotation Z turns the actor.
+    public static Vector3 CastMoveDirection(Transform transform, float moveAngle) {
+        return Vector3.Transform(transform.FrontAxis, Matrix4x4.CreateRotationZ(float.DegreesToRadians(moveAngle)));
+    }
 
     public void StateSkillEvent(string keyName) {
         if (castSkill is null) {
@@ -71,7 +77,7 @@ public partial class MovementState {
                 }
 
                 castMoveLastTick = 0;
-                castMoveOffset = moveDistance * actor.Transform.FrontAxis;
+                castMoveOffset = moveDistance * CastMoveDirection(actor.Transform, castSkill.Motion.MotionProperty.MoveAngle);
                 castMoveStartKeyframe = "move0";
                 castMoveEndKeyframe = "move1";
                 castMoveFinished = false;

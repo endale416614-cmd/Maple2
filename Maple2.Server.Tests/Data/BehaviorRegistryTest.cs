@@ -20,11 +20,9 @@ namespace Maple2.Server.Tests.Data;
 [NonParallelizable]
 public class BehaviorRegistryTest {
     // AI steps that do nothing in AiState (2026-10-22). A name leaves its set when its behaviour is implemented.
-    // Blocking: boss phases stop. Summons and the master/slave values left with NB-10 and NB-12; slaveCountOp waits for
-    // the data rebuild (the ingest drops its fields).
-    private static readonly HashSet<string> Blocking = [
-        "SlaveCountOpCondition",
-    ];
+    // Blocking: boss phases stop. Summons and the master/slave values left with NB-10 and NB-12; the op form of the slave
+    // count condition left with NB-16.
+    private static readonly HashSet<string> Blocking = [];
     // Degrading: the encounter runs without them.
     private static readonly HashSet<string> Degrading = [
         "RideNode", "ShowVibrateNode", "HideVibrateAllNode", "ModifyRoomTimeNode", "CreateRandomRoomNode", "CreateInteractObjectNode",

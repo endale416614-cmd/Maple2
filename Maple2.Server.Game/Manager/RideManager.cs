@@ -64,12 +64,12 @@ public sealed class RideManager {
 
     }
 
-    public void Dismount(RideOffType type, bool forced = false) {
+    public void Dismount(RideOffType type, bool forced = false, byte[]? fields = null) {
         if (Ride == null) {
             return;
         }
 
-        RideOffAction rideOffAction = GetRideOffAction(type, forced);
+        RideOffAction rideOffAction = fields != null ? new RideOffActionEcho(type, forced, fields) : GetRideOffAction(type, forced);
         session.Field?.Broadcast(RidePacket.Stop(Ride.OwnerId, rideOffAction));
 
         Ride ride = Ride;

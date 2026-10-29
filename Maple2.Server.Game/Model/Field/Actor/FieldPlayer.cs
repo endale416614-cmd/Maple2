@@ -417,6 +417,23 @@ public class FieldPlayer : Actor<Player> {
         Field.Broadcast(DeadUserPacket.Dead(ObjectId, darkTomb));
 
         Buffs.OnDeath();
+
+        // The client hides the revive dialog on these maps and waits for the countdown, so the server must revive.
+        TimeSpan? delay = AutoRevivalDelay(Field.Metadata.Property.AutoRevivalType, Field.Metadata.Property.AutoRevivalTime);
+        if (delay is not null) {
+            Session.Send(RevivalPacket.AutoRevive((int) delay.Value.TotalMilliseconds));
+            // Skipped when this death is over (dialog revival, a later death) or the player left the field.
+            Tombstone? death = Tombstone;
+            Field.Scheduler.Schedule(() => {
+                if (IsDead && Tombstone == death && Field.TryGetPlayer(ObjectId, out FieldPlayer? self) && self == this) {
+                    Revive();
+                }
+            }, delay.Value);
+        }
+    }
+
+    public static TimeSpan? AutoRevivalDelay(AutoReviveType type, int seconds) {
+        return type == AutoReviveType.None || seconds <= 0 ? null : TimeSpan.FromSeconds(seconds);
     }
 
     /// <summary>
@@ -711,15 +728,25 @@ public class FieldPlayer : Actor<Player> {
                 Logger.Error("Failed to consume item {itemId} for skill: {SkillId},{Level}", item.Id, metadata.Id, metadata.Level);
                 return false;
             }
-        } else if (record.ItemUid != 0 && Session.Item.Inventory.Get(record.ItemUid) is { } tamingItem && OfflinePets.ConsumesOnCast(tamingItem, metadata.Id)) {
-            if (!Session.Item.Inventory.Consume(tamingItem.Uid, 1)) {
-                Logger.Error("Failed to consume item {itemId} for skill: {SkillId},{Level}", tamingItem.Id, metadata.Id, metadata.Level);
+        } else if (record.ItemUid != 0 && Session.Item.Inventory.Get(record.ItemUid) is { } castItem && (UsesUpOnCast(castItem, metadata.Id) || OfflinePets.ConsumesOnCast(castItem, metadata.Id))) {
+            if (!Session.Item.Inventory.Consume(castItem.Uid, 1)) {
+                Logger.Error("Failed to consume item {itemId} for skill: {SkillId},{Level}", castItem.Id, metadata.Id, metadata.Level);
                 return false;
             }
+            record.ItemUid = 0; // IT-04: once per cast; TickSync and the state-skill tick pass the same record again
         }
 
         return true;
     }
+
+    /// <summary>
+    /// IT-04 (BT-109): casting its own skill uses up one of a consumable, as the live game used up potions, food, fireworks and candies;
+    /// most of their skills lack the data's useItem flag (Elixir 20000665, skill 90000662). ItemUseHandler uses up function items, and
+    /// mounts, glide items, pets, emotes, skill books and lapenshards are in other tabs and stay.
+    /// IT-05 (BT-113): the two buff items (AddAdditionalEffect: Helium Balloon 20300046, Lapenta Essence 20300012) are cast as their own
+    /// skill; the client sends no ItemUse for them, so the cast uses them up.
+    /// </summary>
+    public static bool UsesUpOnCast(Item item, int skillId) => item.Inventory == InventoryType.Consumable && (item.Metadata.Function?.Type is null or ItemFunction.AddAdditionalEffect) && item.Metadata.Skill?.Id == skillId;
 
     public override string ToString() {
         return $"FieldPlayer: {Value.Character.Name} ({ObjectId}) at {Position} in {Field.Metadata.Name} ({Field.Metadata.Id})" +

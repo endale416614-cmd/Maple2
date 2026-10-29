@@ -66,6 +66,11 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
         }
     }
 
+    // ShapeDimensions are full sizes, as the vibrate mixin's default of 150 (one cell) shows
+    public static BoundingBox3 WhiteboxBounds(Vector3 shapeDimensions) {
+        return new BoundingBox3(-0.5f * shapeDimensions, 0.5f * shapeDimensions);
+    }
+
     private FieldAccelerationStructure ParseMapEntities(IEnumerable<IMapEntity> entities) {
         var gridAlignedEntities = new Dictionary<Vector3S, List<FieldEntity>>();
         var unalignedEntities = new List<FieldEntity>();
@@ -74,6 +79,7 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
         var transform = new Transform();
 
         int vibrateObjectId = 0;
+        var cubeVibrates = new HashSet<FieldVibrateEntity>();
 
         foreach (IMapEntity entity in entities) {
 
@@ -116,8 +122,7 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                 case IMS2Breakable breakable:
                     continue; // intentionally skip breakables. these are dynamic so should be handled at run time
                 case IPhysXWhitebox whitebox:
-                    entityBounds.Min = -new Vector3(whitebox.ShapeDimensions.X, whitebox.ShapeDimensions.Y, 0.5f * whitebox.ShapeDimensions.Z);
-                    entityBounds.Max = new Vector3(whitebox.ShapeDimensions.X, whitebox.ShapeDimensions.Y, 0.5f * whitebox.ShapeDimensions.Z);
+                    entityBounds = WhiteboxBounds(whitebox.ShapeDimensions);
                     fieldEntity = new FieldBoxColliderEntity(
                         Id: entityId,
                         Position: placeable.Position - new Vector3(0, 0, 0.5f * whitebox.ShapeDimensions.Z),
@@ -134,7 +139,7 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                         entityBounds.Min = -new Vector3(HALF_BLOCK, HALF_BLOCK, 0);
                         entityBounds.Max = new Vector3(HALF_BLOCK, HALF_BLOCK, BLOCK_SIZE);
 
-                        fieldEntity = new FieldVibrateEntity(
+                        var vibrateEntity = new FieldVibrateEntity(
                             Id: entityId,
                             Position: placeable.Position,
                             Rotation: placeable.Rotation,
@@ -142,8 +147,16 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                             Bounds: BoundingBox3.Transform(entityBounds, transform.Transformation),
                             BreakDefense: vibrate.brokenDefence,
                             BreakTick: vibrate.brokenTick,
+                            MaterialTag: vibrate.materialTag ?? string.Empty,
+                            ResetTimer: vibrate.resetTimer,
                             VibrateIndex: vibrateObjectId++);
 
+                        // TODO: a cube-prop vibrate counts without a test of its collision mesh (the replay puts 96 tiles on cube props that are not full floors), upgrade to a collision floor test if monsters are seen spawning on such props
+                        if (entity is IMS2CubeProp and not IMS2MapProperties { DisableCollision: true } and not IMS2MapProperties { CubeType: "Fluid" }) {
+                            cubeVibrates.Add(vibrateEntity);
+                        }
+
+                        fieldEntity = vibrateEntity;
                         break;
                     }
 
@@ -305,7 +318,7 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
 
         var fieldData = new FieldAccelerationStructure();
 
-        fieldData.AddEntities(gridAlignedEntities, minIndex, maxIndex, unalignedEntities, vibrateObjectId);
+        fieldData.AddEntities(gridAlignedEntities, minIndex, maxIndex, unalignedEntities, vibrateObjectId, cubeVibrates);
 
         return fieldData;
     }

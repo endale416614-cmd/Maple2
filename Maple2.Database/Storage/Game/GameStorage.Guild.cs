@@ -163,11 +163,10 @@ public partial class GameStorage {
                     CharacterId = member.CharacterId,
                 });
 
+            // Expel, Leave and DeleteGuild delete their rows themselves; a member missing from memory keeps its row.
             foreach (Model.GuildMember member in existingMembers) {
                 if (saveMembers.Remove(member.CharacterId, out GuildMember? gameMember)) {
                     Context.GuildMember.Update(gameMember);
-                } else {
-                    Context.GuildMember.Remove(member);
                 }
             }
             Context.GuildMember.AddRange(saveMembers.Values.Select<GuildMember, Model.GuildMember>(member => member));

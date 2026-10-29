@@ -239,8 +239,24 @@ public static class NpcTalkUtil {
         return true;
     }
 
+    private const int RumbleHostId = 11004288;
+    private const int RumbleRoomId = 24096001;
+
+    /// <summary>The Rumble host's conditions: receivedRewardDungeonID (script 20, the Continue choice) needs a round rewarded this week; completeRewardDungeonID (script 40, the restart after every round) needs all of them.</summary>
+    public static bool RumbleHostCondition(int scriptId, int roundsRewarded, int rewardCount) => scriptId switch {
+        20 => roundsRewarded > 0,
+        40 => roundsRewarded >= rewardCount,
+        _ => true,
+    };
+
     public static bool ConditionCheck(this ScriptConditionMetadata scriptCondition, GameSession session) {
         if (session.Field is null) return false;
+        // TODO: the parser drops receivedRewardDungeonID and completeRewardDungeonID, which only the Rumble host 11004288 uses (room 24096001); upgrade when the parser reads them.
+        if (scriptCondition.Type == ScriptType.Npc && scriptCondition.Id == RumbleHostId
+            && session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(RumbleRoomId, out DungeonRoomMetadata? rumble)
+            && !RumbleHostCondition(scriptCondition.ScriptId, session.Dungeon.WeeklyRewardCount(RumbleRoomId), rumble.Reward.Count)) {
+            return false;
+        }
         if (scriptCondition.JobCode.Count > 0 && !scriptCondition.JobCode.Contains(session.Player.Value.Character.Job.Code())) {
             return false;
         }

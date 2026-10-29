@@ -28,6 +28,7 @@ public class WorldServer {
     private readonly GlobalPortalLookup globalPortalLookup;
     private readonly WorldBossLookup worldBossLookup;
     private readonly PlayerInfoLookup playerInfoLookup;
+    private readonly GuildLookup guildLookup;
     private ConstantsTable Constants => serverTableMetadata.ConstantsTable;
     #endregion
 
@@ -45,7 +46,7 @@ public class WorldServer {
     private long clockTicks; // in-game ticks when World started (T-02)
     private long clockStartedAt; // Unix ms
 
-    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata, TableMetadataStorage tableMetadata) {
+    public WorldServer(GameStorage gameStorage, ChannelClientLookup channelClients, ServerTableMetadataStorage serverTableMetadata, GlobalPortalLookup globalPortalLookup, WorldBossLookup worldBossLookup, PlayerInfoLookup playerInfoLookup, LoginClient login, ItemMetadataStorage itemMetadata, TableMetadataStorage tableMetadata, GuildLookup guildLookup) {
         this.gameStorage = gameStorage;
         this.tableMetadata = tableMetadata;
         this.channelClients = channelClients;
@@ -53,6 +54,7 @@ public class WorldServer {
         this.globalPortalLookup = globalPortalLookup;
         this.worldBossLookup = worldBossLookup;
         this.playerInfoLookup = playerInfoLookup;
+        this.guildLookup = guildLookup;
         this.login = login;
         this.itemMetadata = itemMetadata;
         scheduler = new EventQueue(logger);
@@ -309,6 +311,7 @@ public class WorldServer {
     private void WeeklyReset() {
         using GameStorage.Request db = gameStorage.Context();
         db.WeeklyReset();
+        guildLookup.ResetWeeklyContribution(); // the cached guilds save on every change, so they must not keep last week's contribution (BT-80)
         foreach ((int channelId, ChannelClient channelClient) in channelClients) {
             channelClient.GameReset(new GameResetRequest {
                 Weekly = new GameResetRequest.Types.Weekly(),

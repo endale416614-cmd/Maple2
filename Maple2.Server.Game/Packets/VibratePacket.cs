@@ -12,7 +12,7 @@ public static class VibratePacket {
         Invoke = 2,
     }
 
-    public static ByteWriter Attack(string entityId, DamageRecord damage) {
+    public static ByteWriter Attack(string entityId, DamageRecord damage, int tick) {
         var pWriter = Packet.Of(SendOp.Vibrate);
         pWriter.Write<Command>(Command.Attack);
         pWriter.WriteString(entityId);
@@ -22,7 +22,7 @@ public static class VibratePacket {
         pWriter.WriteByte(damage.MotionPoint);
         pWriter.WriteByte(damage.AttackPoint);
         pWriter.Write<Vector3S>(damage.Position);
-        pWriter.WriteInt(Environment.TickCount);
+        pWriter.WriteInt(tick);
         pWriter.WriteString();
         pWriter.WriteByte();
 

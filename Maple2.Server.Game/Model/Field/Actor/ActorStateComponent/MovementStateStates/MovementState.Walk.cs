@@ -36,12 +36,12 @@ public partial class MovementState {
     private NpcTask? walkTask = null;
     private bool isFlying;
 
-    private void UpdateMoveSpeed(float speed) {
-        Stat moveSpeed = actor.Stats.Values[BasicAttribute.MovementSpeed];
+    // MovementSpeed is a percent of the data's walk and run speed, and a slow or haste also scales an explicit speed (BT-62; the captures show walk x (1 + rate)).
+    public static float WalkSpeedRate(float speed, Stat moveSpeed) => (speed == 0 ? 1 : speed) * moveSpeed.Current / 100f;
 
+    private void UpdateMoveSpeed(float speed) {
         speedOverride = speed;
-        Speed = speed == 0 ? (float) moveSpeed.Current / 100 : speed;
-        Speed *= baseSpeed;
+        Speed = WalkSpeedRate(speed, actor.Stats.Values[BasicAttribute.MovementSpeed]) * baseSpeed;
     }
 
     private void StartWalking(string sequence, NpcTask task) {
@@ -147,8 +147,10 @@ public partial class MovementState {
 
     private void Land() {
         Velocity = Vector3.Zero;
-        // Puts the navmesh agent under the NPC again; if the spot is off the mesh it just stays where it landed.
-        if (actor.Navigation?.UpdatePosition(jumpEnd) != true) {
+        // Puts the navmesh agent under the NPC again, on the landing spot or back where it took off (BT-67). shortcut: with
+        // neither on the navmesh (no navmesh, or it took off outside it after an off-mesh teleport or a flight) it stays
+        // where it landed, until the teleport node gets its own navmesh rule.
+        if (actor.Navigation?.Land(jumpStart, jumpEnd) != true) {
             actor.Position = jumpEnd;
         }
     }

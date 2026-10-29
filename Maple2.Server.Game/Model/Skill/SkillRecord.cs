@@ -43,6 +43,9 @@ public class SkillRecord {
         Targets = [];
     }
 
+    /// <summary>The rotation a cast's SkillUse carries: the one the caster sent, else the caster's own facing (an NPC cast sends none).</summary>
+    public static Vector3 CastRotation(in Vector3 casterRotation, in Vector3 rotation) => rotation == default ? casterRotation : rotation;
+
     public bool TrySetMotionPoint(byte motionPoint) {
         if (Metadata.Data.Motions.Length <= motionPoint) {
             return false;

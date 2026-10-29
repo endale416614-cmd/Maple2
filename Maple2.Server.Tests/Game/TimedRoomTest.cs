@@ -49,6 +49,24 @@ public class TimedRoomTest {
     }
 
     [Test]
+    public void LeaveMapId() {
+        // Stack [2000062, 2000001] with solo instance 2000313 gives 2000001 and keeps Count == 2
+        var returnMaps = new LimitedStack<int>(3, 2000062);
+        returnMaps.Push(2000001);
+        Assert.That(RoomTimer.LeaveMapId(returnMaps, 2000313), Is.EqualTo(2000001));
+        Assert.That(returnMaps.Count, Is.EqualTo(2));
+
+        // Telescope room 52100021 pushed itself above 2000062 and gives 2000062
+        returnMaps = new LimitedStack<int>(3, 2000062);
+        returnMaps.Push(52100021);
+        Assert.That(RoomTimer.LeaveMapId(returnMaps, 52100021), Is.EqualTo(2000062));
+
+        // A lone room entry gives Lith Harbor, not the room itself
+        returnMaps = new LimitedStack<int>(3, 52100021);
+        Assert.That(RoomTimer.LeaveMapId(returnMaps, 52100021), Is.EqualTo(Constant.DefaultReturnMapId));
+    }
+
+    [Test]
     public void LoginMapId() {
         // Non-pocket realm should return the saved map ID
         Assert.That(RoomTimer.LoginMapId(2000001, false, new LimitedStack<int>(3, 2000062)), Is.EqualTo(2000001));

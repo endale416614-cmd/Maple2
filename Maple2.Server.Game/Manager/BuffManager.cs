@@ -41,7 +41,7 @@ public class BuffManager : IUpdatable {
         // Load buffs that are not broadcasted to the field
         if (Actor is FieldPlayer player) {
             player.Session.Config.Skill.UpdatePassiveBuffs(false);
-            player.Stats.Refresh();
+            player.Stats.Refresh(fill: true);
         }
     }
 
@@ -166,7 +166,7 @@ public class BuffManager : IUpdatable {
         ModifyBuffStackCount(buff);
 
         // refresh stats if needed
-        if (buff.Metadata.Status.Values.Any() || buff.Metadata.Status.Rates.Any() || buff.Metadata.Status.SpecialValues.Any() || buff.Metadata.Status.SpecialRates.Any()) {
+        if (buff.HasStats) {
             Actor.Stats.Refresh();
         }
 
@@ -428,9 +428,21 @@ public class BuffManager : IUpdatable {
     }
 
     public virtual void Update(long tickCount) {
+        UpdateEach(buff => buff.Update(tickCount));
+    }
+
+    // A buff with stats that turns on or off changes the totals (Centered Mind's tiers), so a pass that flips any asks for one rebuild.
+    private bool UpdateEach(Action<Buff> update) {
+        bool flipped = false;
         foreach (Buff buff in EnumerateBuffs()) {
-            buff.Update(tickCount);
+            bool enabled = buff.Enabled;
+            update(buff);
+            flipped |= buff.Enabled != enabled && buff.HasStats;
         }
+        if (flipped) {
+            Actor.Stats.Refresh();
+        }
+        return flipped;
     }
 
     public void LeaveField() {
@@ -550,11 +562,8 @@ public class BuffManager : IUpdatable {
                 Resistances[attribute] = Math.Max(0, Resistances[attribute] - value);
             }
 
-            if (buff.Metadata.Status.Values.Count > 0 || buff.Metadata.Status.Rates.Count > 0 ||
-                buff.Metadata.Status.SpecialValues.Count > 0 || buff.Metadata.Status.SpecialRates.Count > 0) {
-                if (Actor is FieldPlayer player) {
-                    refreshStats = true;
-                }
+            if (buff.HasStats) {
+                refreshStats = true;
             }
         }
 
@@ -599,13 +608,13 @@ public class BuffManager : IUpdatable {
     }
 
     public void OnDeath() {
-        foreach (Buff buff in EnumerateBuffs()) {
+        UpdateEach(buff => {
             if (!buff.Metadata.Property.KeepOnDeath) {
                 Remove(buff.Id, Actor.ObjectId);
-                continue;
+                return;
             }
             buff.UpdateEnabled();
-        }
+        });
     }
 
     private bool CheckImmunity(int newBuffId, BuffCategory category) {
@@ -624,9 +633,5 @@ public class BuffManager : IUpdatable {
             .ToList();
     }
 
-    public void UpdateEnabled() {
-        foreach (Buff buff in EnumerateBuffs()) {
-            buff.UpdateEnabled();
-        }
-    }
+    public bool UpdateEnabled() => UpdateEach(buff => buff.UpdateEnabled());
 }

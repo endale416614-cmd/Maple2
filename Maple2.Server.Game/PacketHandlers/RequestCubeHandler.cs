@@ -306,6 +306,7 @@ public class RequestCubeHandler : FieldPacketHandler {
             return;
         }
 
+        plot.Cubes.TryGetValue(position, out PlotCube? oldCube);
         if (!session.Housing.TryPlaceCube(cubeItem, plot, metadata, position, rotation, out PlotCube? placedCube, isReplace: true)) {
             return;
         }
@@ -323,6 +324,14 @@ public class RequestCubeHandler : FieldPacketHandler {
                 },
             });
         }
+        if (plot.IsPlanner) {
+            return;
+        }
+
+        if (oldCube != null) {
+            session.ConditionUpdate(ConditionType.uninstall_item, codeLong: oldCube.ItemId);
+        }
+        session.ConditionUpdate(ConditionType.install_item, codeLong: cubeItem.ItemId);
     }
 
     private void HandleLiftupObject(GameSession session, IByteReader packet) {

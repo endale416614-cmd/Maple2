@@ -47,6 +47,8 @@ public partial class Trigger {
 
     public class NpcHp(int spawnId, bool isRelative, int value, CompareType compareType) : ICondition {
         public string Name => "npc_hp";
+        public int Value => value;
+        public CompareType CompareType => compareType;
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
         public bool Evaluate(TriggerContext context) => context.NpcHp(spawnId, isRelative, value, compareType);

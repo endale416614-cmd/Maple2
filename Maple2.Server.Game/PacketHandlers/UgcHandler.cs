@@ -110,6 +110,11 @@ public class UgcHandler : FieldPacketHandler {
             return;
         }
 
+        // TODO: the free slot is checked at upload, not kept for the confirm, upgrade when a staged design reserves its slot.
+        if (ugcType is UgcType.Furniture && session.Item.Furnishing.FreeSlots() <= 0) {
+            return;
+        }
+
         if (useVoucher) {
             Item? voucher = session.Item.Inventory.Filter(item => item.Metadata.Property.Tag == ItemTag.FreeDesignCoupon).FirstOrDefault();
             if (voucher != null) {

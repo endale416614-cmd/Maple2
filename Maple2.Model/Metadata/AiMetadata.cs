@@ -48,8 +48,12 @@ public record AiMetadata(
     [JsonDerivedType(typeof(RemoveMeNode), typeDiscriminator: nameof(RemoveMeNode))]
     [JsonDerivedType(typeof(SuicideNode), typeDiscriminator: nameof(SuicideNode))]
     [JsonDerivedType(typeof(AiPresetDefinition), typeDiscriminator: nameof(AiPresetDefinition))]
+    [JsonDerivedType(typeof(OnlyDead), typeDiscriminator: nameof(OnlyDead))]
     public record Entry(
         string Name);
+
+    /// <summary>First in BattleEnd when the block has onlyDead="true": the steps run at death, not at a battle end. Not a step.</summary>
+    public record OnlyDead(string Name) : Entry(Name);
 
     public record Node(
         string Name,

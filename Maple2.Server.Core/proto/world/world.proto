@@ -226,6 +226,11 @@ message GuildRequest {
   message CheckIn {
     int64 guild_id = 1;
   }
+  message Donate {
+    int64 guild_id = 1;
+    int32 count = 2;
+    int32 meso = 3;
+  }
   message UpdateLeader {
     int64 guild_id = 1;
     int64 leader_id = 2;
@@ -261,6 +266,7 @@ message GuildRequest {
     UpdateNotice update_notice = 12;
     UpdateEmblem update_emblem = 13;
     UpdatePoster update_poster = 14;
+    Donate donate = 15;
   }
 }
 

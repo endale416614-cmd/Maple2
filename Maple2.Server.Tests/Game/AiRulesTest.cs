@@ -1,5 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using Maple2.Model.Enum;
+using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Model.ActorStateComponent;
 
 namespace Maple2.Server.Tests.Game;
@@ -31,6 +34,36 @@ public class AiRulesTest {
         Assert.That(AiState.InCombatWindow(10_500, 7000, 10000, 0), Is.False);
         Assert.That(AiState.InCombatWindow(5_000, 1000, 0, 0), Is.True); // no loop, no end
         Assert.That(AiState.InCombatWindow(-1, 0, 0, 0), Is.False);
+    }
+
+    [Test]
+    public void SetData_AiBattleTimeSetsTheCombatClock() {
+        var npc = (FieldNpc) RuntimeHelpers.GetUninitializedObject(typeof(FieldNpc));
+        GC.SuppressFinalize(npc);
+        var battle = new BattleState(npc) { KeepBattle = true }; // in battle
+        const long now = 10_000_000;
+
+        // Pamokan's phase 2 (AI_BullArmorRed.xml) opens with aiBattleTime 0: its whirlwind window is the first 80 s of every 140 s.
+        battle.SetBattleTime(now, 0);
+        Assert.That(battle.BattleStartTick, Is.EqualTo(now));
+        Assert.That(AiState.InCombatWindow(now + 79_999 - battle.BattleStartTick, 0, 140000, 80000), Is.True);
+        Assert.That(AiState.InCombatWindow(now + 80_000 - battle.BattleStartTick, 0, 140000, 80000), Is.False);
+
+        // Papulatus (AI_Papulatus_CN.xml) sets 62001: his first window (0-62 s of 124 s) is over and comes back with the next loop.
+        battle.SetBattleTime(now, 62001);
+        Assert.That(battle.BattleStartTick, Is.EqualTo(now - 62001));
+        Assert.That(AiState.InCombatWindow(now - battle.BattleStartTick, 0, 124000, 62000), Is.False);
+        Assert.That(AiState.InCombatWindow(now + 61_999 - battle.BattleStartTick, 0, 124000, 62000), Is.True);
+
+        // The Lost Vayar Guardian (AI_SandstoneGiant.xml) sets 36000 inside his 30-90 s window: 54 s of it are left.
+        battle.SetBattleTime(now, 36000);
+        Assert.That(AiState.InCombatWindow(now + 53_999 - battle.BattleStartTick, 30000, 224000, 90000), Is.True);
+        Assert.That(AiState.InCombatWindow(now + 54_000 - battle.BattleStartTick, 30000, 224000, 90000), Is.False);
+
+        // Out of battle (a battle-end tree) the clock stays 0 and starts with the next battle.
+        battle.KeepBattle = false;
+        battle.SetBattleTime(now, 0);
+        Assert.That(battle.BattleStartTick, Is.EqualTo(0));
     }
 
     [Test]
@@ -111,5 +144,29 @@ public class AiRulesTest {
         Assert.That(AiState.SelectWeights([70, 30], true, [0, 0], 2), Is.EqualTo(new[] { 70, 30 }), "all 0");
         Assert.That(AiState.SelectWeights([100], true, [], 0), Is.EqualTo(new[] { 100 }));
         Assert.That(AiState.SelectWeights([100], true, [50, 50], 3), Is.EqualTo(new[] { 100 }), "not one per skill");
+    }
+
+    [Test]
+    public void HoldsBattle_OnlyWhileTheKeepBattleTaskRuns() {
+        Assert.That(AiState.HoldsBattle(true, false), Is.True, "a scripted event holds without a task");
+        Assert.That(AiState.HoldsBattle(false, true), Is.True, "a running keep-battle task holds");
+        Assert.That(AiState.HoldsBattle(true, true), Is.True, "both hold");
+        Assert.That(AiState.HoldsBattle(false, false), Is.False, "no hold once the task ended, or without either");
+    }
+
+    [Test]
+    public void RunsBattleEnd_AtDeathUnlessItRanAtTheBattleEnd_AliveUnlessOnlyDead() {
+        Assert.That(AiState.RunsBattleEnd(true, false, false), Is.True, "death after no battle end");
+        Assert.That(AiState.RunsBattleEnd(true, false, true), Is.False, "death after a battle end that ran them");
+        Assert.That(AiState.RunsBattleEnd(true, true, false), Is.True, "death with onlyDead");
+        Assert.That(AiState.RunsBattleEnd(false, false, false), Is.True, "a battle end while alive");
+        Assert.That(AiState.RunsBattleEnd(false, true, false), Is.False, "a battle end while alive with onlyDead");
+    }
+
+    [Test]
+    public void PerformOperation_GreaterMeansMoreThanTheValue() {
+        // Seolnunyi's slaveCount form: more than 0 slaves
+        Assert.That(AiState.PerformOperation(AiConditionOp.Greater, 0, 1), Is.True);
+        Assert.That(AiState.PerformOperation(AiConditionOp.Greater, 0, 0), Is.False);
     }
 }

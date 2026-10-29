@@ -394,6 +394,7 @@ public class DungeonManager {
         }
         DungeonRecord record = GetRecord(Metadata.Id);
         List<int> rewardIds = [];
+        int shares = 1;
 
         if (Metadata.Reward.UnionRewardId > 0) {
             if (!session.TableMetadata.DungeonRoomTable.Entries.TryGetValue(Metadata.Reward.UnionRewardId, out DungeonRoomMetadata? unionMetadata)) {
@@ -414,7 +415,8 @@ public class DungeonManager {
             UpdateDungeonRecord(record, Metadata, clearTimeStamp);
 
         } else {
-            if (GetDailyClearCount(record) < Metadata.Reward.SubRewardCount && GetWeeklyClearCount(record) < Metadata.Reward.Count) {
+            shares = RewardShares(Metadata.GroupType == DungeonGroupType.colosseum, UserRecord.Round, GetDailyClearCount(record), GetWeeklyClearCount(record), Metadata.Reward.SubRewardCount, Metadata.Reward.Count);
+            if (shares > 0) {
                 UpdateUnionRecord(record, Metadata, clearTimeStamp);
                 UpdateDungeonRecord(record, Metadata, clearTimeStamp);
                 UserRecord.Flag |= DungeonBonusFlag.Clear;
@@ -440,8 +442,14 @@ public class DungeonManager {
             if (rewardMetadata.ExpRate > 0f) {
                 exp = (int) (rewardMetadata.Exp * rewardMetadata.ExpRate);
             }
+            int meso = (int) rewardMetadata.Meso;
+            if (Metadata.GroupType == DungeonGroupType.colosseum && rewardMetadata.Count > 0) {
+                // TODO: the room's exp and meso shared over its rounds, not each round's reward of dungeonrounddata.xml (round group 90003, reward contents 10000009-10000018), upgrade when that table is ingested.
+                exp = exp * shares / rewardMetadata.Count;
+                meso = meso * shares / rewardMetadata.Count;
+            }
             UserRecord.Rewards[DungeonRewardType.Exp] = exp;
-            UserRecord.Rewards[DungeonRewardType.Meso] = (int) rewardMetadata.Meso;
+            UserRecord.Rewards[DungeonRewardType.Meso] = meso;
             session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp]);
             session.Currency.Meso += UserRecord.Rewards[DungeonRewardType.Meso];
             session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
@@ -456,7 +464,7 @@ public class DungeonManager {
             }
 
             // Offline edition: no clear-reward gear that only other classes can wear.
-            items = items.Where(item => OfflineClassDrops.Allowed(item, [session.Player.Value.Character.Job.Code()])).ToList();
+            items = items.Where(item => OfflineClassDrops.Allowed(item, [session.Player])).ToList();
             foreach (Item item in items) {
                 UserRecord.RewardItems.Add(item);
                 if (!session.Item.Inventory.Add(item, true)) {
@@ -567,6 +575,17 @@ public class DungeonManager {
         }
 
         return record.UnionClears;
+    }
+
+    /// <summary>The room's rewards this week (the Colosseum counts rounds); read by the Rumble host's Continue and set_user_value_from_dungeon_reward_count.</summary>
+    public int WeeklyRewardCount(int dungeonId) => GetWeeklyClearCount(GetRecord(dungeonId));
+
+    /// <summary>How many shares of the room's reward a finished run earns: 0 when the day's count (SubRewardCount 0: none) or the week's count is used up,
+    /// else 1, or for the Colosseum the rounds cleared beyond those already rewarded this week.</summary>
+    public static int RewardShares(bool colosseum, int round, int daily, int weekly, int subRewardCount, int count) {
+        if (subRewardCount > 0 && daily >= subRewardCount) return 0;
+        if (colosseum) return Math.Max(0, Math.Min(round, count) - weekly);
+        return weekly < count ? 1 : 0;
     }
 
     private long GetCooldownTime(DungeonCooldownType type, int cooldownValue, DateTime clearTime) {

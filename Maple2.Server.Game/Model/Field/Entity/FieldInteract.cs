@@ -68,6 +68,8 @@ public class FieldInteract : FieldEntity<InteractObjectMetadata> {
     }
 
     public void SetState(InteractState state) {
+        // A set state wins over a pending timer: the start-up promotion made objects a script parks in 0 reactable (BT-71).
+        nextTick = 0;
         if (state == InteractState.Reactable) {
             Reacted = false;
         }

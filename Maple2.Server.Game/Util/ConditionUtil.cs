@@ -28,6 +28,7 @@ public static class ConditionUtil {
             case ConditionType.emotion:
             case ConditionType.trigger:
             case ConditionType.npc_race:
+            case ConditionType.vibrate_object:
                 if (code.Strings != null && code.Strings.Contains(stringValue)) {
                     return true;
                 }
@@ -93,7 +94,11 @@ public static class ConditionUtil {
             case ConditionType.dialogue:
             case ConditionType.talk_in:
             case ConditionType.npc:
+            case ConditionType.npc_assist_bonus:
+            case ConditionType.npc_lasthit:
             case ConditionType.skill:
+            case ConditionType.skill_damage_npc:
+            case ConditionType.skill_die:
             case ConditionType.job:
             case ConditionType.job_change:
             case ConditionType.item_move:
@@ -128,6 +133,7 @@ public static class ConditionUtil {
             case ConditionType.dungeon_reward:
             case ConditionType.dungeon_first_clear:
             case ConditionType.quest_revise_achieve:
+            case ConditionType.field_mission:
                 if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
                     return true;
                 }
@@ -197,8 +203,7 @@ public static class ConditionUtil {
                 break;
             case ConditionType.emotiontime:
             case ConditionType.emotion:
-                if (target.Range != null && target.Range.Value.Min >= session.Player.Value.Character.MapId &&
-                    target.Range.Value.Max <= session.Player.Value.Character.MapId) {
+                if (target.Range != null && InRange(target.Range.Value, session.Player.Value.Character.MapId)) {
                     return true;
                 }
 
@@ -210,8 +215,7 @@ public static class ConditionUtil {
             case ConditionType.fish:
             case ConditionType.fish_big:
             case ConditionType.fall_damage:
-                if (target.Range != null && target.Range.Value.Min >= longValue &&
-                    target.Range.Value.Max <= longValue) {
+                if (target.Range != null && InRange(target.Range.Value, (int) longValue)) {
                     return true;
                 }
 
@@ -261,8 +265,8 @@ public static class ConditionUtil {
             case ConditionType.revise_achieve_single_grade:
             case ConditionType.chat:
             case ConditionType.hero_achieve:
-                if (target.Range != null && target.Range.Value.Min >= longValue &&
-                    target.Range.Value.Max <= longValue) {
+            case ConditionType.hero_achieve_grade: // Dedicated Rumbler's target [1]: grade 1 of each source
+                if (target.Range != null && InRange(target.Range.Value, (int) longValue)) {
                     return true;
                 }
 
@@ -339,7 +343,6 @@ public static class ConditionUtil {
             case ConditionType.home_doctor:
             case ConditionType.resolve_panelty:
             case ConditionType.hit_tombstone:
-            case ConditionType.hero_achieve_grade:
             case ConditionType.taxiuse:
             case ConditionType.taxifee:
             case ConditionType.send_mail:

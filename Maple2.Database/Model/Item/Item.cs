@@ -100,7 +100,9 @@ internal class Item {
             Slot = Slot,
             Group = Group,
             CreationTime = CreationTime.ToEpochSeconds(),
-            ExpiryTime = ExpiryTime.ToEpochSeconds(),
+            // Offline, a data end date that has passed means no expiry, as in Item.GetExpiryTime; this repairs items older builds saved expired.
+            // TODO: also drops a Meret DurationInDays expiry on such an item, none today (shop_merat_custom 0, catalog 341 all DurationInDays 0); upgrade if a timed Meret entry for a past-dated item is added
+            ExpiryTime = metadata.Life.ExpirationTimestamp > 0 && metadata.Life.ExpirationTimestamp <= DateTimeOffset.UtcNow.ToUnixTimeSeconds() ? 0 : ExpiryTime.ToEpochSeconds(),
             TimeChangedOption = TimeChangedOption,
             RemainUses = RemainUses,
             IsLocked = IsLocked,

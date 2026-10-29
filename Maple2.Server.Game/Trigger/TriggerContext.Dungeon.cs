@@ -12,9 +12,9 @@ public partial class TriggerContext {
             return;
         }
 
-        if (uiType == "None") {
-            // Do not send dungeon clear UI
-            return;
+        // TODO: ui_type None (the Rumble's lost rounds after round 1) ends the run like a plain clear, banner included; its original meaning is unknown, upgrade when a capture shows it.
+        if (dungeonField.DungeonRoomRecord.State == Maple2.Model.Enum.DungeonState.Fail) {
+            return; // a failed run does not clear
         }
 
         dungeonField.ChangeState(Maple2.Model.Enum.DungeonState.Clear);
@@ -46,7 +46,11 @@ public partial class TriggerContext {
     }
 
     public void DungeonFail() {
-        ErrorLog("[DungeonFail]");
+        if (TraceEnabled) DebugLog("[DungeonFail]");
+        // The failed result window, no reward; a finished run ends once.
+        if (Field is DungeonFieldManager dungeonField && dungeonField.DungeonRoomRecord.State == Maple2.Model.Enum.DungeonState.None) {
+            dungeonField.ChangeState(Maple2.Model.Enum.DungeonState.Fail);
+        }
     }
 
     public void DungeonMissionComplete(string feature, int missionId) {
@@ -114,7 +118,9 @@ public partial class TriggerContext {
     }
 
     public void SetUserValueFromDungeonRewardCount(string key, int dungeonRewardId) {
-        ErrorLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
+        if (TraceEnabled) DebugLog("[SetUserValueFromDungeonRewardCount] key:{Key}, dungeonRewardId:{RewardId}", key, dungeonRewardId);
+        // The solo player's rewards this week; the Colosseum counts rounds, so ContinuePlay starts the round after them.
+        Field.UserValues[key] = Field.Players.Values.FirstOrDefault()?.Session.Dungeon.WeeklyRewardCount(dungeonRewardId) ?? 0;
     }
 
     public void StartTutorial() {

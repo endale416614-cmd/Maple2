@@ -120,6 +120,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         }
         damage.Targets.TryAdd(ObjectId, targetRecord);
 
+        // "Hit by" trophies key on the monster's or map's skill; a grab (Fly Griffin Airlines) deals no damage, so this comes before the count check.
+        if (this is FieldPlayer hitPlayer && caster is not FieldPlayer) {
+            hitPlayer.Session.ConditionUpdate(ConditionType.skill_damage_npc, codeLong: damage.SkillId);
+        }
+
         if (attack.Damage.Count <= 0) {
             return;
         }
@@ -167,12 +172,17 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 DamageDealers.TryAdd(caster.ObjectId, record);
             }
             record.AddDamage(DamageType.Normal, positiveDamage);
+            long healthBefore = Stats.Values[BasicAttribute.Health].Current;
             Stats.Values[BasicAttribute.Health].Add(damageAmount);
             if (this is FieldNpc floored) {
                 floored.ClampToHpFloor(); // a boss HP hold: the bar stops at the floor instead of showing the hit go through
             }
             Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
             OnDamageReceived(caster, positiveDamage);
+            // "Killed by" trophies: once, on the hit that takes a player to 0.
+            if (this is FieldPlayer killedPlayer && caster is not FieldPlayer && healthBefore > 0 && Stats.Values[BasicAttribute.Health].Current <= 0) {
+                killedPlayer.Session.ConditionUpdate(ConditionType.skill_die, codeLong: damage.SkillId);
+            }
         }
 
         foreach ((DamageType damageType, long amount) in targetRecord.Damage) {
@@ -409,7 +419,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
 
         var record = new SkillRecord(metadata, uid, this) {
             Position = position == default ? Position : position,
-            Rotation = Rotation == default ? Rotation : rotation,
+            Rotation = SkillRecord.CastRotation(Rotation, rotation),
             Rotate2Z = rotateZ,
             ServerTick = castTick,
         };

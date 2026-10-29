@@ -4,11 +4,14 @@ using Maple2.Database.Context;
 using Maple2.Model.Common;
 using Maple2.Model.Metadata;
 using Maple2.Tools.Collision;
+using Serilog;
 
 namespace Maple2.Database.Storage;
 
 public class MapEntityStorage(MetadataContext context) : MetadataStorage<string, MapEntityMetadata>(context, CACHE_SIZE) {
     private const int CACHE_SIZE = 1500; // ~1.1k total Maps
+
+    private static readonly ILogger Logger = Log.Logger.ForContext(typeof(MapEntityStorage));
 
     private const float MAP_LIMIT = sbyte.MaxValue * 150f;
     private static readonly Prism LargeBoundingBox = new(new BoundingBox(
@@ -80,23 +83,31 @@ public class MapEntityStorage(MetadataContext context) : MetadataStorage<string,
                         break;
                     case SpawnPointNPC npcSpawn:
                         if (npcSpawn is EventSpawnPointNPC eventNpcSpawn) {
-                            eventNpcSpawns.Add(eventNpcSpawn.SpawnPointId, eventNpcSpawn);
+                            if (!eventNpcSpawns.TryAdd(eventNpcSpawn.SpawnPointId, eventNpcSpawn)) {
+                                Logger.Warning("Repeated event npc spawn point {Id} in xblock:{XBlock}, keeping the first", eventNpcSpawn.SpawnPointId, xblock);
+                            }
                         } else {
                             npcSpawns.Add(npcSpawn);
                         }
                         break;
                     case EventSpawnPointItem eventItemSpawn:
-                        eventItemSpawns.Add(eventItemSpawn.SpawnPointId, eventItemSpawn);
+                        if (!eventItemSpawns.TryAdd(eventItemSpawn.SpawnPointId, eventItemSpawn)) {
+                            Logger.Warning("Repeated event item spawn point {Id} in xblock:{XBlock}, keeping the first", eventItemSpawn.SpawnPointId, xblock);
+                        }
                         break;
                     case TaxiStation taxiStation:
                         Debug.Assert(taxi == null, $"Multiple taxi stations found in xblock:{xblock}");
                         taxi = taxiStation;
                         break;
                     case TriggerModel triggerModel:
-                        triggerModels.Add(triggerModel.Id, triggerModel);
+                        if (!triggerModels.TryAdd(triggerModel.Id, triggerModel)) {
+                            Logger.Warning("Repeated trigger model {Id} in xblock:{XBlock}, keeping the first", triggerModel.Id, xblock);
+                        }
                         break;
                     case Ms2InteractActor or Ms2InteractDisplay or Ms2InteractMesh or Ms2SimpleUiObject or Ms2Telescope:
-                        interacts.Add(entity.Guid, (InteractObject) entity.Block);
+                        if (!interacts.TryAdd(entity.Guid, (InteractObject) entity.Block)) {
+                            Logger.Warning("Repeated interact object {Id} in xblock:{XBlock}, keeping the first", entity.Guid, xblock);
+                        }
                         break;
                     case Ms2TriggerActor or Ms2TriggerAgent or Ms2TriggerBox or Ms2TriggerCamera or Ms2TriggerCube or Ms2TriggerEffect or
                         Ms2TriggerLadder or Ms2TriggerMesh or Ms2TriggerRope or Ms2TriggerSkill or Ms2TriggerSound:

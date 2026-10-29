@@ -312,36 +312,41 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
         });
     }
 
-    private static void GenerateSpawnLocations(Dictionary<Vector3S, List<FieldEntity>> gridAlignedEntities, Vector3S minIndex, Vector3S maxIndex, List<FieldEntity> unalignedEntities) {
+    // a mob can stand on a cube collider, or on a mesh or vibrate cube that fills its cell (not on fluid)
+    private static bool IsGround(FieldEntity entity, Vector3S coord) {
+        if (entity is FieldBoxColliderEntity { IsWhiteBox: false }) {
+            return true;
+        }
+
+        bool isCube = entity is (FieldMeshColliderEntity and not FieldFluidEntity) or FieldVibrateEntity;
+
+        return isCube && IsCellBounds(BLOCK_SIZE * coord.Vector3, entity.Bounds);
+    }
+
+    private static void GenerateSpawnLocations(Dictionary<Vector3S, List<FieldEntity>> gridAlignedEntities, Vector3S minIndex, Vector3S maxIndex, List<FieldEntity> unalignedEntities, IReadOnlySet<FieldVibrateEntity> cubeVibrates) {
         Dictionary<Vector3S, (bool isOccupied, bool isGround)> occupancyMap = new();
         List<(Vector3S index, FieldSpawnTile tile)> spawnTiles = [];
 
         foreach ((Vector3S coord, List<FieldEntity> entityList) in gridAlignedEntities) {
-            if (!occupancyMap.TryGetValue(coord, out (bool isOccupied, bool isGround) occupancy)) {
-                occupancy = (false, false);
-            }
-
             foreach (FieldEntity entity in entityList) {
-                if (entity is FieldBoxColliderEntity boxEntity && !boxEntity.IsWhiteBox) {
-                    occupancyMap[coord] = (true, true);
-
+                if (entity is FieldVibrateEntity vibrate && !cubeVibrates.Contains(vibrate)) {
                     continue;
                 }
 
-                if (entity is FieldVibrateEntity) {
-                    continue;
-                }
+                occupancyMap.TryGetValue(coord, out (bool isOccupied, bool isGround) occupancy);
 
-                occupancyMap[coord] = (true, occupancy.isGround);
-
+                occupancyMap[coord] = (true, occupancy.isGround || IsGround(entity, coord));
             }
         }
 
         foreach (FieldEntity entity in unalignedEntities) {
-            Vector3 minPosition = (1 / BLOCK_SIZE) * entity.Bounds.Min;
-            Vector3 maxPosition = (1 / BLOCK_SIZE) * entity.Bounds.Max;
-            Vector3S minCubeIndex = PointToCell(minPosition);
-            Vector3S maxCubeIndex = PointToCell(maxPosition);
+            if (entity is FieldVibrateEntity) {
+                continue;
+            }
+
+            Vector3S minCubeIndex = PointToCell(entity.Bounds.Min);
+            // a max on a cell edge ends in that cell, it does not reach the next one
+            Vector3S maxCubeIndex = PointToCell(Vector3.Max(entity.Bounds.Min, entity.Bounds.Max - new Vector3(0.1f)));
 
             for (short x = minCubeIndex.X; x <= maxCubeIndex.X; x++) {
                 for (short y = minCubeIndex.Y; y <= maxCubeIndex.Y; y++) {
@@ -577,7 +582,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
         }
     }
 
-    public void AddEntities(Dictionary<Vector3S, List<FieldEntity>> gridAlignedEntities, Vector3S minIndex, Vector3S maxIndex, List<FieldEntity> unalignedEntities, int vibrateCount) {
+    public void AddEntities(Dictionary<Vector3S, List<FieldEntity>> gridAlignedEntities, Vector3S minIndex, Vector3S maxIndex, List<FieldEntity> unalignedEntities, int vibrateCount, IReadOnlySet<FieldVibrateEntity> cubeVibrates) {
         if (minIndex.X == short.MaxValue) {
             minIndex = new Vector3S(0, 0, 0);
             maxIndex = new Vector3S(0, 0, 0);
@@ -592,10 +597,12 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                 Bounds: new BoundingBox3(),
                 BreakDefense: 0,
                 BreakTick: 0,
+                MaterialTag: string.Empty,
+                ResetTimer: 0,
                 VibrateIndex: i));
         }
 
-        GenerateSpawnLocations(gridAlignedEntities, minIndex, maxIndex, unalignedEntities);
+        GenerateSpawnLocations(gridAlignedEntities, minIndex, maxIndex, unalignedEntities, cubeVibrates);
         TrimGridSize(gridAlignedEntities, ref minIndex, ref maxIndex, unalignedEntities);
 
         GridSize = maxIndex - minIndex + new Vector3S(1, 1, 1);
@@ -703,7 +710,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
         return new Vector3S((short) x, (short) y, (short) z);
     }
 
-    private bool IsGridAligned(Vector3 position) {
+    private static bool IsGridAligned(Vector3 position) {
         int x = (int) Math.Round(position.X) / Constant.BlockSize;
         int y = (int) Math.Round(position.Y) / Constant.BlockSize;
         int z = (int) Math.Round(position.Z) / Constant.BlockSize;
@@ -711,7 +718,7 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
         return position.IsNearlyEqual(BLOCK_SIZE * new Vector3(x, y, z), 0.1f);
     }
 
-    private bool IsCellBounds(Vector3 position, BoundingBox3 bounds) {
+    private static bool IsCellBounds(Vector3 position, BoundingBox3 bounds) {
         if (!IsGridAligned(position)) {
             return false;
         }
@@ -783,6 +790,8 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                 writer.Write(vibrateEntity.VibrateIndex);
                 writer.WriteInt(vibrateEntity.BreakDefense);
                 writer.WriteInt(vibrateEntity.BreakTick);
+                writer.WriteString(vibrateEntity.MaterialTag);
+                writer.WriteInt(vibrateEntity.ResetTimer);
                 break;
             case FieldSpawnTile spawnTile:
                 break;
@@ -839,6 +848,8 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                 Bounds: new BoundingBox3(),
                 BreakDefense: 0,
                 BreakTick: 0,
+                MaterialTag: string.Empty,
+                ResetTimer: 0,
                 VibrateIndex: i));
         }
 
@@ -934,7 +945,9 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                     Bounds: bounds,
                     VibrateIndex: reader.ReadInt(),
                     BreakDefense: reader.ReadInt(),
-                    BreakTick: reader.ReadInt());
+                    BreakTick: reader.ReadInt(),
+                    MaterialTag: reader.ReadString(),
+                    ResetTimer: reader.ReadInt());
             case FieldEntityType.SpawnTile:
                 return new FieldSpawnTile(
                     Id: id,

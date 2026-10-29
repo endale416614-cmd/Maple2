@@ -9,10 +9,14 @@ using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
+using System.Numerics;
+using static Maple2.Server.Game.Model.ActorStateComponent.TaskState;
 
 namespace Maple2.Server.Game.Model;
 
 public sealed class FieldPet : FieldNpc {
+    public enum FollowAction { None, Trace, Warp }
+
     private readonly FieldPlayer? owner;
     public readonly Item Pet;
     public readonly PetMetadata Metadata;
@@ -25,6 +29,8 @@ public sealed class FieldPet : FieldNpc {
     public short TamingRank; // (0-70=green, 70-95=yellow, 95-100=red)
     public int TamingPoint;
     private long tamingTick;
+    private long followTick;
+    private NpcTask? followTask;
 
     #region Autofac Autowired
     // ReSharper disable MemberCanBePrivate.Global
@@ -41,6 +47,8 @@ public sealed class FieldPet : FieldNpc {
         // Wild pets need a TamingRank.
         if (owner == null) {
             TamingRank = (short) (Random.Shared.Next(100) + 1);
+        } else {
+            BattleState.CanBattle = false; // an owned pet must never target its owner; the taming AI then never runs for it
         }
 
         // Use Badge for SkinId if equipped.
@@ -51,7 +59,35 @@ public sealed class FieldPet : FieldNpc {
         }
     }
 
+    /// <summary>What an owned pet does about its owner's distance: nothing, walk to the owner, or warp to the owner (a Warp of 0 never warps).</summary>
+    public static FollowAction FollowStep(Vector3 pet, Vector3 owner, PetMetadataDistance distance) {
+        float squared = Vector3.DistanceSquared(pet, owner);
+        if (distance.Warp > 0 && squared > distance.Warp * distance.Warp) {
+            return FollowAction.Warp;
+        }
+
+        return squared > distance.Trace * distance.Trace ? FollowAction.Trace : FollowAction.None;
+    }
+
     public override void Update(long tickCount) {
+        if (owner != null && !IsDead && followTick < tickCount) {
+            followTick = tickCount + 500;
+            Origin = owner.Position; // the idle wander (a patrol point around Origin) stays around the owner
+
+            switch (FollowStep(Position, owner.Position, Metadata.Distance)) {
+                case FollowAction.Warp:
+                    followTask?.Cancel();
+                    if (Navigation?.UpdatePosition(owner.Position) != true) {
+                        Position = owner.Position;
+                    }
+                    break;
+                case FollowAction.Trace:
+                    // The walk goes to the owner's position now; the next check starts a new one while the owner moves.
+                    followTask = MovementState.TryMoveTargetDistance(owner, Metadata.Distance.Trace * 0.5f, true);
+                    break;
+            }
+        }
+
         base.Update(tickCount);
 
         if (TamingPoint > 0 && tamingTick < tickCount) {
@@ -62,8 +98,8 @@ public sealed class FieldPet : FieldNpc {
     }
 
     public override void ApplyDamage(IActor caster, DamageRecord damage, SkillMetadataAttack attack) {
-        // A captured pet stays in the field until removed; it must not be captured twice.
-        if (attack.Pet == null || IsDead) {
+        // A captured pet stays in the field until removed; it must not be captured twice. An owned pet is not wild.
+        if (attack.Pet == null || IsDead || owner != null) {
             return;
         }
 

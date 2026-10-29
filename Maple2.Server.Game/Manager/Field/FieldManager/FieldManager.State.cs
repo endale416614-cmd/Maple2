@@ -40,6 +40,7 @@ public partial class FieldManager {
 
     // Entities
     private readonly ConcurrentDictionary<string, FieldBreakable> fieldBreakables = new();
+    private readonly BrokenVibrates brokenVibrates = new();
     private readonly ConcurrentDictionary<string, FieldLiftable> fieldLiftables = new();
     private readonly ConcurrentDictionary<string, FieldInteract> fieldInteracts = new();
     private readonly ConcurrentDictionary<string, FieldFunctionInteract> fieldFunctionInteracts = new();
@@ -328,10 +329,10 @@ public partial class FieldManager {
     }
 
     public void DropItem(Vector3 position, Vector3 rotation, Item item, IFieldEntity? owner = null, long characterId = 0, bool fixedPosition = false) {
-        // Offline edition: gear that only other classes can wear is not dropped (items players drop themselves are kept).
+        // Offline edition: gear that only other classes can wear is not dropped unless a quest of the receiver needs it
+        // (items players drop themselves are kept).
         if (owner is not FieldPlayer && !OfflineClassDrops.Allowed(item, Players.Values
-                .Where(player => characterId == 0 || player.Value.Character.Id == characterId)
-                .Select(player => player.Value.Character.Job.Code()))) {
+                .Where(player => characterId == 0 || player.Value.Character.Id == characterId))) {
             return;
         }
         FieldItem fieldItem = SpawnItem(position, rotation, item, owner, characterId, fixedPosition);
@@ -951,11 +952,30 @@ public partial class FieldManager {
 
         Broadcast(FunctionCubePacket.AddFunctionCube(cube.Interact));
 
+        // HS-02: an assistant's cube spawns her where it stands (the client's spawner; the ingest drops it).
+        if (NpcSummons.AssistantNpcId(cube) is int npcId) {
+            if (NpcMetadata.TryGet(npcId, out NpcMetadata? npc)) {
+                fieldInteract.Assistant = SpawnNpc(npc, fieldInteract.Position, fieldInteract.Rotation);
+                if (fieldInteract.Assistant is not null) {
+                    Broadcast(FieldPacket.AddNpc(fieldInteract.Assistant));
+                    Broadcast(ProxyObjectPacket.AddNpc(fieldInteract.Assistant));
+                }
+            } else {
+                logger.Warning("Assistant NPC {NpcId} of function cube {CubeId} is not in the data", npcId, cube.Interact.Metadata.Id);
+            }
+        }
+
         return fieldInteract;
     }
 
     public bool RemoveFieldFunctionInteract(string entityId) {
-        return fieldFunctionInteracts.TryRemove(entityId, out FieldFunctionInteract? _);
+        if (!fieldFunctionInteracts.TryRemove(entityId, out FieldFunctionInteract? fieldInteract)) {
+            return false;
+        }
+        if (fieldInteract.Assistant is not null) {
+            RemoveNpc(fieldInteract.Assistant.ObjectId);
+        }
+        return true;
     }
 
     public FieldFunctionInteract? TryGetFieldFunctionInteract(string entityId) {
@@ -1096,6 +1116,9 @@ public partial class FieldManager {
         }
         added.Session.Send(LiftablePacket.Update(fieldLiftables.Values.Where(liftable => liftable.FinishTick == 0).ToList()));
         added.Session.Send(BreakablePacket.Update(fieldBreakables.Values.Where(breakable => breakable.InFieldList).ToList()));
+        foreach ((string id, DamageRecord record, int tick) in brokenVibrates.InForceAt(Environment.TickCount64)) {
+            added.Session.Send(VibratePacket.Attack(id, record, tick));
+        }
         added.Session.Send(InteractObjectPacket.Load(fieldInteracts.Values));
         foreach (FieldInteract fieldInteract in fieldAdBalloons.Values) {
             added.Session.Send(InteractObjectPacket.Add(fieldInteract.Object));

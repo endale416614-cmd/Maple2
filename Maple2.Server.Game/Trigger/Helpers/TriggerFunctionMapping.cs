@@ -226,7 +226,7 @@ public static class TriggerFunctionMapping {
         { "check_npc_additional_effect", attrs => new Trigger.CheckNpcAdditionalEffect(ParseInt(attrs?["spawn_id"]?.Value), ParseInt(attrs?["additional_effect_id"]?.Value), ParseInt(attrs?["level"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "npc_damage", attrs => new Trigger.NpcDamage(ParseInt(attrs?["spawn_id"]?.Value), ParseFloat(attrs?["damage_rate"]?.Value ?? attrs?["damageRate"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
         { "npc_extra_data", attrs => new Trigger.NpcExtraData(ParseInt(attrs?["spawn_point_id"]?.Value), attrs?["extra_data_key"]?.Value ?? string.Empty, ParseInt(attrs?["extra_data_value"]?.Value), ParseOperatorType(attrs?["operator"]?.Value)) },
-        { "npc_hp", attrs => new Trigger.NpcHp(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_relative"]?.Value), ParseInt(attrs?["value"]?.Value), ParseCompareType(attrs?["compare_type"]?.Value)) },
+        { "npc_hp", attrs => new Trigger.NpcHp(ParseInt(attrs?["spawn_id"]?.Value), ParseBool(attrs?["is_relative"]?.Value), ParseInt(attrs?["value"]?.Value), ParseCompareType(attrs?["compare"]?.Value ?? attrs?["compare_type"]?.Value)) },
         { "check_same_user_tag", attrs => new Trigger.CheckSameUserTag(ParseInt(attrs?["box_id"]?.Value), ParseBool(attrs?["negate"]?.Value)) },
         { "check_user", attrs => new Trigger.CheckUser(ParseBool(attrs?["negate"]?.Value)) },
         { "user_count", attrs => new Trigger.UserCount(ParseInt(attrs?["check_count"]?.Value)) },
@@ -311,7 +311,8 @@ public static class TriggerFunctionMapping {
 
     private static Align ParseAlign(string? align) {
         if (string.IsNullOrEmpty(align)) return Align.center;
-        return (Align) Enum.Parse(typeof(Align), align, true);
+        // The original scripts hold typos such as "Reft"; one unknown value must not drop the whole script.
+        return Enum.TryParse(align, true, out Align result) ? result : Align.center;
     }
 
     private static OperatorType ParseOperatorType(string? operatorType) {
@@ -326,7 +327,7 @@ public static class TriggerFunctionMapping {
 
     public static int[] ParseIntArray(string? value) {
         if (string.IsNullOrEmpty(value)) return [];
-        if (value is "all") return [-1]; // Special case for "all" to indicate all IDs.
+        if (string.Equals(value, "all", StringComparison.OrdinalIgnoreCase)) return [-1]; // Special case for "all" to indicate all IDs.
         // Handles ranges and comma-separated values and mixed usage.
         if (value.Contains(',')) {
             var result = new List<int>();

@@ -101,8 +101,9 @@ public class AnimationManager {
     /// <param name="speed">The speed at which to play the animation</param>
     /// <param name="type">The type of animation (Move, Skill, or Misc)</param>
     /// <param name="skill">Optional skill metadata associated with this animation</param>
+    /// <param name="loopCount">Number of extra passes through the loop section of the sequence</param>
     /// <returns>True if the sequence was found and started (or queued), false otherwise</returns>
-    public bool TryPlaySequence(string name, float speed, AnimationType type, SkillMetadata? skill = null) {
+    public bool TryPlaySequence(string name, float speed, AnimationType type, SkillMetadata? skill = null, int loopCount = 0) {
         // Can't play animations without metadata
         if (RigMetadata is null || !RigMetadata.Sequences.TryGetValue(name, out AnimationSequenceMetadata? sequence)) {
             DebugPrint($"Attempt to play nonexistent sequence '{name}' at x{speed} speed, previous: '{PlayingSequence?.Name ?? "none"}' x{SequenceSpeed}");
@@ -112,12 +113,12 @@ public class AnimationManager {
 
         // If we're currently processing a keyframe event, queue this sequence for later
         if (isHandlingKeyframe) {
-            queued = new AnimationRecord(sequence, speed, type, skill);
+            queued = new AnimationRecord(sequence, speed, type, skill, loopCount);
             return true;
         }
 
         // Play the sequence immediately
-        PlaySequence(sequence, speed, type, skill);
+        PlaySequence(sequence, speed, type, skill, loopCount);
         return true;
     }
 
@@ -129,10 +130,11 @@ public class AnimationManager {
     /// <param name="type">The type of animation (Move, Skill, or Misc)</param>
     /// <param name="sequence">When this method returns, contains the animation sequence metadata if found; otherwise, null</param>
     /// <param name="skill">Optional skill metadata associated with this animation</param>
+    /// <param name="loopCount">Number of extra passes through the loop section of the sequence</param>
     /// <returns>True if the sequence was found and started (or queued), false otherwise</returns>
-    public bool TryPlaySequence(string name, float speed, AnimationType type, out AnimationSequenceMetadata? sequence, SkillMetadata? skill = null) {
+    public bool TryPlaySequence(string name, float speed, AnimationType type, out AnimationSequenceMetadata? sequence, SkillMetadata? skill = null, int loopCount = 0) {
         // Try to play the sequence
-        if (!TryPlaySequence(name, speed, type, skill)) {
+        if (!TryPlaySequence(name, speed, type, skill, loopCount)) {
             sequence = null;
             return false;
         }
@@ -158,7 +160,8 @@ public class AnimationManager {
     /// <param name="speed">The speed at which to play the animation</param>
     /// <param name="type">The type of animation (Move, Skill, or Misc)</param>
     /// <param name="skill">Optional skill metadata associated with this animation</param>
-    private void PlaySequence(AnimationSequenceMetadata sequenceMetadata, float speed, AnimationType type, SkillMetadata? skill = null) {
+    /// <param name="loopCount">Number of extra passes through the loop section of the sequence</param>
+    private void PlaySequence(AnimationSequenceMetadata sequenceMetadata, float speed, AnimationType type, SkillMetadata? skill = null, int loopCount = 0) {
         // For NPCs, set SendControl flag when changing sequences
         if (Current?.Sequence != sequenceMetadata && Actor is FieldNpc npc) {
             npc.SendControl = true;
@@ -171,7 +174,7 @@ public class AnimationManager {
         ResetSequence();
 
         // Set the new sequence properties
-        Current = new AnimationRecord(sequenceMetadata, speed, type, skill);
+        Current = new AnimationRecord(sequenceMetadata, speed, type, skill, loopCount);
 
         // Start tracking from current tick
         lastTick = Actor.Field.FieldTick;
@@ -236,10 +239,7 @@ public class AnimationManager {
         // Handle sequence looping
         if (Current != null && Current.IsLooping && Current.Loop.end != 0 && sequenceTime > Current.Loop.end) {
             if (!IsPlayerAnimation || tickCount <= sequenceLoopEndTick + Constant.ClientGraceTimeTick) {
-                if (Current.LoopOnlyOnce) {
-                    Current.IsLooping = false;
-                    Current.LoopOnlyOnce = false;
-                }
+                Current.LoopPassed();
 
                 sequenceTime -= Current.Loop.end - Current.Loop.start;
                 lastSequenceTime = sequenceTime - Math.Max(delta, sequenceTime - Current.Loop.end + 0.001f);
@@ -269,7 +269,7 @@ public class AnimationManager {
 
         // Process queued actions
         if (queued != null) {
-            PlaySequence(queued.Sequence!, queued.Speed, queued.Type);
+            PlaySequence(queued.Sequence!, queued.Speed, queued.Type, loopCount: queued.LoopCount);
             queued = null;
         }
     }

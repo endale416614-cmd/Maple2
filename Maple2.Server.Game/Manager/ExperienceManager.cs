@@ -213,7 +213,7 @@ public sealed class ExperienceManager {
             session.ConditionUpdate(ConditionType.level_up, codeLong: (int) session.Player.Value.Character.Job.Code(), targetLong: Level);
             session.ConditionUpdate(ConditionType.level, targetLong: Level);
             session.Config.UpdateDeathPenalty(0);
-            session.Stats.Refresh();
+            session.Stats.Refresh(fill: true);
 
             session.PlayerInfo.SendUpdate(new PlayerUpdateRequest {
                 AccountId = session.AccountId,

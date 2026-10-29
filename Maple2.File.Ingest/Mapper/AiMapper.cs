@@ -1,5 +1,7 @@
-﻿using M2dXmlGenerator;
+﻿using System.Xml;
+using M2dXmlGenerator;
 using Maple2.File.IO;
+using Maple2.File.IO.Crypto.Common;
 using Maple2.File.Parser;
 using Maple2.File.Parser.Xml.AI;
 using Maple2.Model.Enum;
@@ -8,63 +10,88 @@ using Maple2.Model.Metadata;
 namespace Maple2.File.Ingest.Mapper;
 
 public class AiMapper : TypeMapper<AiMetadata> {
+    private const string AiFolder = "AI/";
+
+    private readonly M2dReader reader;
     private readonly AiParser parser;
 
     public AiMapper(M2dReader xmlReader) {
+        reader = xmlReader;
         parser = new AiParser(xmlReader);
     }
 
     protected override IEnumerable<AiMetadata> Map() {
+        // The parser drops the battleEnd block's attributes, so onlyDead is read from the raw XML.
+        var onlyDead = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (PackFileEntry file in reader.Files.Where(entry => entry.Name.StartsWith(AiFolder, StringComparison.OrdinalIgnoreCase)
+                                                                   && entry.Name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))) {
+            if (IsOnlyDead(reader.GetXmlDocument(file))) {
+                onlyDead.Add(file.Name[AiFolder.Length..]);
+            }
+        }
+
         foreach ((string name, NpcAi data) in parser.Parse()) {
-            List<AiMetadata.Condition> reserved = new List<AiMetadata.Condition>();
-            List<AiMetadata.Entry> battle = new List<AiMetadata.Entry>();
-            List<AiMetadata.Entry> battleEnd = new List<AiMetadata.Entry>();
-            List<AiMetadata.AiPresetDefinition> aiPresets = new List<AiMetadata.AiPresetDefinition>();
-
-            foreach (Entry entry in data.Reserved) {
-                if (entry is not ConditionEntry node) {
-                    continue;
-                }
-
-                if (node is FeatureCondition feature && !FeatureLocaleFilter.FeatureEnabled(feature.feature)) {
-                    continue;
-                }
-
-                reserved.Add(MapCondition(node));
-            }
-
-            foreach (Entry entry in data.Battle) {
-                MapEntry(battle, entry);
-            }
-
-            foreach (Entry entry in data.BattleEnd) {
-                MapEntry(battle, entry);
-            }
-
-            foreach (Entry node in data.AiPresets) {
-                var childNodes = new List<AiMetadata.Entry>();
-
-                foreach (Entry entry in node.Entries) {
-                    MapEntry(childNodes, entry);
-                }
-
-                aiPresets.Add(new AiMetadata.AiPresetDefinition(
-                    Name: node.name,
-                    Entries: childNodes.ToArray()
-                ));
-            }
-
-            yield return new AiMetadata(
-                Name: name,
-                Reserved: reserved.ToArray(),
-                Battle: battle.ToArray(),
-                BattleEnd: battleEnd.ToArray(),
-                AiPresets: aiPresets.ToArray()
-            );
+            yield return MapAi(name, data, onlyDead.Contains(name));
         }
     }
 
-    AiMetadata.Condition MapCondition(ConditionEntry node) {
+    public static bool IsOnlyDead(XmlDocument document) {
+        return document.SelectSingleNode("//npcAi/battleEnd")?.Attributes?["onlyDead"]?.Value == "true";
+    }
+
+    public static AiMetadata MapAi(string name, NpcAi data, bool onlyDead = false) {
+        List<AiMetadata.Condition> reserved = new List<AiMetadata.Condition>();
+        List<AiMetadata.Entry> battle = new List<AiMetadata.Entry>();
+        List<AiMetadata.Entry> battleEnd = new List<AiMetadata.Entry>();
+        List<AiMetadata.AiPresetDefinition> aiPresets = new List<AiMetadata.AiPresetDefinition>();
+
+        foreach (Entry entry in data.Reserved) {
+            if (entry is not ConditionEntry node) {
+                continue;
+            }
+
+            if (node is FeatureCondition feature && !FeatureLocaleFilter.FeatureEnabled(feature.feature)) {
+                continue;
+            }
+
+            reserved.Add(MapCondition(node));
+        }
+
+        foreach (Entry entry in data.Battle) {
+            MapEntry(battle, entry);
+        }
+
+        foreach (Entry entry in data.BattleEnd) {
+            MapEntry(battleEnd, entry);
+        }
+
+        if (onlyDead && battleEnd.Count > 0) {
+            battleEnd.Insert(0, new AiMetadata.OnlyDead("onlyDead"));
+        }
+
+        foreach (Entry node in data.AiPresets) {
+            var childNodes = new List<AiMetadata.Entry>();
+
+            foreach (Entry entry in node.Entries) {
+                MapEntry(childNodes, entry);
+            }
+
+            aiPresets.Add(new AiMetadata.AiPresetDefinition(
+                Name: node.name,
+                Entries: childNodes.ToArray()
+            ));
+        }
+
+        return new AiMetadata(
+            Name: name,
+            Reserved: reserved.ToArray(),
+            Battle: battle.ToArray(),
+            BattleEnd: battleEnd.ToArray(),
+            AiPresets: aiPresets.ToArray()
+        );
+    }
+
+    static AiMetadata.Condition MapCondition(ConditionEntry node) {
         var childNodes = new List<AiMetadata.Entry>();
 
         foreach (Entry entry in node.Entries) {
@@ -110,6 +137,15 @@ public class AiMapper : TypeMapper<AiMetadata> {
                     IsKeepBattle: extraData.isKeepBattle
                 );
             case SlaveCountCondition SlaveCount: // these are different enough to warrant having their own nodes. blame nexon
+                if (node.name == "slaveCount") {
+                    return new AiMetadata.SlaveCountOpCondition(
+                        Name: node.name,
+                        Entries: childNodes.ToArray(),
+                        SlaveCount: SlaveCount.slaveCount,
+                        SlaveCountOp: (AiConditionOp) SlaveCount.slaveCountOp
+                    );
+                }
+
                 return new AiMetadata.SlaveCountCondition(
                     Name: node.name,
                     Entries: childNodes.ToArray(),
@@ -158,7 +194,7 @@ public class AiMapper : TypeMapper<AiMetadata> {
         }
     }
 
-    void MapEntry(List<AiMetadata.Entry> entries, Entry entry) {
+    static void MapEntry(List<AiMetadata.Entry> entries, Entry entry) {
         if (entry is NodeEntry node) {
             entries.Add(MapNode(node));
 
@@ -176,7 +212,7 @@ public class AiMapper : TypeMapper<AiMetadata> {
         throw new NotImplementedException($"unknown entry type {entry.GetType().Name}");
     }
 
-    AiMetadata.Node MapNode(NodeEntry node) {
+    static AiMetadata.Node MapNode(NodeEntry node) {
         var childNodes = new List<AiMetadata.Entry>();
         var childConditions = new List<AiMetadata.Condition>();
 

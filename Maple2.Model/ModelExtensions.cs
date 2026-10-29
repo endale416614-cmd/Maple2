@@ -47,6 +47,9 @@ public static class ModelExtensions {
         };
     }
 
+    // Property types the Global client files in an inventory tab; KMS-2024 also has 8 and 23-27, which KmsSplit converts (IT-01).
+    public static bool HasTab(int propertyType) => propertyType is >= 0 and <= 22 and not 8;
+
     public static InventoryType Inventory(this ItemMetadata metadata) {
         if (metadata.Property.IsFragment) {
             return InventoryType.Fragment;
@@ -74,8 +77,7 @@ public static class ModelExtensions {
             20 => InventoryType.Currency,
             21 => InventoryType.Lapenshard,
             22 => InventoryType.Misc, // Blueprint
-            _ => throw new ArgumentException(
-                $"Unknown Tab for: {metadata.Property.Type},{metadata.Property.SubType}"),
+            _ => InventoryType.Misc, // !HasTab: the ingest lists the item in ingest-skipped.log
         };
     }
 

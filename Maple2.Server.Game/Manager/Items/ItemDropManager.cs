@@ -84,6 +84,10 @@ public class ItemDropManager {
                     if (itemEntry.QuestConstraint && receiver?.Quest.NeedsItem(itemEntry.Id) != true) {
                         continue;
                     }
+                    // DR-01 (BT-99): an entry whose item has no data would give nothing.
+                    if (!field.ItemMetadata.TryGet(itemEntry.Id, out _)) {
+                        continue;
+                    }
                     weightedItems.Add(itemEntry, itemEntry.Weight);
                     eligibleItems.Add(itemEntry);
                 }
@@ -228,6 +232,10 @@ public class ItemDropManager {
                     continue;
                 }
 
+                if (!HasItemData(itemEntry)) {
+                    continue;
+                }
+
                 int weight;
                 if (group.SmartDropRate > 0) {
                     weight = GetWeightByJob(itemEntry.Ids.FirstOrDefault(), session.Player.Value.Character.Job.Code(), itemEntry.Weight, itemEntry.ProperJobWeight, itemEntry.ImproperJobWeight);
@@ -340,6 +348,12 @@ public class ItemDropManager {
 
         return itemMetadata.Limit.JobRecommends.Contains(job) || itemMetadata.Limit.JobRecommends.Contains(JobCode.None);
     }
+
+    /// <summary>DR-01 (BT-99): whether an entry of the individual drop box names an item that has data; a box without one is refused before it is used up.</summary>
+    public bool CanGiveItem(IDictionary<int, IndividualDropItemTable.Entry> box) => box.Values.Any(group => group.Items.Any(HasItemData));
+
+    // DR-01 (BT-99): an entry none of whose ids has item data gives nothing, so it never joins a weighted roll (0 pads the id lists).
+    private bool HasItemData(IndividualDropItemTable.Item entry) => entry.Ids.Any(id => id > 0 && field.ItemMetadata.TryGet(id, out _));
 
     private Item? CreateDropItem(int itemId, int rarity, int amount) {
         if (EpicGear && field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemMetadata)) {

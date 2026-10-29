@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Game.Manager.Field;
@@ -36,6 +37,8 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     public readonly Vector3[] Points;
     public readonly bool UseDirection;
     private readonly long endTick;
+    // The client's sensor of a sensing region: it arms after StartDelay, then fires once on the first hit.
+    private readonly SkillMetadataSensor? sensor;
     public long NextTick { get; private set; }
     private readonly ILogger logger = Log.ForContext<FieldSkill>();
 
@@ -83,11 +86,57 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
         if (splash.OnlySensingActive) {
             endTick = baseTick + splash.Delay + splash.RemoveDelay;
             Active = false;
+            // sensorForceInvokeByInterval regions keep the plain path until that flag is checked in game.
+            if (Value.Data.Sensor is { ForceInvoke: false } levelSensor) {
+                sensor = levelSensor;
+                NextTick = baseTick + levelSensor.StartDelay;
+                endTick = SensingEnd(baseTick, splash, FireCount);
+            }
         }
+    }
+
+    /// <summary>The tick a sensing region ends without having fired: its life is Delay plus FireCount intervals.</summary>
+    public static long SensingEnd(long castTick, SkillEffectMetadataSplash splash, int fireCount) {
+        return castTick + splash.Delay + (long) splash.Interval * Math.Max(fireCount, 1);
+    }
+
+    /// <summary>Whether the caster counts for a sensor: only when the sensor includes the caster and the caster stands inside it.</summary>
+    public static bool SensesCaster(IncludeCasterType includeCaster, IEnumerable<Prism> prisms, in Vector3 casterPosition) {
+        if (includeCaster == IncludeCasterType.Exclude) {
+            return false;
+        }
+
+        foreach (Prism prism in prisms) {
+            if (prism.Contains(casterPosition)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private bool IsSensed(SkillMetadataSensor sensed) {
+        ApplyTargetType applyTarget = sensed.Range.ApplyTarget;
+        if (applyTarget == ApplyTargetType.None) {
+            applyTarget = Value.Data.Motions.SelectMany(motion => motion.Attacks).FirstOrDefault()?.Range.ApplyTarget ?? ApplyTargetType.None;
+        }
+
+        float skillAngle = UseDirection ? Rotation.Z : 0;
+        Prism[] prisms = Points
+            .Select(point => sensed.Range.GetPrism(point, skillAngle, applyTarget))
+            .ToArray();
+        // GetTargets would put the caster first without a range test; SensesCaster tests the caster against the sensor.
+        return Field.GetTargets(Caster, prisms, sensed.Range with { IncludeCaster = IncludeCasterType.Exclude, ApplyTarget = applyTarget }, 1).Any()
+               || SensesCaster(sensed.Range.IncludeCaster, prisms, Caster.Position);
     }
 
     public override void Update(long tickCount) {
         if (!Enabled) {
+            Field.RemoveSkill(ObjectId);
+            return;
+        }
+
+        // A sensing region that nothing entered ends without firing.
+        if (sensor != null && tickCount > endTick) {
             Field.RemoveSkill(ObjectId);
             return;
         }
@@ -98,6 +147,16 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
 
         // Check Activation for OnlySensingActive
         if (!Active) {
+            if (sensor != null) {
+                if (!IsSensed(sensor)) {
+                    NextTick = Field.FieldTick;
+                    return;
+                }
+
+                Active = true;
+                goto activated;
+            }
+
             foreach (SkillMetadataMotion motion in Value.Data.Motions) {
                 foreach (SkillMetadataAttack attack in motion.Attacks) {
                     float skillAngle = UseDirection ? Rotation.Z : 0;
@@ -215,7 +274,9 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     //     }
                     // }
 
-                    Field.VibrateObjects(damage, Position);
+                    if (attack.BrokenOffence != 0) {
+                        Field.VibrateObjects(damage, Points.Select(point => attack.Range.GetCubePrism(point, skillAngle)).ToArray());
+                    }
                     foreach (IActor target in targets) {
                         target.ApplyDamage(Caster, damage, attack);
                         // TODO: Set PrevUid?
@@ -238,6 +299,12 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Field.AddSkill(record);
                 }
             }
+        }
+
+        // A sensing region fires once.
+        if (sensor != null) {
+            Field.RemoveSkill(ObjectId);
+            return;
         }
     end:
         if (Interval == 0) {

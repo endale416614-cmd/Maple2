@@ -50,9 +50,13 @@ public class QuestCommand : GameCommand {
                 break;
             case QuestState.Completed:
                 if (quest == null) {
+                    // A quest the character never had is started, then completed below (BT-135).
                     session.Quest.Start(id, true);
-                    session.Quest.TryGetQuest(id, out quest);
-                    break;
+                    if (!session.Quest.TryGetQuest(id, out quest)) {
+                        ctx.Console.Error.WriteLine($"Quest id {id} could not be started.");
+                        ctx.ExitCode = 1;
+                        return;
+                    }
                 }
                 if (quest.State == QuestState.Completed) {
                     ctx.Console.Error.WriteLine("Quest is already completed.");

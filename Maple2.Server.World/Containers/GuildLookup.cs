@@ -33,6 +33,12 @@ public class GuildLookup : IDisposable {
         }
     }
 
+    public void ResetWeeklyContribution() {
+        foreach (GuildManager manager in guilds.Values) {
+            manager.ResetWeeklyContribution();
+        }
+    }
+
     public bool TryGet(long guildId, [NotNullWhen(true)] out GuildManager? guild) {
         if (guilds.TryGetValue(guildId, out guild)) {
             return true;

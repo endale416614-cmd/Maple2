@@ -18,7 +18,17 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Maple2.File.Ingest\Maple2.File.Ingest.csproj" Aliases="ingest" />
       <ProjectReference Include="..\Maple2.Server.Game\Maple2.Server.Game.csproj" />
     </ItemGroup>
+
+    <!-- The ingest and the parser package declare the Maple2.File namespace, which would shadow System.IO.File in every test. -->
+    <Target Name="AliasIngestReferences" BeforeTargets="FindReferenceAssembliesForReferences">
+        <ItemGroup>
+            <ReferencePath Condition="'%(ReferencePath.NuGetPackageId)' == 'Maple2.File.Parser.Tadeucci'">
+                <Aliases>ingest</Aliases>
+            </ReferencePath>
+        </ItemGroup>
+    </Target>
 
 </Project>

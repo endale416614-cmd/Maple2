@@ -99,7 +99,14 @@ public class RideHandler : FieldPacketHandler {
         int ownerId = session.Ride.Ride.OwnerId;
         bool forced = packet.ReadBool();
 
-        session.Ride.Dismount(type, forced);
+        session.Ride.Dismount(type, forced, ReadOffActionFields(packet));
+    }
+
+    public const int MaxOffActionBytes = 256;
+
+    // The off-action's own fields follow the type and forced flag; empty when the packet is larger than any known action.
+    public static byte[] ReadOffActionFields(IByteReader packet) {
+        return packet.Available <= MaxOffActionBytes ? packet.ReadBytes(packet.Available) : [];
     }
 
     private void HandleChange(GameSession session, IByteReader packet) {

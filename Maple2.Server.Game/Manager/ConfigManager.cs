@@ -470,21 +470,23 @@ public class ConfigManager {
         session.Send(NoticePacket.Message("s_char_info_reset_stat_pointsuccess_msg"));
     }
 
+    // The allocated points as the stat rebuild adds them.
+    public IEnumerable<KeyValuePair<BasicAttribute, int>> AllocatedPoints =>
+        statAttributes.Allocation.Attributes.Select(type => KeyValuePair.Create(type, statAttributes.Allocation[type]));
+
+    // The stat a point goes to and what it adds: 1 for the four attributes, 10 for health, 3 for critical rate.
+    public static (BasicAttribute Attribute, long Amount) StatAttributeBonus(BasicAttribute type, int points) {
+        return type switch {
+            BasicAttribute.Strength or BasicAttribute.Dexterity or BasicAttribute.Intelligence or BasicAttribute.Luck => (type, 1L * points),
+            BasicAttribute.Health => (type, 10L * points),
+            BasicAttribute.CriticalRate => (type, 3L * points),
+            _ => (type, 0),
+        };
+    }
+
     private void UpdateStatAttribute(BasicAttribute type, int points, bool send = true) {
-        switch (type) {
-            case BasicAttribute.Strength:
-            case BasicAttribute.Dexterity:
-            case BasicAttribute.Intelligence:
-            case BasicAttribute.Luck:
-                session.Player.Stats.Values[type].AddTotal(1 * points);
-                break;
-            case BasicAttribute.Health:
-                session.Player.Stats.Values[BasicAttribute.Health].AddTotal(10 * points);
-                break;
-            case BasicAttribute.CriticalRate:
-                session.Player.Stats.Values[BasicAttribute.CriticalRate].AddTotal(3 * points);
-                break;
-        }
+        (BasicAttribute attribute, long amount) = StatAttributeBonus(type, points);
+        session.Player.Stats.Values[attribute].AddTotal(amount);
 
         // Sends packet to notify client, skipped during loading.
         if (send) {

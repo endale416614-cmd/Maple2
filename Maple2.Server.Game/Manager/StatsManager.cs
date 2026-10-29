@@ -11,6 +11,8 @@ using Serilog;
 namespace Maple2.Server.Game.Manager;
 
 public class StatsManager {
+    private static readonly BasicAttribute[] Pools = [BasicAttribute.Health, BasicAttribute.Spirit, BasicAttribute.Stamina];
+
     public IActor Actor { get; private set; }
     private readonly IReadOnlyDictionary<short, IReadOnlyDictionary<BasicAttribute, long>> levelStats;
 
@@ -118,7 +120,38 @@ public class StatsManager {
         return Random.Shared.NextDouble() < Math.Max(criticalChance, casterCriticalOverride) ? DamageType.Critical : DamageType.Normal;
     }
 
-    public void Refresh() {
+    // A rebuild sets every pool to its total, so the pools are saved before it and put back after it.
+    public static long[] SavePools(Stats values) {
+        return Pools.Select(pool => values[pool].Current).ToArray();
+    }
+
+    public static void RestorePools(Stats values, long[] saved) {
+        for (int i = 0; i < Pools.Length; i++) {
+            Stat stat = values[Pools[i]];
+            stat.Current = Math.Clamp(saved[i], 0, stat.Total);
+        }
+    }
+
+    // An NPC's stats are its data stats plus its enabled buffs; the rebuild keeps its current health, spirit and stamina.
+    public void RebuildNpc(IReadOnlyDictionary<BasicAttribute, long> npcStats, IReadOnlyCollection<Buff> buffs) {
+        long[] pools = SavePools(Values);
+        Values.SetStaticStats(npcStats);
+        AddBuffs(buffs);
+        Values.Total();
+        StatConversion(buffs);
+        RestorePools(Values, pools);
+    }
+
+    /// <summary>
+    /// Rebuilds the actor's stats. Current health, spirit and stamina stay (clamped to the new totals) unless fill is set.
+    /// </summary>
+    public void Refresh(bool fill = false) {
+        if (Actor is FieldNpc npc) {
+            RebuildNpc(npc.Value.Metadata.Stat.Stats, npc.Buffs.EnumerateBuffs());
+            npc.Field.Broadcast(StatsPacket.Update(npc));
+            return;
+        }
+
         if (Actor is not FieldPlayer player) {
             return;
         }
@@ -127,6 +160,9 @@ public class StatsManager {
         if (player.Session.Ride.RideType is RideOnType.Battle or RideOnType.Object) {
             return;
         }
+
+        // A fill clamps to the totals, which also covers a nested rebuild (a buff added while the equips are counted) leaving Current short.
+        long[] pools = fill ? [long.MaxValue, long.MaxValue, long.MaxValue] : SavePools(Values);
 
         Character character = player.Value.Character;
         if (levelStats.TryGetValue(character.Level, out IReadOnlyDictionary<BasicAttribute, long>? metadata)) {
@@ -137,9 +173,16 @@ public class StatsManager {
         }
 
         AddEquips(player);
-        AddBuffs(player);
+        foreach ((BasicAttribute type, int points) in player.Session.Config.AllocatedPoints) {
+            (BasicAttribute attribute, long amount) = ConfigManager.StatAttributeBonus(type, points);
+            Values[attribute].AddTotal(amount);
+        }
+        List<Buff> buffs = player.Buffs.EnumerateBuffs();
+        AddBuffs(buffs);
         Values.Total();
-        StatConversion(player);
+        StatConversion(buffs);
+        RestorePools(Values, pools);
+        player.CheckRegen();
 
         // Stat rebuild via AddBase/AddTotal restores Current to Total,
         // but a dead player must stay at 0 HP until revived.
@@ -217,8 +260,12 @@ public class StatsManager {
         player.Session.ConditionUpdate(ConditionType.item_gear_score, counter: Values.GearScore);
     }
 
-    private void AddBuffs(FieldPlayer player) {
-        foreach (Buff buff in player.Buffs.EnumerateBuffs()) {
+    // A disabled buff (its condition is off, such as Centered Mind's other two tiers) adds nothing until it turns on again.
+    public void AddBuffs(IEnumerable<Buff> buffs) {
+        foreach (Buff buff in buffs) {
+            if (!buff.Enabled) {
+                continue;
+            }
             foreach ((BasicAttribute valueBasicAttribute, long value) in buff.Metadata.Status.Values) {
                 Values[valueBasicAttribute].AddTotal(value);
             }
@@ -235,9 +282,9 @@ public class StatsManager {
         }
     }
 
-    private void StatConversion(FieldPlayer player) {
-        foreach (Buff buff in player.Buffs.EnumerateBuffs()) {
-            if (buff.Metadata.Status.Conversion != null) {
+    public void StatConversion(IEnumerable<Buff> buffs) {
+        foreach (Buff buff in buffs) {
+            if (buff.Enabled && buff.Metadata.Status.Conversion != null) {
                 float sum = Values[buff.Metadata.Status.Conversion.BaseAttribute].Total;
                 sum *= buff.Metadata.Status.Conversion.Rate;
                 Values[buff.Metadata.Status.Conversion.ResultAttribute].AddTotal((long) sum);
