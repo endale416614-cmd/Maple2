@@ -231,10 +231,7 @@ public class GuildManager : IDisposable {
         return GuildError.none;
     }
 
-    private static long DayStart() {
-        DateTimeOffset today = DateTimeOffset.UtcNow.Date;
-        return today.ToUnixTimeSeconds();
-    }
+    private static long DayStart() => GuildMember.DayStart(DateTimeOffset.UtcNow);
 
     public GuildError CheckIn(long requestorId) {
         const int contribution = 10;

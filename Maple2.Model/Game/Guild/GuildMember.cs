@@ -30,6 +30,9 @@ public class GuildMember : IByteSerializable, IDisposable {
 
     public bool CheckedInToday(long dayStart) => CheckinTime >= dayStart;
 
+    /// <summary>The start of this time's UTC day in epoch seconds: the client rolls its daily counts over at UTC midnight.</summary>
+    public static long DayStart(DateTimeOffset now) => new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero).ToUnixTimeSeconds();
+
     public void WriteTo(IByteWriter writer) {
         writer.WriteByte(TYPE);
         writer.WriteByte(Rank);

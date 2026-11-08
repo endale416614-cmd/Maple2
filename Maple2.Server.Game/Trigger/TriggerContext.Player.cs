@@ -209,6 +209,13 @@ public partial class TriggerContext {
 
     public void SetUserValue(int triggerId, string key, int value) {
         if (TraceEnabled) WarnLog("[SetUserValue] key:{Key}, value:{Value}, triggerId:{TriggerId}", key, value, triggerId);
+        if (ScriptAddressedUserValueMaps.Contains(Field.MapId)) {
+            TriggerContext? target = triggerId == 0 ? this : Field.EnumerateTrigger().FirstOrDefault(trigger => trigger.Value.Id == triggerId)?.Context;
+            if (target != null) {
+                target.scriptUserValues[key] = value;
+                return;
+            }
+        }
         Field.UserValues[key] = value;
     }
 
@@ -309,8 +316,11 @@ public partial class TriggerContext {
         return negate ? !result : result;
     }
 
+    // From the state's start, the seconds the key holds; a Kritias puzzle's time event writes them to TimeEventLifeTime (FT-10b).
     public bool WaitSecondsUserValue(string key, string desc) {
-        return false;
+        if (TraceEnabled) DebugLog("[WaitSecondsUserValue] key:{Key}", key);
+        int seconds = scriptUserValues.TryGetValue(key, out int own) ? own : Field.UserValues.GetValueOrDefault(key, 0);
+        return Environment.TickCount64 > StartTick + seconds * 1000L;
     }
     #endregion
 

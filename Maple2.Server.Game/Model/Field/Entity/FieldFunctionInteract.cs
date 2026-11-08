@@ -11,6 +11,8 @@ public class FieldFunctionInteract : FieldEntity<FunctionCubeMetadata> {
     public readonly long CubeId;
     /// <summary>The assistant the cube spawned (HS-02); she leaves with the cube.</summary>
     public FieldNpc? Assistant { get; set; }
+    /// <summary>The furniture item placed: trophies and quests code the item, and an item's cube id can differ (item 50400002, cube 50300023).</summary>
+    public int ItemId { get; init; }
 
     private long NextUpdateTick { get; set; }
 

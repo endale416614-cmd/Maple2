@@ -148,11 +148,15 @@ public sealed partial class GameSession : Core.Network.Session {
 
     // EpicGear (1.1.5, removed) created gear without base stats; repaired before the item managers load the items.
     // Once per character per server process: every migration (channel, instance) starts a new session.
+    // The gems follow in a context of their own: the first keeps tracking what it saved, and one item can need both.
     private void RepairGearWithoutStats() {
         if (!GearRepaired.TryAdd(CharacterId, 0)) return;
         try {
-            using GameStorage.Request repairDb = GameStorage.Context();
-            OfflineGearRepair.RepairOwners(repairDb, ItemStatsCalc, TableMetadata, Logger, CharacterId, AccountId);
+            using (GameStorage.Request repairDb = GameStorage.Context()) {
+                OfflineGearRepair.RepairOwners(repairDb, ItemStatsCalc, TableMetadata, Logger, CharacterId, AccountId);
+            }
+            using GameStorage.Request gemDb = GameStorage.Context();
+            OfflineGearRepair.RepairGemstones(gemDb, ItemStatsCalc, ItemMetadata, Logger, CharacterId, AccountId);
         } catch (Exception ex) {
             Logger.Warning(ex, "Gear repair failed for character {CharacterId}", CharacterId);
         }

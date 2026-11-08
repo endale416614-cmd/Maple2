@@ -128,10 +128,23 @@ public partial class MovementState {
         };
     }
 
-    //public bool TryStun() {
-    //
-    //}
-    //
+    /// <summary>A stun holds the NPC in state Stun where it stands until the buff ends, as the captures show (NB-24): its walk, cast and
+    /// emote stop and do not resume, and it goes idle at the end. Returns whether it is held.</summary>
+    public bool Stun(bool stunned) {
+        if (stunned == (State == ActorState.Stun)) {
+            return stunned;
+        }
+        if (!stunned) {
+            Idle();
+            return false;
+        }
+        walkTask?.Cancel();
+        CastTask?.Cancel();
+        emoteActionTask?.Cancel();
+        SetState(ActorState.Stun); // after the cancels, which set Idle
+        return true;
+    }
+
     //public bool TryKnockback(Vector3 direction, float height) {
     //
     //}
@@ -222,8 +235,8 @@ public partial class MovementState {
     }
 
     public void Update(long tickCount) {
-        // Airborne NPCs keep jumping even if the jump animation is missing or ended (Idle would stop them mid-air).
-        if (actor.Animation.PlayingSequence != stateSequence && walkType != WalkType.Jump) {
+        // Airborne NPCs keep jumping even if the jump animation is missing or ended (Idle would stop them mid-air); a stun holds its state.
+        if (actor.Animation.PlayingSequence != stateSequence && walkType != WalkType.Jump && State != ActorState.Stun) {
             Idle();
         }
 

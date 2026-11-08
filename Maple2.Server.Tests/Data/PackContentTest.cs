@@ -92,6 +92,13 @@ namespace Maple2.Server.Tests.Data
             // Pack 1.2.2-dev.b3 (BA-07): batch 3 (furniture, pets, mounts, consumables) and the 2 pet NPCs; the 1.2.1 minimums above stay.
             Assert.That(context.NpcMetadata.Count(), Is.GreaterThanOrEqualTo(7521));
             Assert.That(context.ItemMetadata.Count(), Is.GreaterThanOrEqualTo(39191));
+
+            // Pack 1.2.3-dev.b4b (RB-02): batch 4 (10 quests and the 128 NPCs, skills and items they need) and 1.2.3's KMS records
+            // (box and shop copies, instruments); the minimums above stay.
+            Assert.That(context.NpcMetadata.Count(), Is.GreaterThanOrEqualTo(7649));
+            Assert.That(context.QuestMetadata.Count(), Is.GreaterThanOrEqualTo(4956));
+            Assert.That(context.ItemMetadata.Count(), Is.GreaterThanOrEqualTo(39314));
+            Assert.That(context.SkillMetadata.Count(), Is.GreaterThanOrEqualTo(10291));
         }
 
         [Test]
@@ -142,12 +149,12 @@ namespace Maple2.Server.Tests.Data
 
             // Batch 1 (cosmetics)
             var item2 = context.ItemMetadata.FirstOrDefault(i => i.Id == 10300186);
-            Assert.IsNotNull(item2, "Item 10300186 (Tough Face (M)) not found");
+            Assert.IsNotNull(item2, "Item 10300186 (Brave Face (M)) not found");
 
-            // batch 2 (gear)
+            // batch 2 (gear); the server's name is the one the client shows since NM-08 (BT-10)
             var item3 = context.ItemMetadata.FirstOrDefault(i => i.Id == 11200106);
-            Assert.IsNotNull(item3, "Item 11200106 (Old Arena Earrings) not found");
-            Assert.That(item3.Name, Is.EqualTo("Old Arena Earrings"));
+            Assert.IsNotNull(item3, "Item 11200106 (Worn Arena Earrings) not found");
+            Assert.That(item3.Name, Is.EqualTo("Worn Arena Earrings"));
 
             // batch 3 (other items)
             var item4 = context.ItemMetadata.FirstOrDefault(i => i.Id == 20001058);
@@ -238,8 +245,8 @@ namespace Maple2.Server.Tests.Data
             Assert.That(weapons, Has.Count.EqualTo(11));
             Assert.That(weapons.SelectMany(entry => entry.Ids), Does.Contain(13100329).And.Not.Contain(13100338));
 
-            // a twin is for the KMS item's gender: the female Calico Cat stays Global's female one
-            Assert.That(Prizes(510090044), Does.Contain(11320347).And.Contain(11320348));
+            // KMS's Calico Cat pair comes as its KMS copies, not as Global's records of those ids (IT-07d, BT-121)
+            Assert.That(Prizes(510090044), Does.Contain(11390347).And.Contain(11390348).And.Not.Contain(11320347).And.Not.Contain(11320348));
         }
 
         // Pack 1.2.2-dev.b3d (BA-11): KMS potions, lures, vouchers and snares that came without a subtype go to the Consumable tab (IT-06, BT-112).
@@ -253,10 +260,16 @@ namespace Maple2.Server.Tests.Data
         [Test]
         public void AddedQuests_Exist()
         {
-            // Nightly quests the extra features enable, in every pack build; the pack's own quests (10002003, 10003448)
-            // come with batch 4 (BA-03).
+            // Nightly quests the extra features enable, in every pack build.
             Assert.IsTrue(context.QuestMetadata.Any(q => q.Id == 10003399), "Quest 10003399 not found");
             Assert.IsTrue(context.QuestMetadata.Any(q => q.Id == 10003403), "Quest 10003403 not found");
+
+            // Pack 1.2.3-dev.b4b (BA-15a, BA-15f): batch 4 ships its 10 quests; the 7 balloon quests 80000654 to 80000660 and 10003455
+            // are held, and the 17 from 10003456 on are cut (their chain needs an instance map with no data).
+            int[] batch4 = [10002003, 10003449, 10003450, 10003451, 10003452, 10003453, 10003454, 70000025, 90000815, 90000816];
+            Assert.That(context.QuestMetadata.Where(q => batch4.Contains(q.Id)).Select(q => q.Id).OrderBy(id => id).ToArray(), Is.EqualTo(batch4));
+            Assert.That(context.QuestMetadata.Where(q => (q.Id >= 80000654 && q.Id <= 80000660) || (q.Id >= 10003455 && q.Id <= 10003474)).Select(q => q.Id).ToArray(),
+                Is.Empty, "held or cut quests in the pack");
         }
     }
 }

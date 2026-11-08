@@ -27,6 +27,7 @@ public static class TableNames {
     public const string NAME_TAG_SYMBOL = "nametagsymbol.xml";
     public const string EXP = "exp*.xml";
     public const string COMMON_EXP = "commonexp.xml";
+    public const string PET_EXP = "petexp.xml";
     public const string UGC_DESIGN = "ugcdesign.xml";
     public const string MASTERY_UGC_HOUSING = "masteryugchousing.xml";
     public const string UGC_HOUSING_POINT_REWARD = "ugchousingpointreward.xml";

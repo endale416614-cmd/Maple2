@@ -13,6 +13,48 @@
    "Find": "<transition state=\"MoveToGetWeapon01\" />",
    "Replace": "<transition state=\"QuestStart01\" />",
    "Note": "Disciple's Room: a Soul Binder who comes back with 90000443 Mystical Jewel started goes on to the quest's waits; GMS's script has no MoveToGetWeapon01, so it stopped there and the exit portal stayed shut (BT-139)"
+  },
+  {
+   "XBlock": "02000246_bf",
+   "Trigger": "timer",
+   "Find": "<action name=\"move_user\" map_id=\"02000141\" portal_id=\"2\" /></onEnter><condition name=\"always\"><transition state=\"유저이동음성\" /></condition>",
+   "Replace": "</onEnter>",
+   "Note": "Golden Tower 2F: the room's timer script moved the player to Golden Tower 8F, out of the dungeon, 5 seconds after arrival; the other Golden Tower rooms have no move in this state"
+  },
+  {
+   "XBlock": "52000120_qd",
+   "Trigger": "01_henesysdefense",
+   "Find": "<condition name=\"monster_dead\" spawn_ids=\"901,902,903,904,905,906,907,908,909,910\"><transition state=\"Battle01End01\" /></condition>",
+   "Replace": "<condition name=\"monster_dead\" spawn_ids=\"901,902,903,904,905,906,907,908,909,910\"><transition state=\"Battle01End01\" /></condition><condition name=\"wait_tick\" wait_tick=\"300000\"><action name=\"destroy_monster\" spawn_ids=\"901,902,903,904,905,906,907,908,909,910\" /><transition state=\"Battle01End01\" /></condition>",
+   "Note": "Crisis in Henesys wave 1: ends after 5 minutes, so a monster nobody can reach does not hold back the next wave"
+  },
+  {
+   "XBlock": "52000120_qd",
+   "Trigger": "01_henesysdefense",
+   "Find": "<condition name=\"monster_dead\" spawn_ids=\"911,912,913,914\"><transition state=\"Battle02End01\" /></condition>",
+   "Replace": "<condition name=\"monster_dead\" spawn_ids=\"911,912,913,914\"><transition state=\"Battle02End01\" /></condition><condition name=\"wait_tick\" wait_tick=\"180000\"><action name=\"destroy_monster\" spawn_ids=\"911,912,913,914\" /><transition state=\"Battle02End01\" /></condition>",
+   "Note": "Crisis in Henesys wave 2: ends after 3 minutes, so a monster nobody can reach does not hold back the next wave"
+  },
+  {
+   "XBlock": "52000120_qd",
+   "Trigger": "01_henesysdefense",
+   "Find": "<condition name=\"monster_dead\" spawn_ids=\"921,922,923,924,925,926,927,928\"><transition state=\"Battle03End01\" /></condition>",
+   "Replace": "<condition name=\"monster_dead\" spawn_ids=\"921,922,923,924,925,926,927,928\"><transition state=\"Battle03End01\" /></condition><condition name=\"wait_tick\" wait_tick=\"180000\"><transition state=\"Battle03End01\" /></condition>",
+   "Note": "Crisis in Henesys wave 3: ends after 3 minutes (Battle03End01 removes what is left), so a monster nobody can reach does not stop the quest"
+  },
+  {
+   "XBlock": "52010032_qd",
+   "Trigger": "main",
+   "Find": "<transition state=\"의식종료_01\" />",
+   "Replace": "<transition state=\"의식종료01\" />",
+   "Note": "Murpagoth Temple: the healing ritual of 10003090 A Secret Treatment plays to its end; Global named the state 의식종료01 and kept the transition to 의식종료_01 (KMS names both 의식종료_01), so the script stopped at 치유의식_05 with the character in cinematic mode"
+  },
+  {
+   "XBlock": "52010032_qd",
+   "Trigger": "main",
+   "Find": "<transition state=\"의식종료_02\" />",
+   "Replace": "<transition state=\"의식종료02\" />",
+   "Note": "Murpagoth Temple: the same for 의식종료02, the step that removes the ritual's Namid before 종료 ends cinematic mode"
   }
  ]
 }

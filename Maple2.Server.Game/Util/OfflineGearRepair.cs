@@ -14,6 +14,8 @@ namespace Maple2.Server.Game.Util;
 /// never touched.
 /// </summary>
 public static class OfflineGearRepair {
+    private const int GemstoneType = 13; // Property.Type of a gem; gem dust, in the same tab, is 14
+
     public static bool IsGear(ItemMetadata metadata) {
         var type = new ItemType(metadata.Id);
         return !metadata.Property.IsSkin && (type.IsWeapon || type.IsArmor || type.IsAccessory);
@@ -105,5 +107,54 @@ public static class OfflineGearRepair {
             logger.Information("Repaired {Count} items without stats", count);
         }
         return count;
+    }
+
+    /// <summary>
+    /// Gives a gem, and each gem in an item's sockets, its tier's stats. Before 1.2.3 an upgrade changed only the gem's id (BT-190), so a save can hold an older tier's
+    /// numbers. A gem's stats are only its data row, so no roll is lost. A gem the data gives no row keeps what it has. Returns whether anything changed.
+    /// </summary>
+    public static bool RepairGemstones(Item item, ItemStatsCalculator calculator, ItemMetadataStorage items) {
+        bool changed = false;
+        if (item.Metadata.Property.Type == GemstoneType && GemStatsToGive(item.Stats, item.Metadata, calculator) is { } stats) {
+            item.Stats = stats;
+            changed = true;
+        }
+
+        foreach (ItemGemstone? gem in item.Socket?.Sockets ?? []) {
+            if (gem != null && items.TryGet(gem.ItemId, out ItemMetadata? metadata) && GemStatsToGive(gem.Stats, metadata, calculator) is { } socketStats) {
+                gem.Stats = socketStats;
+                changed = true;
+            }
+        }
+
+        return changed;
+    }
+
+    /// <summary>Repairs the gems of the given owners (character, account storage) in the save. Returns the number of items changed.</summary>
+    public static int RepairGemstones(GameStorage.Request db, ItemStatsCalculator calculator, ItemMetadataStorage items, ILogger logger, params long[] ownerIds) {
+        int count = 0;
+        foreach (long ownerId in ownerIds) {
+            Item[] repaired = db.GetAllItems(ownerId).Where(item => RepairGemstones(item, calculator, items)).ToArray();
+            if (repaired.Length == 0) {
+                continue;
+            }
+            if (db.SaveItems(ownerId, repaired)) {
+                count += repaired.Length;
+            } else {
+                logger.Warning("Could not save the gem stats of {Count} items of owner {OwnerId}", repaired.Length, ownerId);
+            }
+        }
+
+        if (count > 0) {
+            logger.Information("Gave the gems of {Count} items their tier's stats", count);
+        }
+        return count;
+    }
+
+    // The stats to give a gem, or null when it holds them already or the data has none. Every gem's row is a constant one.
+    private static ItemStats? GemStatsToGive(ItemStats? held, ItemMetadata gem, ItemStatsCalculator calculator) {
+        ItemStats data = calculator.GetGemstoneStats(gem);
+        ItemStats.Option row = data[ItemStats.Type.Constant];
+        return row.Count == 0 || held?[ItemStats.Type.Constant].ToString() == row.ToString() ? null : data;
     }
 }

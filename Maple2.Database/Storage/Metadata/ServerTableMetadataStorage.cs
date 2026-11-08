@@ -31,6 +31,8 @@ public class ServerTableMetadataStorage {
     private readonly Lazy<EnchantOptionTable> enchantOptionTable;
     private readonly Lazy<UnlimitedEnchantOptionTable> unlimitedEnchantOptionTable;
     private readonly Lazy<ConstantsTable> constantsTable;
+    private readonly Lazy<MonsterExpTable> monsterExpTable;
+    private readonly Lazy<RandomRoomTable> randomRoomTable;
 
     public InstanceFieldTable InstanceFieldTable => instanceFieldTable.Value;
     public ScriptConditionTable ScriptConditionTable => scriptConditionTable.Value;
@@ -56,6 +58,8 @@ public class ServerTableMetadataStorage {
     public EnchantOptionTable EnchantOptionTable => enchantOptionTable.Value;
     public UnlimitedEnchantOptionTable UnlimitedEnchantOptionTable => unlimitedEnchantOptionTable.Value;
     public ConstantsTable ConstantsTable => constantsTable.Value;
+    public MonsterExpTable MonsterExpTable => monsterExpTable.Value;
+    public RandomRoomTable RandomRoomTable => randomRoomTable.Value;
 
     public ServerTableMetadataStorage(MetadataContext context) {
         instanceFieldTable = Retrieve<InstanceFieldTable>(context, ServerTableNames.INSTANCE_FIELD);
@@ -84,6 +88,8 @@ public class ServerTableMetadataStorage {
         enchantOptionTable = Retrieve<EnchantOptionTable>(context, ServerTableNames.ENCHANT_OPTION);
         unlimitedEnchantOptionTable = Retrieve<UnlimitedEnchantOptionTable>(context, ServerTableNames.UNLIMITED_ENCHANT_OPTION);
         constantsTable = Retrieve<ConstantsTable>(context, ServerTableNames.CONSTANTS);
+        monsterExpTable = Retrieve<MonsterExpTable>(context, ServerTableNames.MONSTER_EXP);
+        randomRoomTable = Retrieve<RandomRoomTable>(context, ServerTableNames.ROOM_RANDOM);
     }
 
     public IEnumerable<GameEvent> GetGameEvents() {
@@ -93,6 +99,12 @@ public class ServerTableMetadataStorage {
             }
 
             yield return new GameEvent(gameEvent);
+        }
+        // Offline Adapted Mode adds the captured sales (A34); a data row with the same id wins.
+        foreach (GameEventMetadata sale in OfflineRemakeSale.Events(OfflineRemakeSale.Enabled)) {
+            if (!GameEventTable.Entries.ContainsKey(sale.Id)) {
+                yield return new GameEvent(sale);
+            }
         }
     }
 

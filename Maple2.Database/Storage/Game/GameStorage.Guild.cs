@@ -164,12 +164,12 @@ public partial class GameStorage {
                 });
 
             // Expel, Leave and DeleteGuild delete their rows themselves; a member missing from memory keeps its row.
+            // Only CreateGuild and CreateGuildMember add a row, so a save while an expelled member is still in memory can not write it back (BT-169).
             foreach (Model.GuildMember member in existingMembers) {
-                if (saveMembers.Remove(member.CharacterId, out GuildMember? gameMember)) {
+                if (saveMembers.TryGetValue(member.CharacterId, out GuildMember? gameMember)) {
                     Context.GuildMember.Update(gameMember);
                 }
             }
-            Context.GuildMember.AddRange(saveMembers.Values.Select<GuildMember, Model.GuildMember>(member => member));
 
             return SaveChanges();
         }

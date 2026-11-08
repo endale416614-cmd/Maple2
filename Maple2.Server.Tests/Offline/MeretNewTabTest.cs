@@ -54,6 +54,20 @@ public class MeretNewTabTest {
     }
 
     [Test]
+    public void Apply_ShippedEntryInTheNewListKeepsItsOwnTab() {
+        tempFile = Path.GetTempFileName();
+        File.WriteAllText(tempFile, JsonSerializer.Serialize(new { Entries = new[] { Entry(1001, 40400), Entry(1002, 40400) }, New = new[] { 1001, 1002 } }));
+        Environment.SetEnvironmentVariable("OFFLINE_MERET_CATALOG_FILE", tempFile);
+        var shipped = new Dictionary<int, MeretMarketItemMetadata> { [1001] = Entry(1001, 10) };
+
+        MeretMarketTable table = OfflineEconomy.Apply(new MeretMarketTable(shipped));
+
+        // Shipped entries keep priority: the shipped one stays in its own tab, the catalog's own entry goes to New.
+        Assert.That(table.Entries[1001].TabId, Is.EqualTo(10));
+        Assert.That(table.Entries[1002].TabId, Is.EqualTo(11));
+    }
+
+    [Test]
     public void FeaturedOrder_NewInListOrderAnyOtherById() {
         MeretMarketTable table = ApplyFile([Entry(5, 10), Entry(3, 10), Entry(9, 10), Entry(1, 10), Entry(7, 10)], [7, 3, 9]);
         int[] Page(int tabId) => table.Entries.Values.Where(entry => entry.TabId == tabId).Select(entry => entry.Id)

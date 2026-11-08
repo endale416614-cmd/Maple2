@@ -147,7 +147,7 @@ public class WebController : ControllerBase {
 
     #region Ugc
     private static IResult UploadProfileAvatar(byte[] fileBytes, long characterId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "profiles", characterId.ToString());
+        string filePath = Path.Combine(Paths.UGC_DIR, "profiles", characterId.ToString());
         try {
             // Deleting old files in the character folder
             if (Path.Exists(filePath)) {
@@ -165,7 +165,7 @@ public class WebController : ControllerBase {
     }
 
     private IResult UploadItem(byte[] fileBytes, int itemId, long ugcId, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "items", itemId.ToString());
+        string filePath = Path.Combine(Paths.UGC_DIR, "items", itemId.ToString());
         try {
             Directory.CreateDirectory(filePath);
         } catch (Exception ex) {
@@ -181,7 +181,7 @@ public class WebController : ControllerBase {
     }
 
     private IResult UploadItemIcon(byte[] fileBytes, int itemId, long ugcId, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "itemicon", itemId.ToString());
+        string filePath = Path.Combine(Paths.UGC_DIR, "itemicon", itemId.ToString());
         try {
             Directory.CreateDirectory(filePath);
         } catch (Exception ex) {
@@ -196,7 +196,7 @@ public class WebController : ControllerBase {
     }
 
     private IResult UploadBanner(byte[] fileBytes, int bannerId, long ugcId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "banner", bannerId.ToString());
+        string filePath = Path.Combine(Paths.UGC_DIR, "banner", bannerId.ToString());
         try {
             Directory.CreateDirectory(filePath);
         } catch (Exception ex) {
@@ -213,7 +213,7 @@ public class WebController : ControllerBase {
     }
 
     private IResult HandleGuildEmblem(byte[] fileBytes, int guildId, long ugcId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "guildmark", guildId.ToString());
+        string filePath = Path.Combine(Paths.UGC_DIR, "guildmark", guildId.ToString());
         try {
             Directory.CreateDirectory(filePath);
         } catch (Exception ex) {
@@ -230,7 +230,7 @@ public class WebController : ControllerBase {
     }
 
     private IResult HandleGuildBanner(byte[] fileBytes, int guildId, long ugcId) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "guildmark", guildId.ToString(), "banner");
+        string filePath = Path.Combine(Paths.UGC_DIR, "guildmark", guildId.ToString(), "banner");
         try {
             Directory.CreateDirectory(filePath);
         } catch (Exception ex) {
@@ -247,7 +247,7 @@ public class WebController : ControllerBase {
     }
 
     private IResult HandleBlueprintIcon(byte[] fileBytes, long ugcUid, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "blueprint", ugcUid.ToString());
+        string filePath = Path.Combine(Paths.UGC_DIR, "blueprint", ugcUid.ToString());
         try {
             Directory.CreateDirectory(filePath);
         } catch (Exception ex) {
@@ -262,7 +262,7 @@ public class WebController : ControllerBase {
     }
 
     private IResult HandleBlueprintPreview(byte[] fileBytes, long ugcUid, UgcResource resource) {
-        string filePath = Path.Combine(Paths.WEB_DATA_DIR, "blueprint", ugcUid.ToString());
+        string filePath = Path.Combine(Paths.UGC_DIR, "blueprint", ugcUid.ToString());
         try {
             Directory.CreateDirectory(filePath);
         } catch (Exception ex) {

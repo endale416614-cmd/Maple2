@@ -44,7 +44,7 @@ public partial class GameStorage {
             foreach (PlotCube cube in plotCubes) {
                 if (cube.Interact?.Metadata.Nurturing is null) continue;
 
-                cube.Interact!.Nurturing = GetNurturing(ownerId, cube.ItemId, cube.Interact.Metadata.Nurturing);
+                cube.Interact!.Nurturing = GetNurturing(ownerId, cube.Interact.Metadata.Id, cube.Interact.Metadata.Nurturing);
             }
 
             return plotCubes;
@@ -104,13 +104,15 @@ public partial class GameStorage {
                 return null;
             }
 
-            model.OwnerId = 0;
-            model.Name = string.Empty;
-            model.ExpiryTime = DateTimeOffset.UtcNow;
-            Context.UgcMapCube.Where(cube => cube.UgcMapId == model.Id).Delete();
-            Context.UgcMap.Update(model);
+            // Expiry's path: the cubes go to the owner's furnishing storage and the plot goes pending (BT-192). A failed store changes nothing.
+            try {
+                ExpireOutdoorPlot(plot);
+            } catch (Exception e) {
+                Logger.LogError(e, "Failed to store the cubes of forfeited plot {PlotId}", plot.Id);
+                return null;
+            }
 
-            return Context.TrySaveChanges() ? ToPlotInfo(model) : null;
+            return ToPlotInfo(model);
         }
 
         public PlotInfo? GetSoonestPlotFromExpire(TimeSpan ugcHomeSaleWaitingTime) {
@@ -136,7 +138,7 @@ public partial class GameStorage {
             return expired.Select(ToPlotInfo).Where(p => p != null).ToList()!;
         }
 
-        /// <summary>World's expiry check for an outdoor plot: every placed cube goes to the owner's furnishing storage
+        /// <summary>World's expiry check for an outdoor plot, and a forfeit: every placed cube goes to the owner's furnishing storage
         /// (onto a stored item with the same id and template, else as a new item; a cube without data as a bare item
         /// row), then the plot is pending. One
         /// transaction: a failed write throws and changes nothing, so the next check tries again and no cube is lost (M5-02;
@@ -313,7 +315,7 @@ public partial class GameStorage {
             foreach (PlotCube cube in plotCubes) {
                 if (cube.Interact?.Metadata.Nurturing is null) continue;
 
-                cube.Interact!.Nurturing = GetNurturing(plotInfo.OwnerId, cube.ItemId, cube.Interact.Metadata.Nurturing);
+                cube.Interact!.Nurturing = GetNurturing(plotInfo.OwnerId, cube.Interact.Metadata.Id, cube.Interact.Metadata.Nurturing);
             }
 
             return plotCubes;
@@ -334,7 +336,7 @@ public partial class GameStorage {
 
                 PlotCube? plotCube = ToPlotCube(model);
                 if (plotCube?.Interact?.Metadata.Nurturing is not null) {
-                    plotCube.Interact.Nurturing = GetNurturing(plotInfo.OwnerId, cube.ItemId, plotCube.Interact.Metadata.Nurturing);
+                    plotCube.Interact.Nurturing = GetNurturing(plotInfo.OwnerId, plotCube.Interact.Metadata.Id, plotCube.Interact.Metadata.Nurturing);
                 }
 
                 return plotCube;

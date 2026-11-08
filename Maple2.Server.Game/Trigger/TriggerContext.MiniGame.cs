@@ -22,6 +22,7 @@ public partial class TriggerContext {
                 player.Session.Send(DungeonRewardPacket.MiniGame(player.Session.MiniGameRecord));
             }
             player.Session.MiniGameRecord = null;
+            player.Session.ConditionUpdate(ConditionType.minigame_clear, codeLong: Field.MapId);
         }
 
         if (isOnlyWinner) {

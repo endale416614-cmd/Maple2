@@ -31,6 +31,7 @@ public class TableMetadataStorage {
     private readonly Lazy<InsigniaTable> insigniaTable;
     private readonly Lazy<ExpTable> expTable;
     private readonly Lazy<CommonExpTable> commonExpTable;
+    private readonly Lazy<PetExpTable> petExpTable;
     private readonly Lazy<UgcDesignTable> ugcDesignTable;
     private readonly Lazy<MasteryUgcHousingTable> masteryUgcHousingTable;
     private readonly Lazy<UgcHousingPointRewardTable> ugcHousingPointRewardTable;
@@ -98,6 +99,7 @@ public class TableMetadataStorage {
     public InsigniaTable InsigniaTable => insigniaTable.Value;
     public ExpTable ExpTable => expTable.Value;
     public CommonExpTable CommonExpTable => commonExpTable.Value;
+    public PetExpTable PetExpTable => petExpTable.Value;
     public UgcDesignTable UgcDesignTable => ugcDesignTable.Value;
     public MasteryUgcHousingTable MasteryUgcHousingTable => masteryUgcHousingTable.Value;
     public UgcHousingPointRewardTable UgcHousingPointRewardTable => ugcHousingPointRewardTable.Value;
@@ -167,6 +169,7 @@ public class TableMetadataStorage {
         insigniaTable = Retrieve<InsigniaTable>(context, TableNames.NAME_TAG_SYMBOL);
         expTable = Retrieve<ExpTable>(context, TableNames.EXP);
         commonExpTable = Retrieve<CommonExpTable>(context, TableNames.COMMON_EXP);
+        petExpTable = Retrieve<PetExpTable>(context, TableNames.PET_EXP);
         ugcDesignTable = Retrieve<UgcDesignTable>(context, TableNames.UGC_DESIGN);
         masteryUgcHousingTable = Retrieve<MasteryUgcHousingTable>(context, TableNames.MASTERY_UGC_HOUSING);
         ugcHousingPointRewardTable = Retrieve<UgcHousingPointRewardTable>(context, TableNames.UGC_HOUSING_POINT_REWARD);

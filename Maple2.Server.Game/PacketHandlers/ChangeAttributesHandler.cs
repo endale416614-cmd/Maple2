@@ -1,5 +1,6 @@
 ﻿using Maple2.Model;
 using Maple2.Model.Enum;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
@@ -47,6 +48,67 @@ public class ChangeAttributesHandler : FieldPacketHandler {
         }
     }
 
+    // One attempt, as a click: a lock scroll if a line is locked, the price at the item's own count, the roll, the payment. Null when paid and rolled.
+    private ChangeAttributesError? Attempt(GameSession session, Item item, LockOption[] locks, ref Item? changeItem) {
+        Item? lockItem = null;
+        if (locks.Length > 0) {
+            lockItem = GetLockConsumeItem(session, item);
+            if (lockItem == null) {
+                return s_itemremake_error_server_default;
+            }
+        }
+
+        // Calculate required catalysts.
+        var ingredients = new List<IngredientInfo>();
+        (string tag1Str, int amount1, string tag2Str, int amount2, string tag3Str, int amount3) = item.Type.IsPet
+            ? Lua.CalcGetPetRemakeIngredient(item.TimeChangedOption, item.Rarity, 0)
+            : Lua.CalcGetItemRemakeIngredientNew(item.Type.Type, item.TimeChangedOption, item.Rarity, item.Metadata.Limit.Level);
+        int discount = RemakeDiscount(session, item);
+        if (Enum.TryParse<ItemTag>(tag1Str, out ItemTag tag1)) {
+            ingredients.Add(new IngredientInfo(tag1, OnSale(amount1, discount)));
+        }
+        if (Enum.TryParse<ItemTag>(tag2Str, out ItemTag tag2)) {
+            ingredients.Add(new IngredientInfo(tag2, OnSale(amount2, discount)));
+        }
+        if (Enum.TryParse<ItemTag>(tag3Str, out ItemTag tag3)) {
+            ingredients.Add(new IngredientInfo(tag3, OnSale(amount3, discount)));
+        }
+
+        // Clone the item so we can preview changes without modifying existing item.
+        Item rolled = item.Clone();
+        if (rolled.Stats == null) { // This should be impossible, but check again to make linter happy.
+            return s_itemremake_error_server_null_status;
+        }
+
+        // Randomize attributes. A locked attribute comes back.
+        if (!ItemStatsCalc.UpdateRandomOption(ref rolled, locks)) {
+            return s_itemremake_error_server_default;
+        }
+
+        // Consume required materials.
+        if (!session.Item.Inventory.Consume(ingredients)) {
+            return s_itemremake_error_server_lack_price;
+        }
+        if (lockItem != null && !session.Item.Inventory.Consume(lockItem.Uid, 1)) {
+            return s_itemremake_error_server_fail_lack_lock_consume_item;
+        }
+
+        item.TimeChangedOption++;
+        rolled.TimeChangedOption++;
+        changeItem = rolled;
+        return null;
+    }
+
+    // The SaleRemake events the servers list (OfflineRemakeSale in Adapted): the largest discount for every item (kind 0) or for this one's kind.
+    private static int RemakeDiscount(GameSession session, Item item) {
+        byte kind = item.Type.IsPet ? SaleRemake.Pets : SaleRemake.Equipment;
+        return session.FindEvent(GameEventType.SaleRemake).Select(gameEvent => gameEvent.Metadata.Data).OfType<SaleRemake>()
+            .Where(sale => sale.Kind == SaleRemake.Everything || sale.Kind == kind).Select(sale => sale.Discount).DefaultIfEmpty(0).Max();
+    }
+
+    // Rounded down, as pet_change_talents.msb paid 5, 115 and 120 as 2, 57 and 60 under 5000; a material asked stays at least 1, one not asked (0 below level 50) stays 0.
+    public static int OnSale(int amount, int discount) => amount <= 0 || discount <= 0 ? amount : Math.Max(1, amount * (10000 - discount) / 10000);
+
     private void HandleChange(GameSession session, IByteReader packet) {
         long itemUid = packet.ReadLong();
         packet.ReadLong();
@@ -76,7 +138,7 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                 return;
             }
 
-            Item? lockItem = null;
+            LockOption[] locks = [];
             if (useLock) {
                 ItemStats.Option itemOption = item.Stats[ItemStats.Type.Random];
                 if (isSpecialAttribute) {
@@ -84,77 +146,43 @@ public class ChangeAttributesHandler : FieldPacketHandler {
                         session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
                         return;
                     }
+                    locks = [new LockOption((SpecialAttribute) attribute, true)];
                 } else {
                     if (!itemOption.Basic.ContainsKey((BasicAttribute) attribute)) {
                         session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_impossible));
                         return;
                     }
-                }
-
-                lockItem = GetLockConsumeItem(session, item);
-                if (lockItem == null) {
-                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
-                    return;
+                    locks = [new LockOption((BasicAttribute) attribute, true)];
                 }
             }
 
-            // Calculate required catalysts.
-            var ingredients = new List<IngredientInfo>();
-            (string tag1Str, int amount1, string tag2Str, int amount2, string tag3Str, int amount3) = item.Type.IsPet
-                ? Lua.CalcGetPetRemakeIngredient(item.TimeChangedOption, item.Rarity, 0)
-                : Lua.CalcGetItemRemakeIngredientNew(item.Type.Type, item.TimeChangedOption, item.Rarity, item.Metadata.Limit.Level);
-            if (Enum.TryParse<ItemTag>(tag1Str, out ItemTag tag1)) {
-                ingredients.Add(new IngredientInfo(tag1, amount1));
+            // /autoreroll: a press keeps rolling for a line this item can roll. Any other press is one ordinary attempt.
+            LockOption? target = OfflineAutoReroll.Target(session.CharacterId);
+            bool keepRolling = target != null && ItemStatsCalc.CanRoll(item, target.Value, locks);
+            Item? changeItem = null;
+            OfflineAutoReroll.RunResult run = OfflineAutoReroll.Run(keepRolling ? OfflineAutoReroll.MaxAttempts : 1,
+                () => Attempt(session, item, locks, ref changeItem),
+                () => keepRolling && OfflineAutoReroll.HasLine(changeItem!.Stats![ItemStats.Type.Random], target!.Value));
+            if (keepRolling) {
+                Logger.Debug("Auto reroll: {Attempts} attempts, line found: {Hit}, stopped by {Error}", run.Attempts, run.Hit, run.Error);
             }
-            if (Enum.TryParse<ItemTag>(tag2Str, out ItemTag tag2)) {
-                ingredients.Add(new IngredientInfo(tag2, amount2));
-            }
-            if (Enum.TryParse<ItemTag>(tag3Str, out ItemTag tag3)) {
-                ingredients.Add(new IngredientInfo(tag3, amount3));
-            }
-
-            // Clone the item so we can preview changes without modifying existing item.
-            Item changeItem = item.Clone();
-            if (changeItem.Stats == null) { // This should be impossible, but check again to make linter happy.
-                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_null_status));
+            if (run.Attempts == 0) {
+                session.Send(ChangeAttributesPacket.Error(run.Error ?? s_itemremake_error_server_default));
                 return;
             }
 
-            // Randomize attributes.
-            if (lockItem != null) {
-                // Add back the locked attribute.
-                if (isSpecialAttribute) {
-                    if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((SpecialAttribute) attribute, true))) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
-                        return;
-                    }
-                } else {
-                    if (!ItemStatsCalc.UpdateRandomOption(ref changeItem, new LockOption((BasicAttribute) attribute, true))) {
-                        session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
-                        return;
-                    }
-                }
-            } else {
-                if (!ItemStatsCalc.UpdateRandomOption(ref changeItem)) {
-                    session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_default));
-                    return;
-                }
-            }
-
-            // Consume required materials.
-            if (!session.Item.Inventory.Consume(ingredients)) {
-                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_lack_price));
-                return;
-            }
-            if (lockItem != null && !session.Item.Inventory.Consume(lockItem.Uid, 1)) {
-                session.Send(ChangeAttributesPacket.Error(s_itemremake_error_server_fail_lack_lock_consume_item));
-                return;
-            }
-
-            item.TimeChangedOption++;
-            changeItem.TimeChangedOption++;
-            session.ChangeAttributesItem = changeItem;
+            session.ChangeAttributesItem = changeItem!;
             session.Send(ChangeAttributesPacket.PreviewItem(session.ChangeAttributesItem));
+
+            // As the original, after the preview: the attempts, then the attempts on this one item. Keeping a roll counts nothing (pet_change_talents.msb).
+            // A run reports once: the first adds up and the second is a state, so its totals equal one report per attempt, and RankUp gives every grade they cross.
+            if (item.Type.IsPet) {
+                session.ConditionUpdate(ConditionType.pet_remake_option, counter: run.Attempts);
+                session.ConditionUpdate(ConditionType.pet_remake_option_record, counter: item.TimeChangedOption);
+            } else {
+                session.ConditionUpdate(ConditionType.item_remake_option, counter: run.Attempts);
+                session.ConditionUpdate(ConditionType.item_remake_option_record, counter: item.TimeChangedOption);
+            }
         }
     }
 
@@ -223,54 +251,17 @@ public class ChangeAttributesHandler : FieldPacketHandler {
             return null;
         }
 
-        if (changeItem.Type.IsWeapon) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionWeapon || item.IsExpired()) {
-                    return false;
-                }
-                return item.Rarity switch {
-                    4 => item.Id is 30000859 or 30001134 or 30001162,
-                    5 => item.Id is 30001039 or 30050859 or 30051134 or 30051162,
-                    6 => item.Id is 30060859 or 30061134 or 30061162,
-                    _ => false,
-                };
-            }, InventoryType.Misc).FirstOrDefault();
-        }
-        if (changeItem.Type.IsArmor) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionArmor || item.IsExpired()) {
-                    return false;
-                }
-                return item.Rarity switch {
-                    4 => item.Id is 30000860 or 30000891 or 30000911 or 30001163,
-                    5 => item.Id is 30001040 or 30050860 or 30050911 or 30051163 or 31002003,
-                    6 => item.Id is 30060860 or 30060911 or 30061163 or 31001995,
-                    _ => false,
-                };
-            }, InventoryType.Misc).FirstOrDefault();
-        }
-        if (changeItem.Type.IsAccessory) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionAccessory || item.IsExpired()) {
-                    return false;
-                }
-                // TODO: 30061170=(Event) Accessory Attribute Lock Scroll
-                return item.Rarity switch {
-                    4 => item.Id is 30000889 or 30001038 or 30001164,
-                    5 => item.Id is 30050889 or 30051038 or 30051164,
-                    6 => item.Id is 30060889 or 30061038 or 30061164,
-                    _ => false,
-                };
-            }, InventoryType.Misc).FirstOrDefault();
-        }
-        if (changeItem.Type.IsCombatPet) {
-            return session.Item.Inventory.Filter(item => {
-                if (item.Metadata.Property.Tag != ItemTag.LockItemOptionPet || item.IsExpired()) {
-                    return false;
-                }
-                return item.Id is 30000923 or 30000924 or 30001308;
-            }, InventoryType.Misc).FirstOrDefault();
-        }
-        return null;
+        return session.Item.Inventory.Filter(
+            item => !item.IsExpired() && LockScrollFits(item.Metadata.Property.Tag, item.Metadata.Option?.ConstantId, changeItem.Type, changeItem.Rarity),
+            InventoryType.Misc).FirstOrDefault();
     }
+
+    /// <summary>Whether a lock scroll serves this gear: its tag names the kind of gear, its data rarity (Option.ConstantId, the Epic, Legendary or Ascendant of its name) the gear's rarity. A pet candy serves every pet.</summary>
+    public static bool LockScrollFits(ItemTag scrollTag, int? scrollRarity, ItemType gear, int gearRarity) => scrollTag switch {
+        ItemTag.LockItemOptionWeapon => gear.IsWeapon && scrollRarity == gearRarity,
+        ItemTag.LockItemOptionArmor => gear.IsArmor && scrollRarity == gearRarity,
+        ItemTag.LockItemOptionAccessory => gear.IsAccessory && scrollRarity == gearRarity,
+        ItemTag.LockItemOptionPet => gear.IsCombatPet,
+        _ => false,
+    };
 }

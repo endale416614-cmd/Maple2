@@ -245,6 +245,11 @@ public class GameEvent : IByteSerializable {
                 writer.WriteInt();
                 writer.WriteUnicodeString(instrument.ContentType);
                 break;
+            case SaleRemake saleRemake: // As every captured Global login list: id, discount, kind.
+                writer.WriteInt(Id);
+                writer.WriteInt(saleRemake.Discount);
+                writer.WriteByte(saleRemake.Kind);
+                break;
         }
     }
 }

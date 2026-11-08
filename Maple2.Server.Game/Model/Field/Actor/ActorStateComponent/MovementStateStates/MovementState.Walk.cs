@@ -147,7 +147,7 @@ public partial class MovementState {
 
     private void Land() {
         Velocity = Vector3.Zero;
-        // Puts the navmesh agent under the NPC again, on the landing spot or back where it took off (BT-67). shortcut: with
+        // Puts the navmesh agent under the NPC again, on the landing spot or back where it took off (BT-67). TODO: with
         // neither on the navmesh (no navmesh, or it took off outside it after an off-mesh teleport or a flight) it stays
         // where it landed, until the teleport node gets its own navmesh rule.
         if (actor.Navigation?.Land(jumpStart, jumpEnd) != true) {

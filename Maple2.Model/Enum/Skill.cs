@@ -107,7 +107,7 @@ public enum ApplyTargetType {
     Player1 = 3, // Unknown,
     RegionBuff = 5, // Includes speed pads in Crazy Runners
     RegionBuff2 = 6, // Includes Healing spots
-    Player4 = 7, // Unknown, Debuff (Archeon's ice bombs)
+    Player4 = 7, // Everyone in the area (captures: 70000065 level 7, 70000051). Debuff (Archeon's ice bombs)
     HungryMobs = 8,
 }
 

@@ -69,6 +69,10 @@ public sealed class FieldPet : FieldNpc {
         return squared > distance.Trace * distance.Trace ? FollowAction.Trace : FollowAction.None;
     }
 
+    /// <summary>Whether a pet with no navmesh in reach of its owner may stand at the owner's position: only when the owner stands there.
+    /// A sync in the air (an air mount, a fall) leaves LastGroundPosition behind, and the pet then waits on the ground (BT-143).</summary>
+    public static bool OwnerOnGround(Vector3 owner, Vector3 ownerLastGround) => owner == ownerLastGround;
+
     public override void Update(long tickCount) {
         if (owner != null && !IsDead && followTick < tickCount) {
             followTick = tickCount + 500;
@@ -77,7 +81,7 @@ public sealed class FieldPet : FieldNpc {
             switch (FollowStep(Position, owner.Position, Metadata.Distance)) {
                 case FollowAction.Warp:
                     followTask?.Cancel();
-                    if (Navigation?.UpdatePosition(owner.Position) != true) {
+                    if (Navigation?.UpdatePosition(owner.Position) != true && OwnerOnGround(owner.Position, owner.LastGroundPosition)) {
                         Position = owner.Position;
                     }
                     break;

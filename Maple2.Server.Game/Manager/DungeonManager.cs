@@ -95,18 +95,13 @@ public class DungeonManager {
             return;
         }
 
+        // The run's room timer as it stands, to a player entering a room (captured at the field entry, next to RevivalCount)
+        DungeonRoomRecord record = Lobby.DungeonRoomRecord;
+        if (record.TimerOn && session.Field.FieldInstance.Type != InstanceType.DungeonLobby) {
+            session.Send(RoomTimerPacket.Start(RoomTimerType.Clock, record.TimerStartTick.Truncate32(), record.TimerDuration));
+        }
         if (session.Field.FieldInstance.Type == InstanceType.DungeonLobby) {
             session.Send(DungeonWaitingPacket.Set(Lobby.DungeonId, Lobby.Size));
-        } else {
-            // DEBUG
-            /*session.Send(RoomStageDungeonPacket.Set(Metadata.Id));
-            ByteWriter pWriter = Packet.Of(SendOp.DungeonMission);
-            pWriter.WriteByte(0);
-            pWriter.WriteInt(1);
-            pWriter.WriteInt(23023005);
-            pWriter.WriteShort(1);
-            pWriter.WriteShort(); // counter
-            session.Send(pWriter);*/
         }
     }
 
@@ -254,10 +249,24 @@ public class DungeonManager {
         UserRecord = new DungeonUserRecord(field.DungeonId, session.CharacterId);
 
         foreach (int missionId in Metadata.UserMissions) {
-            //TODO
+            if (session.TableMetadata.DungeonMissionTable.Missions.TryGetValue(missionId, out DungeonMissionMetadata? mission)) {
+                UserRecord.Missions[missionId] = new DungeonMission(mission);
+            }
         }
 
-        field.DungeonRoomRecord.UserResults.TryAdd(session.CharacterId, UserRecord);
+        // A party member re-entering a kept room goes on with their run: the rank check reads this record.
+        UserRecord = field.DungeonRoomRecord.UserResults.GetOrAdd(session.CharacterId, UserRecord);
+    }
+
+    /// <summary>The player's damage to an NPC, for the DamageToNpc missions of the dungeon this run belongs to.</summary>
+    public void AddNpcDamage(int npcId, long amount) {
+        if (UserRecord == null || session.Field?.DungeonId != UserRecord.DungeonId) {
+            return;
+        }
+
+        foreach (DungeonMission mission in UserRecord.AddNpcDamage(npcId, amount)) {
+            session.Send(DungeonMissionPacket.Update(mission));
+        }
     }
 
     /// <param name="ignoreEnterLimits">Only the test-kit /dungeon command: skips the player's entry limits (level, trophy,
@@ -354,10 +363,17 @@ public class DungeonManager {
         }
 
         if (firstField.DungeonRoomRecord.StartTick == 0) {
-            firstField.DungeonRoomRecord.StartTick = Lobby.FieldTick;
+            firstField.DungeonRoomRecord.Start(Lobby.FieldTick);
         }
         session.Send(session.PrepareField(firstField.MapId, roomId: firstField.RoomId) ? FieldEnterPacket.Request(session.Player) :
             FieldEnterPacket.Error(MigrationError.s_move_err_default));
+        if (session.Field == firstField && UserRecord is { Missions.Count: > 0 }) {
+            // In the first room now: as captured, RoomStageDungeon and then the Load follow its RequestFieldEnter. Later rooms get no second Load.
+            session.Send(RoomStageDungeonPacket.Set(UserRecord.DungeonId));
+            session.Send(DungeonMissionPacket.Load(UserRecord.Missions));
+        }
+        // The captures send it after the first map's field enter request and, in a room with user missions, after the Load: 0, or the count so far when the player comes back.
+        session.Send(RevivalPacket.DungeonReviveCount(firstField.DungeonRoomRecord.Revivals.GetValueOrDefault(session.CharacterId)));
     }
 
     public void SetDungeon(int dungeonId, int roomId, bool set) {

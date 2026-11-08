@@ -10,7 +10,7 @@ public class BannerController : ControllerBase {
 
     [HttpGet("{bannerId}/{fileHash}.m2u")]
     public IResult GetBanner(long bannerId, string fileHash) {
-        string fullPath = Path.Combine(Paths.WEB_DATA_DIR, "banner", bannerId.ToString(), $"{fileHash}.m2u");
+        string fullPath = Path.Combine(Paths.UGC_DIR, "banner", bannerId.ToString(), $"{fileHash}.m2u");
         if (!System.IO.File.Exists(fullPath)) {
             return Results.NotFound();
         }

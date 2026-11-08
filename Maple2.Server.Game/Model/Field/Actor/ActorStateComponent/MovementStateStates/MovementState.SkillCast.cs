@@ -20,6 +20,24 @@ public partial class MovementState {
         return Vector3.Transform(transform.FrontAxis, Matrix4x4.CreateRotationZ(float.DegreesToRadians(moveAngle)));
     }
 
+    /// <summary>The attack points of a motion that no key of its sequence names, the names compared with case: the original fires them at
+    /// the sequence's end, and every point at once when the NPC's model has no such sequence (null). NB-19, by the captures.</summary>
+    public static IEnumerable<byte> KeylessAttackPoints(SkillMetadataMotion motion, AnimationSequenceMetadata? sequence) {
+        for (int point = 0; point < motion.Attacks.Length; point++) {
+            string name = motion.Attacks[point].Point;
+            if (sequence is null || !sequence.Keys.Exists(key => key.Name == name)) {
+                yield return (byte) point;
+            }
+        }
+    }
+
+    private void FireKeylessAttacks(SkillRecord cast, AnimationSequenceMetadata? sequence) {
+        List<IActor> targets = actor.BattleState.Target is { } target ? [target] : [];
+        foreach (byte point in KeylessAttackPoints(cast.Motion, sequence)) {
+            actor.SkillState.SkillCastAttack(cast, point, targets);
+        }
+    }
+
     public void StateSkillEvent(string keyName) {
         if (castSkill is null) {
             CastTask?.Cancel();
@@ -60,6 +78,7 @@ public partial class MovementState {
             case "end":
                 int motionCount = castSkill.Metadata.Data.Motions.Length;
                 byte motion = castSkill.MotionPoint;
+                FireKeylessAttacks(castSkill, stateSequence);
 
                 if (CastTask is NpcSkillCastTask task && motion + 1 < motionCount) {
                     SkillCast(task, castSkill!.SkillId, castSkill!.Level, 0, (byte) (motion + 1));
@@ -68,6 +87,12 @@ public partial class MovementState {
 
                 CastTask?.Completed();
 
+                break;
+            case "loopend":
+                // Another pass follows: the attacks no key names hit once a pass, the last time at end (NB-19b, by the captures).
+                if (actor.Animation.Current is { IsLooping: true }) {
+                    FireKeylessAttacks(castSkill, stateSequence);
+                }
                 break;
             case "move0":
                 float moveDistance = castSkill.Motion.MotionProperty.MoveDistance;

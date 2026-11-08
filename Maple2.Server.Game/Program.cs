@@ -55,7 +55,7 @@ const int maxRetries = 3;
 const int delayMs = 5000;
 int attempt = 0;
 
-GrpcChannel channel = GrpcChannel.ForAddress(Target.GrpcWorldUri);
+GrpcChannel channel = DirectGrpc.Channel(Target.GrpcWorldUri);
 var worldClient = new WorldClient(channel);
 while (attempt < maxRetries) {
     try {
@@ -67,7 +67,8 @@ while (attempt < maxRetries) {
         break; // Success
     } catch (RpcException e) {
         attempt++;
-        Log.Warning("Failed to get port information from World Server. Attempt {Attempt} of {MaxRetries}.", attempt, maxRetries);
+        // The status and the exception's cause tell a proxy from a refused or blocked connection (BT-215).
+        Log.Warning(e, "Failed to get port information from World Server. Attempt {Attempt} of {MaxRetries}: {StatusCode} {Detail}", attempt, maxRetries, e.StatusCode, e.Status.Detail);
         if (attempt < maxRetries) {
             await Task.Delay(delayMs);
         }

@@ -110,13 +110,13 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                             switch (npcSpawn) {
                                 case IEventSpawnPointNPC eventNpcSpawn:
                                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new EventSpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, (int) npcSpawn.NpcCount, npcList, (int) npcSpawn.RegenCheckTime, (int) eventNpcSpawn.LifeTime, eventNpcSpawn.SpawnAnimation),
+                                        Block = new EventSpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, (int) npcSpawn.NpcCount, npcList, (int) npcSpawn.RegenCheckTime, (int) eventNpcSpawn.LifeTime, eventNpcSpawn.SpawnAnimation, npcSpawn.PeaceRestore),
                                     };
                                     continue;
                                 default:
                                     string? patrolData = npcSpawn.PatrolData != "00000000-0000-0000-0000-000000000000" ? npcSpawn.PatrolData.Replace("-", string.Empty) : null;
                                     yield return new MapEntity(xblock, new Guid(entity.EntityId), entity.EntityName) {
-                                        Block = new SpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, npcList, (int) npcSpawn.RegenCheckTime, patrolData),
+                                        Block = new SpawnPointNPC(npcSpawn.EntityId, npcSpawn.SpawnPointID, npcSpawn.Position, npcSpawn.Rotation, npcSpawn.IsVisible, npcSpawn.IsSpawnOnFieldCreate, npcSpawn.SpawnRadius, npcList, (int) npcSpawn.RegenCheckTime, patrolData, npcSpawn.PeaceRestore),
                                     };
                                     continue;
                             }
@@ -264,7 +264,7 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                 return null;
             case IMS2TriggerBox box:
                 return new MapEntity(xblock, new Guid(trigger.EntityId), trigger.EntityName) {
-                    Block = new Ms2TriggerBox(box.Position, box.ShapeDimensions, box.TriggerObjectID, box.IsVisible),
+                    Block = new Ms2TriggerBox(box.Position, box.ShapeDimensions, box.Rotation, box.TriggerObjectID, box.IsVisible),
                 };
             case IMS2TriggerCamera camera:
                 return new MapEntity(xblock, new Guid(trigger.EntityId), trigger.EntityName) {
@@ -297,7 +297,7 @@ public class MapEntityMapper : TypeMapper<MapEntity> {
                     return null;
                 }
                 return new MapEntity(xblock, new Guid(trigger.EntityId), trigger.EntityName) {
-                    Block = new Ms2TriggerSkill(skill.skillID, (short) skill.skillLevel, skill.Position, skill.Rotation, skill.TriggerObjectID, skill.IsVisible, skill.count),
+                    Block = new Ms2TriggerSkill(skill.skillID, (short) skill.skillLevel, skill.Position, skill.Rotation, skill.TriggerObjectID, skill.IsVisible, skill.count, skill.Interval),
                 };
             case IMS2TriggerSound sound:
                 return new MapEntity(xblock, new Guid(trigger.EntityId), trigger.EntityName) {

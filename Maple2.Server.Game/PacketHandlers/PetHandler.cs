@@ -1,5 +1,10 @@
 ﻿using Maple2.Model.Enum;
+using System.Collections.Concurrent;
+using Maple2.Database.Storage;
+using Maple2.Model;
+using Maple2.Model.Error;
 using Maple2.Model.Game;
+using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
@@ -7,6 +12,7 @@ using Maple2.Server.Game.Manager;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 
 namespace Maple2.Server.Game.PacketHandlers;
 
@@ -22,7 +28,7 @@ public class PetHandler : FieldPacketHandler {
         UpdateLootConfig = 6,
         Fusion = 12, // OnPetEnchant, s_msg_transfer_bind_pet_compose
         Attack = 15, // OnPetAttack, setPetAttackState
-        Unknown16 = 16,
+        Unknown16 = 16, // TODO(BT-224): Holotrainers (PetTraining) do nothing yet; this command (two longs) may be their confirm, which no capture shows: settle it from a capture or the client
         Evolve = 17,
         EvolvePoints = 18,
     }
@@ -124,12 +130,59 @@ public class PetHandler : FieldPacketHandler {
         session.Pet.UpdateLootConfig(config);
     }
 
+    // The day's fusions per character (FusionCount): a fodder pet's bonus exp lasts DailyPetEnchantMaxCount fusions a day.
+    // TODO(BT-224): kept in memory only, so a server restart gives the day's bonus again; keep it with the character once that matters.
+    private static readonly ConcurrentDictionary<long, (long Day, int Count)> FusionsToday = new();
+
     private void HandleFusion(GameSession session, IByteReader packet) {
         long petUid = packet.ReadLong();
         short count = packet.ReadShort();
+        var fodders = new List<(long Uid, int Amount)>();
         for (int i = 0; i < count; i++) {
-            packet.ReadLong(); // fodder uid
-            packet.ReadInt(); // count
+            fodders.Add((packet.ReadLong(), packet.ReadInt()));
+        }
+
+        PetExpTable levels = session.TableMetadata.PetExpTable;
+        ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
+        lock (session.Item) {
+            Item? pet = session.Item.Inventory.Get(petUid, InventoryType.Pets);
+            if (pet?.Pet == null || pet.Pet.Level >= constants.PetMaxLevel || fodders.Count == 0 || fodders.DistinctBy(fodder => fodder.Uid).Count() != fodders.Count) {
+                return;
+            }
+
+            long day = GuildMember.DayStart(DateTimeOffset.UtcNow);
+            int fusions = FusionsToday.TryGetValue(session.CharacterId, out (long Day, int Count) today) && today.Day == day ? today.Count : 0;
+            long exp = 0, meso = 0;
+            using (GameStorage.Request db = session.GameStorage.Context()) {
+                foreach ((long uid, int amount) in fodders) {
+                    Item? fodder = session.Item.Inventory.Get(uid);
+                    // Not the pet itself, the summoned pet, a locked or expired item, or a pet whose storage holds items (they would be lost).
+                    if (fodder == null || uid == petUid || uid == session.Pet?.Pet.Uid || fodder.IsLocked || fodder.IsExpired() || amount <= 0 || fodder.Amount < amount
+                        || (fodder.Pet != null && db.GetStorage(uid).Count > 0)
+                        || PetFusion.Fodder(pet, fodder, amount, fusions, constants.DailyPetEnchantMaxCount) is not { } gain) {
+                        return;
+                    }
+                    exp += gain.Exp;
+                    meso += gain.Meso;
+                    fusions += gain.Fusions;
+                }
+            }
+            if (session.Currency.Meso < meso) {
+                session.Send(PetPacket.Error(PetError.s_err_lack_meso));
+                return;
+            }
+
+            session.Currency.Meso -= meso;
+            foreach ((long uid, int amount) in fodders) {
+                session.Item.Inventory.Consume(uid, amount);
+            }
+            FusionsToday[session.CharacterId] = (day, fusions);
+            int gained = PetFusion.AddExp(pet, exp, levels, constants.PetMaxLevel);
+            session.Send(PetPacket.Fusion(session.Player.ObjectId, pet));
+            if (gained > 0) {
+                session.Send(PetPacket.LevelUp(session.Player.ObjectId, pet));
+            }
+            session.Send(PetPacket.FusionCount(fusions));
         }
     }
 

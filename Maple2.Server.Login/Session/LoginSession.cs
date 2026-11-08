@@ -113,7 +113,7 @@ public class LoginSession : Core.Network.Session {
             entries.Add((character, equips));
         }
 
-        Send(CharacterListPacket.SetMax(account.MaxCharacters, Constant.ServerMaxCharacters));
+        Send(CharacterListPacket.SetMax(OfflineCharacterSlots.Unlocked(account.MaxCharacters, characters.Count), Constant.ServerMaxCharacters));
         Send(CharacterListPacket.StartList());
         // Send each character data
         Send(CharacterListPacket.AddEntries(account, entries));
@@ -149,7 +149,7 @@ public class LoginSession : Core.Network.Session {
             return;
         }
 
-        Send(CharacterListPacket.SetMax(account.MaxCharacters, Constant.ServerMaxCharacters));
+        Send(CharacterListPacket.SetMax(OfflineCharacterSlots.Unlocked(account.MaxCharacters, db.CountCharacters(AccountId)), Constant.ServerMaxCharacters));
         Send(CharacterListPacket.AppendEntry(account, character,
             new Dictionary<ItemGroup, List<Item>> {
                 { ItemGroup.Outfit, outfits },

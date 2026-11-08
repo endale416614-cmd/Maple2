@@ -18,7 +18,7 @@ public static class RegionSkillPacket {
         pWriter.Write<Command>(Command.Add);
         pWriter.WriteInt(fieldSkill.ObjectId);
         pWriter.WriteInt(fieldSkill.UserId); // the owner: the casting player (DL-46)
-        pWriter.WriteInt(fieldSkill.NextTick.Truncate32());
+        pWriter.WriteInt(fieldSkill.StartTick.Truncate32()); // the region's start (captured: a splash's add plus Delay, 0 for a map's or a trigger's)
         pWriter.WriteByte((byte) fieldSkill.Points.Length);
         foreach (Vector3 point in fieldSkill.Points) {
             pWriter.Write<Vector3>(point);

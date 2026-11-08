@@ -125,6 +125,18 @@ public class Stats {
         }
     }
 
+    /// <summary>
+    /// Adds the attack of the STR, DEX, LUK and INT above the base (gear, allocated points, buffs) to the totals, with the attack's own rate;
+    /// the base attack is in Base already. The original's stat packets count them so (FT-26a, R3-F).
+    /// </summary>
+    public void AddStatAttack(JobCode jobCode) {
+        long physical = AttackStat.PhysicalAtk(jobCode, this[BasicAttribute.Strength].Total, this[BasicAttribute.Dexterity].Total, this[BasicAttribute.Luck].Total)
+            - AttackStat.PhysicalAtk(jobCode, this[BasicAttribute.Strength].Base, this[BasicAttribute.Dexterity].Base, this[BasicAttribute.Luck].Base);
+        long magical = AttackStat.MagicalAtk(jobCode, this[BasicAttribute.Intelligence].Total) - AttackStat.MagicalAtk(jobCode, this[BasicAttribute.Intelligence].Base);
+        this[BasicAttribute.PhysicalAtk].AddTotal((long) (physical * (1 + this[BasicAttribute.PhysicalAtk].Rate)));
+        this[BasicAttribute.MagicalAtk].AddTotal((long) (magical * (1 + this[BasicAttribute.MagicalAtk].Rate)));
+    }
+
     public Stat this[BasicAttribute attribute] {
         get {
             if (!basicValues.ContainsKey(attribute)) {

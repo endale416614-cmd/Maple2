@@ -21,8 +21,11 @@ public class ItemDismantleHandler : FieldPacketHandler {
         AutoAdd = 6,
     }
 
-    /// <summary>Chaos Onyx Crystals for dismantling one gear item: Epic 1-3, Legendary 2-6, Ascendant 3-9, none below Epic.</summary>
-    public static (int Min, int Max) ChaosOnyx(int rarity) => rarity >= 4 ? (rarity - 3, 3 * (rarity - 3)) : (0, 0);
+    /// <summary>Chaos Onyx Crystals for dismantling one gear item, as captured: Epic 3, Legendary 4 at Lv 50 and Lv 70, Ascendant 5, none below Epic.</summary>
+    public static int ChaosOnyx(int rarity) => rarity >= 4 ? rarity - 1 : 0;
+
+    /// <summary>Onyx Crystals for dismantling one gear item the dismantle data lists, as captured: Epic 296, Legendary 385, Ascendant 696. The data names only its fragments.</summary>
+    public static int ListedOnyx(int rarity) => rarity switch { 4 => 296, 5 => 385, 6 => 696, _ => 0 };
 
     /// <summary>Offline edition (maintainer 2026-10-21): (Navigator) gear from the level reward boxes can be dismantled although its data
     /// says enableBreak=0; the client mod offline-dismantle (tools/build_dismantle_mod.py) lifts the same flag in the client.</summary>
@@ -237,6 +240,10 @@ public class ItemDismantleHandler : FieldPacketHandler {
             foreach (ItemBreakTable.Ingredient ingredient in ingredients) {
                 yield return (ingredient.ItemId, ingredient.Amount * amount, ingredient.Amount * amount);
             }
+            int onyx = ListedOnyx(item.Rarity) * amount;
+            if (item.Inventory == InventoryType.Gear && onyx > 0) {
+                yield return (ONYX_ID, onyx, onyx);
+            }
         } else if (item.GachaDismantleId != 0 && TableMetadata.GachaInfoTable.Entries.TryGetValue(item.GachaDismantleId, out GachaInfoTable.Entry? gachaEntry)) {
             yield return (gachaEntry.CoinItemId, gachaEntry.CoinItemAmount, gachaEntry.CoinItemAmount);
         } else {
@@ -248,9 +255,9 @@ public class ItemDismantleHandler : FieldPacketHandler {
         // TODO: ItemSkinCrystal reward from outfits?
 
         // Epic or better gear always gives Chaos Onyx, as in the original game (the dismantle data does not list it).
-        (int chaosMin, int chaosMax) = ChaosOnyx(item.Rarity);
-        if (item.Inventory == InventoryType.Gear && chaosMax > 0) {
-            yield return (CHAOS_ONYX_ID, chaosMin * amount, chaosMax * amount);
+        int chaos = ChaosOnyx(item.Rarity) * amount;
+        if (item.Inventory == InventoryType.Gear && chaos > 0) {
+            yield return (CHAOS_ONYX_ID, chaos, chaos);
         }
     }
 }

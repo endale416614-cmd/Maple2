@@ -14,6 +14,7 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
     private long nextTick;
     private TriggerState? state;
     private TriggerState? nextState;
+    private bool conditionsDue;
 
     public FieldTrigger(FieldManager field, int objectId, TriggerModel value) : base(field, objectId, value) {
         Context = new TriggerContext(this);
@@ -70,6 +71,7 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
 
         // The field clock stops while nobody is on the map; don't replay the missed ticks back to back on return.
         nextTick = Math.Max(nextTick, tickCount - Constant.NextStateTriggerDefaultTick) + Constant.NextStateTriggerDefaultTick;
+        conditionsDue = true;
 
         if (nextState != null) {
             if (TriggerContext.TraceEnabled) Context.DebugLog("[OnExit] {State}", state?.Name ?? "null");
@@ -81,11 +83,17 @@ public class FieldTrigger : FieldEntity<TriggerModel> {
             nextState = state.OnEnter();
 
             // If OnEnter transitions to nextState, we skip OnTick.
-            if (nextState != null) {
-                return;
-            }
+            conditionsDue = nextState == null;
+        }
+    }
+
+    /// <summary>The second pass of FieldManager.UpdateTriggers, after every script of the field has entered its state (BT-164).</summary>
+    public void CheckConditions() {
+        if (!conditionsDue) {
+            return;
         }
 
+        conditionsDue = false;
         nextState = state?.OnTick();
     }
 

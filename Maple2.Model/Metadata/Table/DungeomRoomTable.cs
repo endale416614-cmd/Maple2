@@ -12,6 +12,7 @@ public record DungeonRoomMetadata(
     DungeonCooldownType CooldownType,
     int CooldownValue,
     int DurationTick,
+    bool ExpireTimeOut,
     int LobbyFieldId,
     int[] FieldIds,
     DungeonRoomRewardMetadata Reward,

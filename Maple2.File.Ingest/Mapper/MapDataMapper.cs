@@ -149,7 +149,8 @@ public class MapDataMapper : TypeMapper<MapDataMetadata> {
                             BreakTick: vibrate.brokenTick,
                             MaterialTag: vibrate.materialTag ?? string.Empty,
                             ResetTimer: vibrate.resetTimer,
-                            VibrateIndex: vibrateObjectId++);
+                            VibrateIndex: vibrateObjectId++,
+                            HideGroupId: vibrate.hideGroupId);
 
                         // TODO: a cube-prop vibrate counts without a test of its collision mesh (the replay puts 96 tiles on cube props that are not full floors), upgrade to a collision floor test if monsters are seen spawning on such props
                         if (entity is IMS2CubeProp and not IMS2MapProperties { DisableCollision: true } and not IMS2MapProperties { CubeType: "Fluid" }) {

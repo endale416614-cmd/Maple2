@@ -19,6 +19,10 @@ public enum ExpMessageCode : ushort {
      * guildUserExp = 3301
      * monster = 60001
      */
+    [Description("You got {0} experience.")]
+    s_msg_take_quest_exp = 1010,
+    [Description("You got {0} experience.")]
+    s_msg_take_mission_exp = 1053,
     [Description("You got {0} experience from fishing.")]
     s_msg_take_fishing_exp = 1059,
     [Description("You got {0} experience for playing an instrument.")]

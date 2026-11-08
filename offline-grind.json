@@ -13,6 +13,10 @@
   // Multiplier for the mesos monsters drop. 1 = original.
   "MesoMultiplier": 6,
 
+  // Field Elites (the one Elite of a field map's spawn, such as Mushmom or Guard Boss Chaw) respawn after at most this
+  // many seconds; the original waits 300 s, and their kill trophies go up to 300 kills. 0 = original.
+  "EliteRespawnSeconds": 10,
+
   // Extra upgrade-material drops from monsters. Chance per kill (0..1); amount = Amount + AmountPerLevel * monster level, or a random amount from Amount to MaxAmount when MaxAmount is set.
   // Bosses get BossMultiplier times the amount; a drop's own BossChance and BossMultiplier win.
   "BossMultiplier": 5,
@@ -23,9 +27,17 @@
     { "ItemId": 40100002, "Name": "Red Crystal",        "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
     { "ItemId": 40100003, "Name": "Blue Crystal",       "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
     { "ItemId": 40100021, "Name": "Green Crystal",      "MinLevel": 30, "Chance": 0.04, "Amount": 1, "AmountPerLevel": 0 },
-    { "ItemId": 40100026, "Name": "Metacell",           "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 },
-    { "ItemId": 40300001, "Name": "Blue Gem Dust",      "MinLevel": 30, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.05 },
-    { "ItemId": 40300002, "Name": "Purple Gem Dust",    "MinLevel": 50, "Chance": 0.03, "Amount": 1, "AmountPerLevel": 0 },
+    // Half the Crystal Fragment row: a Legendary armor attempt asks 165 Metacells for every 400 Fragments, so Fragments stay the limit.
+    { "ItemId": 40100026, "Name": "Metacell",           "MinLevel": 50, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0.10 },
+    // Gem dust: the Onyx row shared over the eight colors, because every gem asks for three of them. Sockets open at Lv50; Blue keeps its Lv30.
+    { "ItemId": 40300001, "Name": "Blue Gem Dust",      "MinLevel": 30, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40300002, "Name": "Purple Gem Dust",    "MinLevel": 50, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40300003, "Name": "Orange Gem Dust",    "MinLevel": 50, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40300004, "Name": "White Gem Dust",     "MinLevel": 50, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40300005, "Name": "Red Gem Dust",       "MinLevel": 50, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40300006, "Name": "Green Gem Dust",     "MinLevel": 50, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40300007, "Name": "Cyan Gem Dust",      "MinLevel": 50, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
+    { "ItemId": 40300008, "Name": "Yellow Gem Dust",    "MinLevel": 50, "Chance": 0.05, "Amount": 1, "AmountPerLevel": 0.20 },
 
     // Every boss: 1 to 10 Chaos Onyx Crystals.
     { "ItemId": 40100024, "Name": "Chaos Onyx Crystal (boss)", "MinLevel": 1, "Chance": 0, "BossChance": 1, "Amount": 1, "MaxAmount": 10, "AmountPerLevel": 0, "BossMultiplier": 1 },
@@ -57,8 +69,9 @@
       { "Name": "Onyx Crystal",              "ItemIds": [ 40100023 ], "MinLevel": 20, "Chance": 0.60, "Amount": 2, "AmountPerLevel": 0.10 },
       { "Name": "Chaos Onyx Crystal",        "ItemIds": [ 40100024 ], "MinLevel": 40, "Chance": 0.20, "Amount": 1, "AmountPerLevel": 0 },
       { "Name": "Red/Blue/Green Crystal",    "ItemIds": [ 40100002, 40100003, 40100021 ], "MinLevel": 30, "Chance": 0.25, "Amount": 1, "AmountPerLevel": 0 },
-      { "Name": "Metacell",                  "ItemIds": [ 40100026 ], "MinLevel": 50, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0 },
-      { "Name": "Gem Dust (any color)",      "ItemIds": [ 40300001, 40300002, 40300003, 40300004, 40300005 ], "MinLevel": 30, "Chance": 0.20, "Amount": 1, "AmountPerLevel": 0.02 },
+      // Metacell: half the Crystal Fragment row. Gem dust: the Onyx row over all eight colors.
+      { "Name": "Metacell",                  "ItemIds": [ 40100026 ], "MinLevel": 50, "Chance": 0.40, "Amount": 3, "AmountPerLevel": 0.20 },
+      { "Name": "Gem Dust (any color)",      "ItemIds": [ 40300001, 40300002, 40300003, 40300004, 40300005, 40300006, 40300007, 40300008 ], "MinLevel": 30, "Chance": 0.60, "Amount": 2, "AmountPerLevel": 0.10 },
 
       // Enchant scrolls (set the gear to +N; all weapons and armor of the scroll's level range)
       { "Name": "Basic +3..+9 Enchant Scroll (Lv. 20-29 gear)",      "ItemIds": [ 31000111, 31000112, 31000113, 31000114, 31000115, 31000116, 31000117 ], "MinLevel": 20, "MaxLevel": 29, "Chance": 0.15, "Amount": 1, "AmountPerLevel": 0 },

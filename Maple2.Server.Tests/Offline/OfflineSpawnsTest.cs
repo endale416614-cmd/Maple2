@@ -31,6 +31,7 @@ public class OfflineSpawnsTest {
         Assert.That(spawn.Count, Is.EqualTo(3));
         Assert.That(spawn.RegionId, Is.EqualTo(4));
         Assert.That(spawn.RegenSeconds, Is.EqualTo(30));
+        Assert.That(spawn.GrindOnly, Is.False);
 
         // Test ToSpawnPoint conversion
         Ms2RegionSpawn region = new(4, false, new Vector3(10, 20, 30), Vector3.Zero);
@@ -56,7 +57,7 @@ public class OfflineSpawnsTest {
 
         // Check that we have the required spawns for QF-06
         var spawns = config.Spawns.ToList();
-        Assert.That(spawns.Count, Is.EqualTo(2));
+        Assert.That(spawns.Count, Is.EqualTo(3));
 
         // Find Wiggler spawn (29000022 in map 2000017)
         var wigglerSpawn = spawns.FirstOrDefault(s => s.NpcId == 29000022 && s.MapId == 2000017);
@@ -71,5 +72,35 @@ public class OfflineSpawnsTest {
         Assert.That(devilinSpawn.Count, Is.EqualTo(1));
         Assert.That(devilinSpawn.RegionId, Is.EqualTo(15));
         Assert.That(devilinSpawn.RegenSeconds, Is.EqualTo(900));
+
+        // The quest rows stay in both modes, at their own times.
+        Assert.That(wigglerSpawn.GrindOnly, Is.False);
+        Assert.That(devilinSpawn.GrindOnly, Is.False);
+    }
+
+    [Test]
+    public void ShippedFile_HasDrPippyForHisTrophy() {
+        OfflineSpawns.Config? config = OfflineSpawns.Parse(File.ReadAllText(Path.Combine(Paths.SOLUTION_DIR, "offline-spawns.json")));
+        Assert.That(config, Is.Not.Null);
+
+        OfflineSpawns.Spawn pippy = config.Spawns.Single(spawn => spawn.NpcId == 22400062);
+        Assert.That((pippy.MapId, pippy.Count, pippy.RegionId, pippy.RegenSeconds, pippy.GrindOnly), Is.EqualTo((2000142, 1, 14, 300, true)));
+    }
+
+    [TestCase(false, false, true)]
+    [TestCase(false, true, true)]
+    [TestCase(true, false, false)]
+    [TestCase(true, true, true)]
+    public void AGrindOnlyRowNeedsGrindRates(bool grindOnly, bool grindRates, bool expected) {
+        Assert.That(OfflineSpawns.Applies(new OfflineSpawns.Spawn(1, 2, 1, 4, 300, GrindOnly: grindOnly), grindRates), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void AGrindOnlyRowComesBackAsAFieldEliteDoes() {
+        Ms2RegionSpawn region = new(4, false, Vector3.Zero, Vector3.Zero);
+        var spawn = new OfflineSpawns.Spawn(1, 2, 1, 4, 300, GrindOnly: true);
+
+        Assert.That(OfflineSpawns.ToSpawnPoint(spawn, region).RegenCheckTime, Is.EqualTo(OfflineGrind.RespawnSeconds(300, fieldElite: true)));
+        Assert.That(OfflineSpawns.ToSpawnPoint(spawn with { GrindOnly = false }, region).RegenCheckTime, Is.EqualTo(300));
     }
 }

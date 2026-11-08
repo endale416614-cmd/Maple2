@@ -9,6 +9,7 @@ using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using static Maple2.Model.Error.ItemSocketError;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -32,6 +33,7 @@ public class ItemSocketHandler : FieldPacketHandler {
     // ReSharper disable MemberCanBePrivate.Global
     public required ItemMetadataStorage ItemMetadata { private get; init; }
     public required TableMetadataStorage TableMetadata { private get; init; }
+    public required ItemStatsCalculator ItemStatsCalc { private get; init; }
     // ReSharper restore All
     #endregion
 
@@ -76,6 +78,13 @@ public class ItemSocketHandler : FieldPacketHandler {
 
             if (item.Socket == null || item.Socket.UnlockSlots >= item.Socket.MaxSlots) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_socket_unlock_all));
+                return;
+            }
+
+            // Gear pays with a copy, and the client will not send a press with none. Outfits, which it sends with none, are not gear: GetGear never returns one.
+            // TODO: SO-01: only 0 is refused. The KMS client asks an exact count (2 under ItemSocketExpansion100), which the packed Global client can not confirm.
+            if (count == 0) {
+                session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient_count));
                 return;
             }
 
@@ -154,15 +163,22 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
-                if (!ConsumeGemstoneUpgradeIngredients(result.Value.entry)) {
+                List<GemstoneUpgradeTable.Entry> paid = PayGemstoneUpgrades(result.Value.entry);
+                if (paid.Count == 0) {
                     return;
                 }
 
-                result.Value.gem.ItemId = result.Value.entry.NextItemId;
+                if (!ItemMetadata.TryGet(paid[^1].NextItemId, out ItemMetadata? upgrade)) {
+                    session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_gemstone));
+                    return;
+                }
+
+                result.Value.gem.ItemId = paid[^1].NextItemId;
+                result.Value.gem.Stats = ItemStatsCalc.GetGemstoneStats(upgrade);
                 session.Send(ItemSocketPacket.UpgradeGemstone(itemUid, true, gemUid, result.Value.gem));
-                session.ConditionUpdate(ConditionType.gemstone_upgrade, targetLong: result.Value.entry.Level + 1);
-                session.ConditionUpdate(ConditionType.gemstone_upgrade_try);
-                session.ConditionUpdate(ConditionType.gemstone_upgrade_success);
+                GemstonesUpgraded(paid);
+
+                RefreshIfWorn(session, itemUid);
             } else {
                 (GemstoneUpgradeTable.Entry entry, ItemMetadata upgrade)? result = CheckUpgradeGemstoneInInventory(session, gemUid);
                 if (result == null) {
@@ -174,16 +190,20 @@ public class ItemSocketHandler : FieldPacketHandler {
                     return;
                 }
 
-                if (!ConsumeGemstoneUpgradeIngredients(result.Value.entry)) {
+                List<GemstoneUpgradeTable.Entry> paid = PayGemstoneUpgrades(result.Value.entry);
+                if (paid.Count == 0) {
                     return;
                 }
 
-                if (!session.Item.Inventory.Remove(gemUid, out Item? gem, amount: 1)) {
+                // One remove and one add however many tiers were paid, so the gem never stacks into a tier it only passes.
+                if (!ItemMetadata.TryGet(paid[^1].NextItemId, out ItemMetadata? upgrade) || !session.Item.Inventory.Remove(gemUid, out Item? gem, amount: 1)) {
                     session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_gemstone));
                     return;
                 }
 
-                Item upgradeGem = gem.Mutate(result.Value.upgrade);
+                // Mutate keeps the stats, and these are the tier's. Set before Add, whose packet carries them.
+                Item upgradeGem = gem.Mutate(upgrade);
+                upgradeGem.Stats = ItemStatsCalc.GetGemstoneStats(upgrade);
                 if (!session.Item.Inventory.Add(upgradeGem, true)) {
                     Logger.Fatal("Failed to add upgraded gem {ItemUid} to inventory", upgradeGem.Uid);
                     session.Send(ItemSocketPacket.Error(code: 6, error: s_itemsocketsystem_error_server_default));
@@ -191,21 +211,32 @@ public class ItemSocketHandler : FieldPacketHandler {
                 }
 
                 session.Send(ItemSocketPacket.UpgradeGemstone(itemUid, true, upgradeGem));
-                session.ConditionUpdate(ConditionType.gemstone_upgrade, targetLong: result.Value.entry.Level + 1);
-                session.ConditionUpdate(ConditionType.gemstone_upgrade_try);
-                session.ConditionUpdate(ConditionType.gemstone_upgrade_success);
+                GemstonesUpgraded(paid);
             }
         }
 
         #region Local Function
-        bool ConsumeGemstoneUpgradeIngredients(GemstoneUpgradeTable.Entry entry) {
-            IngredientInfo[] ingredients = entry.Ingredients.Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount)).ToArray();
-            if (!session.Item.Inventory.Consume(ingredients)) {
+        // One tier, unless /autoenchant names a higher one. Each tier pays what a click pays, and only a tier that is an item is paid for.
+        // Only a press that paid nothing says so: a run that paid something ends with its result.
+        List<GemstoneUpgradeTable.Entry> PayGemstoneUpgrades(GemstoneUpgradeTable.Entry first) {
+            int goal = OfflineAutoEnchant.Goal(session.CharacterId, first.Level) ?? first.Level + 1;
+            List<GemstoneUpgradeTable.Entry> paid = GemstoneUpgradeRun(TableMetadata.GemstoneUpgradeTable.Entries, first, goal, entry =>
+                ItemMetadata.TryGet(entry.NextItemId, out _)
+                && session.Item.Inventory.Consume(entry.Ingredients.Select(ingredient => new IngredientInfo(ingredient.ItemTag, ingredient.Amount)).ToArray()));
+            if (paid.Count == 0) {
                 session.Send(ItemSocketPacket.Error(error: s_itemsocketsystem_error_invalid_target_ingredient_count));
-                return false;
             }
 
-            return true;
+            return paid;
+        }
+
+        // Per tier, as a click fires them: the trophy for reaching tier 10 reads the tier, and the counters count upgrades.
+        void GemstonesUpgraded(List<GemstoneUpgradeTable.Entry> paid) {
+            foreach (GemstoneUpgradeTable.Entry entry in paid) {
+                session.ConditionUpdate(ConditionType.gemstone_upgrade, targetLong: entry.Level + 1);
+                session.ConditionUpdate(ConditionType.gemstone_upgrade_try);
+                session.ConditionUpdate(ConditionType.gemstone_upgrade_success);
+            }
         }
         #endregion
     }
@@ -269,6 +300,7 @@ public class ItemSocketHandler : FieldPacketHandler {
             item.Socket!.Sockets[socketSlot] = itemGemstone;
             session.Send(ItemSocketPacket.EquipGemstone(item.Uid, socketSlot, itemGemstone));
             session.ConditionUpdate(ConditionType.gemstone_puton);
+            RefreshIfWorn(session, item.Uid);
         }
     }
 
@@ -317,6 +349,7 @@ public class ItemSocketHandler : FieldPacketHandler {
             item.Socket!.Sockets[socketSlot] = null;
             session.Send(ItemSocketPacket.UnequipGemstone(item.Uid, socketSlot));
             session.ConditionUpdate(ConditionType.gemstone_putoff);
+            RefreshIfWorn(session, item.Uid);
         }
 
         #region Local Function
@@ -390,6 +423,21 @@ public class ItemSocketHandler : FieldPacketHandler {
         return (entry, upgrade);
     }
 
+    /// <summary>
+    /// The upgrades one press buys, in order: until the gem's tier reaches goal or its top, or until pay says no. A gem upgrade has no roll (the stage says 100 and
+    /// both replies pass success), so every upgrade paid lands, and the last entry's NextItemId is the gem's new id.
+    /// </summary>
+    public static List<GemstoneUpgradeTable.Entry> GemstoneUpgradeRun(IReadOnlyDictionary<int, GemstoneUpgradeTable.Entry> table, GemstoneUpgradeTable.Entry first, int goal, Func<GemstoneUpgradeTable.Entry, bool> pay) {
+        var paid = new List<GemstoneUpgradeTable.Entry>();
+        GemstoneUpgradeTable.Entry? entry = first;
+        while (entry is { NextItemId: not 0 } && entry.Level < goal && pay(entry)) {
+            paid.Add(entry);
+            entry = table.GetValueOrDefault(entry.NextItemId);
+        }
+
+        return paid;
+    }
+
     private static bool IsSocketMaterialEqual(Item item, Item material) {
         return item.Id == material.Id
                && item.Rarity == material.Rarity
@@ -402,12 +450,21 @@ public class ItemSocketHandler : FieldPacketHandler {
         return material.Socket == null || material.Socket.Sockets.All(gem => gem == null);
     }
 
-    private enum SocketState { None, Locked, Used, Empty }
-    private static SocketState CheckSocketSlot(ItemSocket? itemSocket, byte slot) {
-        if (itemSocket == null || slot > itemSocket.MaxSlots) {
+    // GetGear looks in the bag and on the player, so gear not in the bag is worn: its totals change now, not at the next rebuild.
+    private static void RefreshIfWorn(GameSession session, long itemUid) {
+        if (session.Item.Inventory.Get(itemUid, InventoryType.Gear) == null) {
+            session.Stats.Refresh();
+        }
+    }
+
+    public enum SocketState { None, Locked, Used, Empty }
+
+    /// <summary>What a slot names. Slots count from 0 and Sockets holds only the open ones, so the first locked slot is UnlockSlots and MaxSlots is past the last.</summary>
+    public static SocketState CheckSocketSlot(ItemSocket? itemSocket, byte slot) {
+        if (itemSocket == null || slot >= itemSocket.MaxSlots) {
             return SocketState.None;
         }
-        if (slot > itemSocket.UnlockSlots) {
+        if (slot >= itemSocket.UnlockSlots) {
             return SocketState.Locked;
         }
         return itemSocket.Sockets[slot] != null ? SocketState.Used : SocketState.Empty;

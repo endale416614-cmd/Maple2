@@ -105,7 +105,7 @@ public class MasteryHandler : FieldPacketHandler {
         session.Currency.Meso -= entry.RequiredMeso;
 
         if (!entry.NoRewardExp) {
-            session.Mastery[entry.Type] += entry.RewardMastery;
+            session.Mastery[entry.Type] += session.Mastery.WithBuffRate(entry.Type, entry.RewardMastery);
         }
 
         foreach (ItemComponent rewardItem in entry.RewardItems) {

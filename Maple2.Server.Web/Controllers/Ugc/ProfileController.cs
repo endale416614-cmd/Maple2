@@ -10,7 +10,7 @@ public class ProfileController : ControllerBase {
 
     [HttpGet("avatar/{characterId:long}/{hash}.png")]
     public IResult GetAvatar(long characterId, string hash) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/profiles/{characterId}/{hash}.png";
+        string fullPath = $"{Paths.UGC_DIR}/profiles/{characterId}/{hash}.png";
         if (!System.IO.File.Exists(fullPath)) {
             return Results.NotFound();
         }

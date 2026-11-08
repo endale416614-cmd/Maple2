@@ -57,7 +57,7 @@ builder.Services.AddMemoryCache();
 builder.Services.AddGrpcClient<Login.LoginClient>(options => {
     string loginService = Environment.GetEnvironmentVariable("GRPC_LOGIN_IP") ?? IPAddress.Loopback.ToString();
     options.Address = new Uri($"http://{loginService}:{Target.GrpcLoginPort}");
-});
+}).ConfigurePrimaryHttpMessageHandler(DirectGrpc.Handler);
 
 builder.Host.UseServiceProviderFactory(new AutofacServiceProviderFactory());
 builder.Host.ConfigureContainer<ContainerBuilder>(autofac => {

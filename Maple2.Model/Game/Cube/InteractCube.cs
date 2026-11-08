@@ -50,6 +50,15 @@ public class InteractCube : IByteSerializable {
         writer.Write(State);
         if (Nurturing is not null) {
             writer.WriteClass<Nurturing>(Nurturing);
+        } else if (Metadata.ControlType is InteractCubeControlType.Nurturing) {
+            // The client reads this block for every Nurturing cube. A cube with no data sends what a new nurturing row holds (BT-142).
+            long now = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            writer.WriteLong(now); // CreationTime
+            writer.WriteLong(); // Exp
+            writer.WriteShort(1); // Stage, never 0: the client keys its NPC by stage
+            writer.WriteShort(1); // ClaimedGiftForStage
+            writer.WriteShort();
+            writer.WriteLong(now); // LastFeedTime
         }
     }
 }

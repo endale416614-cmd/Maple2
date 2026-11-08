@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Xml;
 using Maple2.Database.Context;
@@ -331,6 +332,69 @@ public class QuestRegistryTest {
         foreach (var kvp in questRows.GroupBy(row => row.Status).ToDictionary(g => g.Key, g => g.Count()).OrderBy(pair => pair.Key)) {
             TestContext.WriteLine($"  {kvp.Key}: {kvp.Value}");
         }
+    }
+
+    // QF-08 (BT-20): the Lv 75 story in the order of the client's quest files; BA-15 adds 10003449 to 10003454 after it (10003455 is held, BA-15f).
+    private static readonly int[] Lv75Story = [.. Enumerable.Range(10003399, 35), .. Enumerable.Range(10003440, 9)];
+
+    /// <summary>Runs a check on the pack's data: the base DB holds only 4 quests of the story.</summary>
+    private static void OnPack(Action<MetadataContext, string> check) {
+        string? path = Environment.GetEnvironmentVariable("PACK_DATA_DB");
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) {
+            Assert.Ignore("maple-data.db not found (set PACK_DATA_DB to the pack's GameData/maple-data.db)");
+        }
+
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly }.ToString());
+        connection.Open();
+        using var context = new MetadataContext(new DbContextOptionsBuilder().UseSqlite(connection).Options);
+        context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+        check(context, path);
+    }
+
+    /// <summary>From its first quest on the story is one line: each quest needs only the one before it, is open to every class
+    /// and has a name, and the 44 in the data have NPCs a player can talk to. Golden: the client's quest files.</summary>
+    [Test]
+    public void Lv75StoryGoesQuestByQuest() {
+        OnPack((context, _) => {
+            List<QuestMetadata> all = context.QuestMetadata.ToList();
+            Dictionary<int, QuestMetadata> quests = all.ToDictionary(quest => quest.Id);
+            int[] story = [.. Lv75Story, .. Enumerable.Range(10003449, quests.ContainsKey(10003449) ? 6 : 0)];
+            Assert.That(quests.ContainsKey(10003455), Is.False, "10003455 is held (BA-15f): its dispatch map 52100305 has no data");
+
+            Dictionary<int, NpcMetadata> npcById = context.NpcMetadata.ToList().ToDictionary(npc => npc.Id);
+            List<MapMetadata> maps = context.MapMetadata.ToList();
+            Dictionary<string, XBlockEntities> entities = IndexEntities(context);
+            HashSet<int> placed = BuildPlaced(context, new ServerTableMetadataStorage(context), maps, entities, npcById);
+            placed.UnionWith(BuildQuestPlaced(maps, entities, all, npcById));
+            bool TalkTo(int id) => placed.Contains(id) && npcById.TryGetValue(id, out NpcMetadata? npc) && npc.Basic.Friendly > 0;
+
+            for (int i = 0; i < story.Length; i++) {
+                QuestMetadata quest = quests[story[i]];
+                if (i > 0) {
+                    Assert.That(quest.Require.Quest, Is.EqualTo(new[] { story[i - 1] }), $"{quest.Id} prerequisite");
+                }
+                Assert.That(quest.Name, Is.Not.Null.And.Not.Empty, $"{quest.Id} name");
+                Assert.That(quest.Basic.Disabled || quest.Basic.EventTag != string.Empty || quest.EventMissionType != QuestEventMissionType.none, Is.False, $"{quest.Id} open");
+                Assert.That(quest.Require.SelectableQuest, Is.Empty, $"{quest.Id} selectable prerequisite");
+                Assert.That(quest.Require.Job, Is.Empty, $"{quest.Id} class");
+                if (i < Lv75Story.Length) {
+                    Assert.That(quest.Require.Level, Is.EqualTo(75), $"{quest.Id} level");
+                    Assert.That(TalkTo(quest.Basic.StartNpc), Is.True, $"{quest.Id} start npc {quest.Basic.StartNpc}");
+                    Assert.That(TalkTo(quest.Basic.CompleteNpc), Is.True, $"{quest.Id} complete npc {quest.Basic.CompleteNpc}");
+                }
+            }
+        });
+    }
+
+    /// <summary>The story's first quest needs nothing but its level. A 1.2.2 pack, built before tools/data/lv75_quests.py, still names 10003390, which no data holds.</summary>
+    [Test]
+    public void Lv75StoryStartsWithoutTheMissingQuest() {
+        OnPack((context, path) => {
+            string packJson = Path.Combine(Path.GetDirectoryName(Path.GetDirectoryName(path))!, "pack.json");
+            bool builtBefore = File.Exists(packJson) && JsonDocument.Parse(File.ReadAllText(packJson)).RootElement.GetProperty("version").GetString()!.StartsWith("1.2.2");
+            int[] expected = builtBefore ? [10003390] : [];
+            Assert.That(context.QuestMetadata.Single(quest => quest.Id == Lv75Story[0]).Require.Quest, Is.EqualTo(expected));
+        });
     }
 
     /// <summary>A map's spawn and script entities (one xblock can serve several maps).</summary>

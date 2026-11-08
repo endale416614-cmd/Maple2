@@ -6,6 +6,7 @@ using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Manager.Field;
 
@@ -25,6 +26,54 @@ public class DungeonFieldManager : FieldManager {
         DungeonId = dungeonMetadata.Id;
         Size = size;
         PartyId = partyId;
+    }
+
+    // The run's room timer, sent as the captures show it (RoomTimerPacket). A change reaches this room's players; a player entering
+    // another room of the run gets the timer as it stands (DungeonManager.LoadField).
+    public void ResetRoomTimer(int duration) {
+        DungeonRoomRecord.TimerResetTick = FieldTick;
+        DungeonRoomRecord.TimerDuration = duration;
+        DungeonRoomRecord.TimerOn = true;
+        Broadcast(RoomTimerPacket.Start(RoomTimerType.Clock, FieldTickInt, duration, reset: true));
+    }
+
+    public void ModifyRoomTimer(int tick) {
+        if (!DungeonRoomRecord.TimerOn || tick == 0) {
+            return;
+        }
+        int before = DungeonRoomRecord.TimerDuration;
+        DungeonRoomRecord.TimerDuration = Math.Max(0, before + tick);
+        Broadcast(RoomTimerPacket.Modify(DungeonRoomRecord.TimerStartTick.Truncate32(), DungeonRoomRecord.TimerDuration, DungeonRoomRecord.TimerDuration - before));
+    }
+
+    public void StopRoomTimer(bool close) {
+        if (!DungeonRoomRecord.TimerOn) {
+            return;
+        }
+        DungeonRoomRecord.TimerOn = false;
+        Broadcast(close ? RoomTimerPacket.Close() : RoomTimerPacket.Stop());
+    }
+
+    public override void Update() {
+        base.Update();
+        if (!Players.IsEmpty) {
+            CheckRoomTimeOut();
+        }
+    }
+
+    // TODO: FT-13c: isExpireTimeOut fails the run at 0 as dungeon_fail does, a reconstruction (no capture shows the moment; the
+    // scripts of the flagged rooms that read dungeon_timeout fail then too). The lobby shares the run's record but does not end it.
+    public void CheckRoomTimeOut() {
+        if (DungeonRoomRecord.Metadata.ExpireTimeOut && Lobby != this && DungeonRoomRecord.TimedOut(FieldTick)) {
+            Fail();
+        }
+    }
+
+    // The failed result window, no reward; a finished run ends once.
+    public void Fail() {
+        if (DungeonRoomRecord.State == DungeonState.None) {
+            ChangeState(DungeonState.Fail);
+        }
     }
 
     public void ChangeState(DungeonState state) {

@@ -23,11 +23,13 @@ public class PackHousingMailTest {
     private const int FENNEL = 50100286; // Fennel Leaves Block
     private const int WILDFLOWER = 50100289; // Yellow Wildflower Block
     private const int NO_DATA = 59999999; // an item id the data does not have (a pack item without the pack)
+    private const int PUMKY_NEST = 50400309; // a nurturing cube with data
 
     private SqliteConnection? dataConnection;
     private MetadataContext? dataContext;
     private ItemMetadataStorage items = null!;
     private MapMetadataStorage maps = null!;
+    private FunctionCubeMetadataStorage functions = null!;
     private SqliteConnection save = null!;
     private GameStorage storage = null!;
 
@@ -60,6 +62,7 @@ public class PackHousingMailTest {
         dataContext.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
         items = new ItemMetadataStorage(dataContext);
         maps = new MapMetadataStorage(dataContext);
+        functions = new FunctionCubeMetadataStorage(dataContext);
     }
 
     [OneTimeTearDown]
@@ -77,7 +80,7 @@ public class PackHousingMailTest {
         using (var context = new Ms2Context(options)) {
             context.Database.EnsureCreated();
         }
-        storage = new GameStorage(options, items, maps, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, null!);
+        storage = new GameStorage(options, items, maps, null!, null!, null!, null!, NullLogger<GameStorage>.Instance, functions);
     }
 
     [TearDown]
@@ -172,6 +175,29 @@ public class PackHousingMailTest {
         }
         Assert.That(Count($"SELECT COUNT(*) FROM \"ugcmap-cube\" WHERE Id = {newer.Id}"), Is.EqualTo(1), "left for the next buyer's clean-up");
         Assert.That(Count("SELECT COUNT(*) FROM item"), Is.EqualTo(0), "no item for owner 0 (the World start deletes those)");
+    }
+
+    [Test]
+    public void PlacedNest_CarriesItsNurturingRow() {
+        (long owner, PlotInfo plot) = OwnedPlot();
+        Assert.That(items.TryGet(PUMKY_NEST, out ItemMetadata? item), Is.True);
+        Assert.That(functions.TryGet(item!.Install!.ObjectCubeId, out FunctionCubeMetadata? function), Is.True);
+        var position = new Vector3B(1, 1, 1);
+
+        // The row is saved under the function cube id, the way the placement writes it: the lookup after it must use the same key (BT-142).
+        PlotCube placed;
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.CreateNurturing(owner, function!.Nurturing!, function.Id), Is.Not.Null);
+            placed = db.CreateCube(plot, new PlotCube(item) { Position = position, Type = PlotCube.CubeType.Construction, Interact = new InteractCube(position, function) })!;
+        }
+        Assert.That(placed.Interact?.Nurturing, Is.Not.Null, "a placed nest finds its row");
+
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.SaveCubes(plot, [placed])!.Single().Interact?.Nurturing, Is.Not.Null, "saving the plot keeps it");
+        }
+        using (GameStorage.Request db = storage.Context()) {
+            Assert.That(db.LoadCubesForOwner(owner).Single().Interact?.Nurturing, Is.Not.Null, "loading the owner's cubes finds it");
+        }
     }
 
     [Test]

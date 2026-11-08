@@ -61,15 +61,19 @@ public partial class TriggerContext {
     }
 
     public void ScoreBoardCreate(string type, string title, int maxScore) {
-        ErrorLog("[ScoreBoardCreate] type:{Type}, maxScore:{MaxScore}", type, maxScore);
+        if (TraceEnabled) DebugLog("[ScoreBoardCreate] type:{Type}, title:{Title}, maxScore:{MaxScore}", type, title, maxScore);
+        // TODO: SE-01: the board counts but is not drawn (no capture holds its packet); upgrade when a capture shows it.
+        Field.Score.Open(gauge: false);
     }
 
     public void ScoreBoardRemove() {
-        ErrorLog("[ScoreBoardRemove]");
+        if (TraceEnabled) DebugLog("[ScoreBoardRemove] points:{Points}", Field.Score.Points);
+        Field.Score.Close();
     }
 
     public void ScoreBoardSetScore(int score) {
-        ErrorLog("[ScoreBoardSetScore] score:{Score}", score);
+        if (TraceEnabled) DebugLog("[ScoreBoardSetScore] score:{Score}", score);
+        Field.Score.Set(score);
     }
 
     public void SetEventUiRound(int[] rounds, int arg3, int vOffset) {

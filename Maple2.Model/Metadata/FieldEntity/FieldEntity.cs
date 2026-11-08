@@ -47,7 +47,8 @@ public record FieldVibrateEntity(
     int BreakTick,
     string MaterialTag,
     int ResetTimer,
-    int VibrateIndex) : FieldEntity(Id, Position, Rotation, Scale, Bounds);
+    int VibrateIndex,
+    int HideGroupId = 0) : FieldEntity(Id, Position, Rotation, Scale, Bounds); // the group the AI's ShowVibrate and HideVibrateAll name; 0: none
 
 public record FieldSpawnTile(
     FieldEntityId Id,

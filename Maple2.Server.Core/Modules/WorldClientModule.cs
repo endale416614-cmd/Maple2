@@ -7,8 +7,8 @@ namespace Maple2.Server.Core.Modules;
 
 public class WorldClientModule : GrpcClientModule {
     public override void Configure(IServiceCollection services) {
-        services.AddGrpcClient<World.Service.World.WorldClient>(Options);
-        services.AddGrpcClient<Global.Service.Global.GlobalClient>(Options);
+        services.AddGrpcClient<World.Service.World.WorldClient>(Options).ConfigurePrimaryHttpMessageHandler(DirectGrpc.Handler);
+        services.AddGrpcClient<Global.Service.Global.GlobalClient>(Options).ConfigurePrimaryHttpMessageHandler(DirectGrpc.Handler);
     }
 
     protected override void Options(GrpcClientFactoryOptions options) {

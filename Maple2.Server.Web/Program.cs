@@ -35,6 +35,14 @@ Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(configRoot)
     .CreateLogger();
 
+// Uploaded files older versions wrote into the program folder, which updates replace (BT-15). Before the server listens: a reader must find them.
+(int copied, List<string> failed) = UgcFolder.CopyOnce(Paths.WEB_DATA_DIR, Paths.UGC_DIR);
+if (failed.Count > 0) {
+    Log.Logger.Error("{Count} uploaded file(s) could not be copied into the save; they stay in the program folder and the next start tries again: {Files}", failed.Count, string.Join("; ", failed.Take(10)));
+} else if (copied > 0) {
+    Log.Logger.Information("{Count} uploaded file(s) copied into the save", copied);
+}
+
 int.TryParse(Environment.GetEnvironmentVariable("WEB_PORT") ?? "4000", out int webPort);
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);

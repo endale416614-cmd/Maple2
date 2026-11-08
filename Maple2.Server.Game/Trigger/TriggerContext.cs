@@ -25,6 +25,12 @@ public partial class TriggerContext : ITriggerContext {
 
     private float currentRandom = float.MaxValue;
 
+    // Dais Maze (Sanctum of the Sage) reuses one key across its scripts and addresses each write: trigger_id names the script, no
+    // trigger_id the writer. With one field-wide value its 12 rounds all start at once and round 12's gate never opens. Other maps keep
+    // one value per key: their scripts also wait for values that AI nodes write field-wide. Add a map only after playing it through.
+    public static readonly IReadOnlySet<int> ScriptAddressedUserValueMaps = new HashSet<int> { 2000378 };
+    private readonly Dictionary<string, int> scriptUserValues = new();
+
     // Skip state class reference, must instantiate before using.
     private TriggerState? skipState;
     public readonly EventQueue Events;
@@ -100,8 +106,8 @@ public partial class TriggerContext : ITriggerContext {
 
     // Accessors
     public bool ShadowExpeditionPoints(int score) {
-        ErrorLog("[GetShadowExpeditionPoints]");
-        return 0 >= score;
+        if (TraceEnabled) DebugLog("[GetShadowExpeditionPoints] score:{Score}, points:{Points}", score, Field.Score.Points);
+        return Field.Score.Points >= score;
     }
 
     public bool DungeonVariable(int id, int value) {
@@ -258,32 +264,31 @@ public partial class TriggerContext : ITriggerContext {
     }
 
     public bool DungeonFirstUserMissionScore(int score, OperatorType operatorType) {
-        ErrorLog("[GetDungeonFirstUserMissionScore]");
+        // TODO: SE-02: the first entry of UserResults, not the first player in (the five rooms that use it are solo); upgrade if a party room uses it.
+        int actual = (Field as DungeonFieldManager)?.DungeonRoomRecord.UserResults.Values.FirstOrDefault()?.MissionScore() ?? 0;
+        if (TraceEnabled) DebugLog("[GetDungeonFirstUserMissionScore] score:{Score}, actual:{Actual}, operatorType:{Operator}", score, actual, operatorType);
+        return ScoreMatches(actual, score, operatorType);
+    }
+
+    public static bool ScoreMatches(int actual, int score, OperatorType operatorType) {
         return operatorType switch {
-            OperatorType.Greater => score > 0,
-            OperatorType.GreaterEqual => score >= 0,
-            OperatorType.Equal => score == 0,
-            OperatorType.LessEqual => score <= 0,
-            OperatorType.Less => score < 0,
+            OperatorType.Greater => actual > score,
+            OperatorType.GreaterEqual => actual >= score,
+            OperatorType.Equal => actual == score,
+            OperatorType.LessEqual => actual <= score,
+            OperatorType.Less => actual < score,
             _ => false,
         };
     }
 
     public bool ScoreBoardScore(int score, OperatorType operatorType) {
-        ErrorLog("[GetScoreBoardScore]");
-        return operatorType switch {
-            OperatorType.Greater => score > 0,
-            OperatorType.GreaterEqual => score >= 0,
-            OperatorType.Equal => score == 0,
-            OperatorType.LessEqual => score <= 0,
-            OperatorType.Less => score < 0,
-            _ => false,
-        };
+        if (TraceEnabled) DebugLog("[GetScoreBoardScore] score:{Score}, points:{Points}, operatorType:{Operator}", score, Field.Score.Points, operatorType);
+        return ScoreMatches(Field.Score.Points, score, operatorType);
     }
 
     public bool UserValue(string key, int value, bool negate) {
         if (TraceEnabled) WarnLog("[GetUserValue] key:{Key}", key);
-        int userValue = Field.UserValues.GetValueOrDefault(key, 0);
+        int userValue = scriptUserValues.TryGetValue(key, out int own) ? own : Field.UserValues.GetValueOrDefault(key, 0);
         if (negate) {
             return userValue != value;
         }

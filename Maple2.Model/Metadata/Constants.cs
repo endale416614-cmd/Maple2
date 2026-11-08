@@ -9,7 +9,9 @@ namespace Maple2.Model.Metadata;
 
 public static class Constant {
     #region custom constants
-    public const int ServerMaxCharacters = 8;
+    // The original game's limit: Server.m2d constants.xml has characterSlotBaseCount 4 and characterSlotMaxExtraCount
+    // 11, and the client's character list has 15 rows (8 before 1.2.3).
+    public const int ServerMaxCharacters = 15;
     public const int CharacterNameLengthMax = 12;
     public const long MaxMeret = long.MaxValue;
     public const long MaxMeso = long.MaxValue;
@@ -82,7 +84,8 @@ public static class Constant {
     public const long MaxNpcControlDelay = 500;
     public const float BlackMarketPremiumClubDiscount = 0.2f;
     public const double PetAttackMultiplier = 0.394;
-    public const double AttackDamageFactor = 4; // Unconfirmed
+    public const double AttackDamageFactor = 4; // A player's hits: the GMS captures of level-matched hits fit it with the attack of the total stats (FT-26a)
+    public const double NpcAttackDamageFactor = 2.8; // Monsters' hits on players: the GMS captures fit it below player Defense 20,000, median 2.80 over 2,594 hits (FT-26b)
     public const double CriticalConstant = 5.3;
     public const double CriticalPercentageConversion = 0.015;
     public const double MaxCriticalRate = 0.4;

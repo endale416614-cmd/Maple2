@@ -59,31 +59,6 @@ public class MeretCatalogBoxTest {
         IReadOnlyDictionary<int, GachaInfoTable.Entry> gacha = tables.GachaInfoTable.Entries;
         HashSet<int> withData = context.ItemMetadata.Select(item => item.Id).ToHashSet();
 
-        // The same checks as ItemBoxManager.Open; a parameter the item does not have makes the server throw, so it counts as a box that is not there.
-        bool Opens(ItemMetadataFunction function) {
-            if (string.IsNullOrEmpty(function.Parameters)) {
-                return false;
-            }
-            int[] p = ItemBoxManager.ParseParameters(function.Parameters);
-            int At(int index) => index < p.Length ? p[index] : -1;
-            bool HasRows(int boxId) => individual.TryGetValue(boxId, out IDictionary<int, IndividualDropItemTable.Entry>? box) && CanGiveItem(box);
-            // ItemDropManager.CanGiveItem (DR-01): an entry counts only when one of its ids has item data (0 pads the id lists).
-            bool CanGiveItem(IDictionary<int, IndividualDropItemTable.Entry> box) => box.Values.Any(group => group.Items.Any(entry => entry.Ids.Any(id => id > 0 && withData.Contains(id))));
-            switch (function.Type) {
-                case ItemFunction.SelectItemBox:
-                    return HasRows(At(1));
-                case ItemFunction.OpenItemBoxWithKey:
-                    return HasRows(At(5));
-                case ItemFunction.OpenGachaBox:
-                    return gacha.TryGetValue(At(0), out GachaInfoTable.Entry? entry) && HasRows(entry.DropBoxId);
-                default: // OpenItemBox
-                    Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? groups = [];
-                    return individual.TryGetValue(At(3), out IDictionary<int, IndividualDropItemTable.Entry>? rows)
-                           && (At(0) <= 0 || global.TryGetValue(At(0), out groups))
-                           && (CanGiveItem(rows) || groups.Count > 0);
-            }
-        }
-
         var failures = new List<string>();
         int checkedBoxes = 0;
         List<int> itemIds = entryIds.Keys.ToList();
@@ -93,7 +68,7 @@ public class MeretCatalogBoxTest {
             }
             foreach (int entryId in entryIds[item.Id]) {
                 checkedBoxes++;
-                if (!Opens(item.Function)) {
+                if (!Opens(item.Function, individual, global, gacha, withData)) {
                     failures.Add($"{entryId} {item.Name}");
                 }
             }
@@ -101,5 +76,33 @@ public class MeretCatalogBoxTest {
 
         Assert.That(failures, Is.Empty, $"{failures.Count} catalog box entries open to nothing: {string.Join(", ", failures)}");
         Assert.That(checkedBoxes, Is.GreaterThan(1000), "box entries checked");
+    }
+
+    // The same checks as ItemBoxManager.Open; a parameter the item does not have makes the server throw, so it counts as a box that is not there.
+    // DataSweepTest's reward check (RW-01) runs it on every box item.
+    internal static bool Opens(ItemMetadataFunction function, IReadOnlyDictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> individual,
+                               IDictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>> global, IReadOnlyDictionary<int, GachaInfoTable.Entry> gacha,
+                               HashSet<int> withData) {
+        if (string.IsNullOrEmpty(function.Parameters)) {
+            return false;
+        }
+        int[] p = ItemBoxManager.ParseParameters(function.Parameters);
+        int At(int index) => index < p.Length ? p[index] : -1;
+        bool HasRows(int boxId) => individual.TryGetValue(boxId, out IDictionary<int, IndividualDropItemTable.Entry>? box) && CanGiveItem(box);
+        // ItemDropManager.CanGiveItem (DR-01): an entry counts only when one of its ids has item data (0 pads the id lists).
+        bool CanGiveItem(IDictionary<int, IndividualDropItemTable.Entry> box) => box.Values.Any(group => group.Items.Any(entry => entry.Ids.Any(id => id > 0 && withData.Contains(id))));
+        switch (function.Type) {
+            case ItemFunction.SelectItemBox:
+                return HasRows(At(1));
+            case ItemFunction.OpenItemBoxWithKey:
+                return HasRows(At(5));
+            case ItemFunction.OpenGachaBox:
+                return gacha.TryGetValue(At(0), out GachaInfoTable.Entry? entry) && HasRows(entry.DropBoxId);
+            default: // OpenItemBox
+                Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? groups = [];
+                return individual.TryGetValue(At(3), out IDictionary<int, IndividualDropItemTable.Entry>? rows)
+                       && (At(0) <= 0 || global.TryGetValue(At(0), out groups))
+                       && (CanGiveItem(rows) || groups.Count > 0);
+        }
     }
 }

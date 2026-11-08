@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
@@ -52,5 +53,14 @@ public class GuildDonationTest {
 
         member.CheckinTime = 150;
         Assert.That(member.CheckedInToday(100), Is.True);
+    }
+
+    [Test]
+    public void DayStartIsUtcMidnight() {
+        long oct30 = new DateTimeOffset(2026, 10, 30, 0, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds();
+        Assert.That(GuildMember.DayStart(new DateTimeOffset(2026, 10, 30, 2, 0, 0, TimeSpan.Zero)), Is.EqualTo(oct30));
+        Assert.That(GuildMember.DayStart(new DateTimeOffset(2026, 10, 30, 23, 59, 59, TimeSpan.Zero)), Is.EqualTo(oct30));
+        // 07:00 at UTC+8 is still the 29th in UTC.
+        Assert.That(GuildMember.DayStart(new DateTimeOffset(2026, 10, 30, 7, 0, 0, TimeSpan.FromHours(8))), Is.EqualTo(oct30 - 86400));
     }
 }

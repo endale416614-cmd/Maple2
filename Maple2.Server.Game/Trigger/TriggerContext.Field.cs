@@ -367,7 +367,7 @@ public partial class TriggerContext {
                     continue;
                 }
 
-                Field.AddSkill(skill, (int) TimeSpan.FromMilliseconds(150).TotalMilliseconds, skill.Position, skill.Rotation, triggerId);
+                Field.AddSkill(skill, skill.Position, skill.Rotation, triggerId);
             } else {
                 Field.RemoveSkillByTriggerId(triggerId);
             }
@@ -402,6 +402,19 @@ public partial class TriggerContext {
         Field.Broadcast(BreakablePacket.Update(updated));
     }
 
+    // Map scripts name monsters by spawn id where a box id stands (add_buff with ignore_player, remove_buff): 195 ids in 30 maps, none a
+    // box (TG-03). These adds stay off: invincible, and the server runs no removal that would end them.
+    private static readonly HashSet<int> SpawnBuffsOff = [
+        50000265, // TODO(BT-219): Zakum 02000426_bf, 27.8 h: its removal needs the arms' battle-end steps, which the root base DB lacks; on when every base DB has them
+        49286001, // 52020001_qd, no map row: no end and no removal step
+    ];
+
+    /// <summary>The live NPCs placed from each id that is no trigger box and not 0 (TG-03).</summary>
+    private IEnumerable<FieldNpc> NpcsBySpawnId(params int[] ids) {
+        int[] spawnIds = ids.Where(id => id != 0 && !Objects.Boxes.ContainsKey(id)).ToArray();
+        return Field.EnumerateNpcs().Where(npc => !npc.IsDead && spawnIds.Contains(npc.SpawnPointId));
+    }
+
     public void AddBuff(int[] boxIds, int buffId, int level, bool ignorePlayer, bool isSkillSet, string feature) {
         DebugLog("[AddBuff] boxIds:{Ids}, buffId:{BuffId}, level:{Level}, ignorePlayer:{ignorePlayer}, isSkillSet:{Arg5}, feature:{Feature}",
             string.Join(", ", boxIds), buffId, level, ignorePlayer, isSkillSet, feature);
@@ -412,7 +425,8 @@ public partial class TriggerContext {
                 player.Buffs.AddBuff(Field.FieldActor, player, buffId, (short) level, startTick);
             }
         } else {
-            foreach (IActor monster in MonstersInBox(boxIds)) {
+            IEnumerable<FieldNpc> bySpawnId = SpawnBuffsOff.Contains(buffId) ? [] : NpcsBySpawnId(boxIds);
+            foreach (IActor monster in MonstersInBox(boxIds).Union(bySpawnId)) {
                 monster.Buffs.AddBuff(Field.FieldActor, monster, buffId, (short) level, startTick);
             }
         }
@@ -420,6 +434,10 @@ public partial class TriggerContext {
 
     public void RemoveBuff(int boxId, int buffId, bool ignorePlayer) {
         if (TraceEnabled) DebugLog("[RemoveBuff] boxId:{Id}, buffId:{BuffId}, ignorePlayer:{ignorePlayer}", boxId, buffId, ignorePlayer);
+        // A spawn id names NPCs whatever is_player says (52000099_qd names Allon's spawn 103 without it).
+        foreach (FieldNpc npc in NpcsBySpawnId(boxId)) {
+            npc.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
+        }
         if (!ignorePlayer) {
             foreach (IActor player in PlayersInBox(boxId)) {
                 player.Buffs.Remove(buffId, Field.FieldActor.ObjectId);

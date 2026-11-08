@@ -42,4 +42,12 @@ public class PetOwnerFollowTest {
         var spot = new Vector3(10, 20, 30);
         Assert.That(FieldPet.FollowStep(spot, spot, Basic), Is.EqualTo(FieldPet.FollowAction.None));
     }
+
+    [Test]
+    public void OwnerOnGround_OnlyWhenTheLastSyncTouchedGround() {
+        var standing = new Vector3(10, 20, 900);
+        Assert.That(FieldPet.OwnerOnGround(standing, standing), Is.True, "an owner standing off the navmesh keeps the rescue");
+        Assert.That(FieldPet.OwnerOnGround(standing, new Vector3(10, 20, 0)), Is.False, "in flight");
+        Assert.That(FieldPet.OwnerOnGround(standing, Vector3.Zero), Is.False, "no ground sync yet in this field");
+    }
 }

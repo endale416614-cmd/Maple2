@@ -500,12 +500,39 @@ public class ConfigManager {
         session.Send(LapenshardPacket.Load(lapenshards));
     }
 
+    /// <summary>The effects of what is equipped, as the captures send them after Equip. An effect already held at its level stays as it is.</summary>
+    public void RefreshLapenshardBuffs() {
+        if (session.Field == null) {
+            return;
+        }
+
+        foreach (int id in lapenshards.Values) {
+            if (session.ItemMetadata.TryGet(id, out ItemMetadata? metadata)) {
+                foreach (ItemMetadataAdditionalEffect buff in metadata.AdditionalEffects) {
+                    session.Player.Buffs.AddBuff(session.Player, session.Player, buff.Id, buff.Level, session.Field.FieldTick);
+                }
+            }
+        }
+    }
+
+    private void RemoveLapenshardBuffs(int id) {
+        if (session.ItemMetadata.TryGet(id, out ItemMetadata? metadata)) {
+            foreach (ItemMetadataAdditionalEffect buff in metadata.AdditionalEffects) {
+                session.Player.Buffs.Remove(buff.Id, session.Player.ObjectId);
+            }
+        }
+    }
+
     public int TryGetLapenshard(LapenshardSlot slot) {
         return lapenshards.TryGetValue(slot, out int id) ? id : -1;
     }
 
     public void SetLapenshard(LapenshardSlot slot, int id) {
+        if (lapenshards.TryGetValue(slot, out int previous)) {
+            RemoveLapenshardBuffs(previous);
+        }
         lapenshards[slot] = id;
+        RefreshLapenshardBuffs();
     }
 
     public bool EquipLapenshard(long itemUid, LapenshardSlot slot) {
@@ -554,6 +581,7 @@ public class ConfigManager {
 
         lapenshards[slot] = lapenshard.Id;
         session.Send(LapenshardPacket.Equip(slot, lapenshard.Id));
+        RefreshLapenshardBuffs();
 
         return true;
     }
@@ -584,6 +612,8 @@ public class ConfigManager {
         }
 
         session.Send(LapenshardPacket.Unequip(slot));
+        RemoveLapenshardBuffs(lapenshardId);
+        RefreshLapenshardBuffs(); // two tiers of one lapenshard share an effect
         return true;
     }
     #endregion

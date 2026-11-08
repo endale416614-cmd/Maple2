@@ -257,6 +257,8 @@ public static class ModelExtensions {
             ExpType.musicMastery1 or ExpType.musicMastery2 or ExpType.musicMastery3 or ExpType.musicMastery4 => ExpMessageCode.s_msg_take_play_instrument_exp,
             ExpType.arcade => ExpMessageCode.s_msg_take_arcade_exp,
             ExpType.fishing => ExpMessageCode.s_msg_take_fishing_exp,
+            ExpType.quest => ExpMessageCode.s_msg_take_quest_exp,
+            ExpType.mission => ExpMessageCode.s_msg_take_mission_exp,
             _ => ExpMessageCode.s_msg_take_exp,
         };
     }

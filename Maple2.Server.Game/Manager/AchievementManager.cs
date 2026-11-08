@@ -53,6 +53,14 @@ public sealed class AchievementManager {
         Recount(ConditionType.quest_revise_achieve, condition => condition.Codes?.Integers?.Count(id => session.Quest.TryGetQuest(id, out Quest? quest) && quest.State == QuestState.Completed) ?? 0);
         // Saves from before 1.2.2: field missions were reported without their id, so the exploration trophies never counted.
         Recount(ConditionType.field_mission, condition => MissionIds(condition.Codes).Count(id => session.Quest.TryGetQuest(id, out Quest? quest) && quest.State == QuestState.Completed));
+        // Saves from before 1.2.3: joining a guild was never reported, so United We Stand stayed at 0.
+        Recount(ConditionType.guild_join, _ => session.Guild.Guild != null ? 1 : 0);
+        // Saves from before 1.2.3: the design rank and its exp were never reported. A decoration score is not saved, so it counts at the next check-in.
+        Home home = session.Player.Value.Home;
+        if (home.DecorationLevel > 0) {
+            Update(ConditionType.interior_level, count: home.DecorationLevel);
+        }
+        Recount(ConditionType.interior_exp_offset, _ => home.TotalExp(session.TableMetadata.MasteryUgcHousingTable.Entries));
     }
 
     /// <summary>The missions a field_mission trophy names: its Integers, or every id in its Range.</summary>
@@ -92,9 +100,10 @@ public sealed class AchievementManager {
         return accountValues.TryGetValue(achievementId, out achievement) || characterValues.TryGetValue(achievementId, out achievement);
     }
 
-    /// <summary>The next counter: states (gear score, level, best kill chain, trophies held) keep the highest value; the rest add up.</summary>
+    /// <summary>The next counter: states (gear score, level, best kill chain, trophies held, design rank, decoration score, most attempts on one item or pet) keep the highest value; the rest add up.</summary>
     public static long NextCounter(ConditionType type, long counter, long value) {
-        return type is ConditionType.item_gear_score or ConditionType.level or ConditionType.killcount or ConditionType.trophy_point
+        return type is ConditionType.item_gear_score or ConditionType.level or ConditionType.killcount or ConditionType.trophy_point or ConditionType.interior_level or ConditionType.interior_point
+            or ConditionType.item_remake_option_record or ConditionType.pet_remake_option_record
             ? Math.Max(counter, value)
             : counter + value;
     }
@@ -300,8 +309,11 @@ public sealed class AchievementManager {
         achievement.RewardGrade++;
     }
 
+    /// <summary>Only an earned grade pays: CurrentGrade is the next grade, not yet earned.</summary>
+    public static bool CanClaim(Achievement achievement, int grade) => achievement.Grades.ContainsKey(grade);
+
     /// <summary>
-    /// Claims rewards from trophy grades. If there is no reward, it'll increment up on the reward grade. Loops until it catches up to the current grade + 1.
+    /// Claims rewards from trophy grades. If there is no reward, it'll increment up on the reward grade. Loops over the earned grades from the reward grade.
     /// </summary>
     /// <param name="achievementId"></param>
     public void ClaimReward(int achievementId) {
@@ -309,7 +321,7 @@ public sealed class AchievementManager {
             return;
         }
 
-        for (int startGrade = achievement.RewardGrade; startGrade <= achievement.CurrentGrade; startGrade++) {
+        for (int grade = achievement.RewardGrade; CanClaim(achievement, grade); grade++) {
             GiveReward(achievement, true);
             session.Send(AchievementPacket.Update(achievement));
         }

@@ -37,4 +37,15 @@ public class SensingRegionTest {
         Assert.That(FieldSkill.SensesCaster(IncludeCasterType.Priority, Sensor(), new Vector3(100, 0, 0)), Is.False);
         Assert.That(FieldSkill.SensesCaster(IncludeCasterType.Exclude, Sensor(), new Vector3(50, 0, 0)), Is.False);
     }
+
+    // FT-19: Ice Cream Time's and Little Meteor's sensors (targetSelectType 2) sense only the caster's marked targets.
+    [Test]
+    public void BuffSensorSensesOnlyTheCastersMarkedTargets() {
+        Assert.That(FieldSkill.SensesBuffTarget(true, [7], false, 7), Is.True);
+        Assert.That(FieldSkill.SensesBuffTarget(true, [8], false, 7), Is.False); // another player's mark
+        Assert.That(FieldSkill.SensesBuffTarget(true, [], false, 7), Is.False); // no mark
+        Assert.That(FieldSkill.SensesBuffTarget(true, [8, 7], false, 7), Is.True);
+        Assert.That(FieldSkill.SensesBuffTarget(true, [7], true, 7), Is.False); // already has the second buff
+        Assert.That(FieldSkill.SensesBuffTarget(false, [8], false, 7), Is.True); // any caster's buff
+    }
 }

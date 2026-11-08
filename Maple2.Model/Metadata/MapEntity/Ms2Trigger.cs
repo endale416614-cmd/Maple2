@@ -18,6 +18,7 @@ public record Ms2TriggerAgent(
 public record Ms2TriggerBox(
     Vector3 Position,
     Vector3 Dimensions,
+    Vector3 Rotation,
     int TriggerId,
     bool Visible)
 : Ms2Trigger(TriggerId, Visible);
@@ -66,7 +67,8 @@ public record Ms2TriggerSkill(
     Vector3 Rotation,
     int TriggerId,
     bool Visible,
-    int Count)
+    int Count,
+    int? Interval) // ms between the casts of a count 0 placement; null in map data ingested before SE-05
 : Ms2Trigger(TriggerId, Visible);
 
 public record Ms2TriggerSound(

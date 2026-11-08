@@ -125,7 +125,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             hitPlayer.Session.ConditionUpdate(ConditionType.skill_damage_npc, codeLong: damage.SkillId);
         }
 
+        // NB-21, as captured: a hit by another actor on a target holding an enabled invincible 1 or 2 buff is one type 4 or 8 entry for 0, whatever its count.
+        DamageType? invincible = caster.ObjectId == ObjectId ? null : DefensiveEffects.InvincibleHit(Buffs.EnumerateBuffs(), Field.FieldTick);
         if (attack.Damage.Count <= 0) {
+            if (invincible is { } shown) {
+                targetRecord.AddDamage(shown, 0);
+            }
             return;
         }
 
@@ -139,6 +144,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             targetRecord.AddDamage(DamageType.Critical, health);
             ApplyCheatDamage(caster, health);
             caster.Buffs.TriggerEvent(caster, caster, this, EventConditionType.OnOwnerAttackHit, skillId: damage.SkillId);
+            return;
+        }
+
+        if (invincible is { } hit) {
+            targetRecord.AddDamage(hit, 0);
             return;
         }
 
@@ -194,6 +204,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                     break;
                 case DamageType.Normal:
                     caster.Buffs.TriggerEvent(caster, caster, this, EventConditionType.OnOwnerAttackHit, skillId: damage.SkillId);
+                    Buffs.TriggerEvent(this, this, this, EventConditionType.OnAttacked, skillId: damage.SkillId);
                     break;
                 case DamageType.Block:
                     Buffs.TriggerEvent(this, this, this, EventConditionType.OnBlock, skillId: damage.SkillId);
@@ -283,18 +294,12 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
         ApplyEffects(record.Attack.Skills, record.Caster, this, skillId: record.SkillId, targets: record.Targets.Values.ToArray());
         ApplyEffects(record.Attack.SkillsOnDamage, record.Caster, damage, record.Targets.Values.ToArray());
 
-        // Create splash skills at target positions.
-        // Always skip the caster: when IncludeCaster is set, the attack also has a CubeMagicPathId
-        // which handles splash placement independently — this loop must not create a duplicate.
-        foreach (IActor target in record.Targets.Values) {
-            if (target.ObjectId == record.Caster.ObjectId) {
-                if (splashEffects.Length > 0 && record.Attack.CubeMagicPathId == 0) {
-                    Logger.Warning("[TargetAttack] SkillId={SkillId} AttackPoint={AttackPoint} IncludeCaster={IncludeCaster} — caster skipped in splash loop but CubeMagicPathId=0. Splash may be lost.",
-                        record.SkillId, record.AttackPoint, record.Attack.Range.IncludeCaster);
-                }
-                continue;
-            }
+        // Create splash skills at target positions, unless a cube path places them (NB-23, NB-26).
+        if (!SkillRecord.SplashAtTargets(record.Attack.CubeMagicPathId)) {
+            return;
+        }
 
+        foreach (IActor target in record.Targets.Values) {
             foreach (SkillEffectMetadata effect in splashEffects) {
                 Field.AddSkill(record.Caster, effect, [target.Position], record.Caster.Rotation);
             }

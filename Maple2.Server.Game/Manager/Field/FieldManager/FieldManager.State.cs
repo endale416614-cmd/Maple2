@@ -154,6 +154,7 @@ public partial class FieldManager {
             Rotation = rotation,
             Origin = owner?.Position ?? spawnPosition,
             SpawnPointId = owner?.Value.Id ?? 0,
+            PeaceRestore = spawnPointNpc?.PeaceRestore ?? false,
         };
 
         if (npc.Basic.Friendly > 0) {
@@ -225,7 +226,8 @@ public partial class FieldManager {
 
     public FieldPortal SpawnPortal(QuestSummonPortal metadata, FieldNpc npc, FieldPlayer owner) {
         var portal = new Portal(NextLocalId(), metadata.MapId, metadata.PortalId, PortalType.Quest, PortalActionType.Interact,
-            npc.Position.Offset(Constants.QuestPortalDistanceFromNpc, npc.Rotation), npc.Rotation,
+            // The NPC's rotation places the portal; the portal itself always faces -45 (GMS captures, 18 of 18), which sets where the client lets the player use it (BT-153).
+            npc.Position.Offset(Constants.QuestPortalDistanceFromNpc, npc.Rotation), new Vector3(0, 0, -45),
             new Vector3(Constants.QuestPortalDistanceFromNpc, Constants.QuestPortalDimensionY,
             Constants.QuestPortalDimensionZ), Constants.QuestPortalDistanceFromNpc,
             0, true, false, true);
@@ -233,7 +235,7 @@ public partial class FieldManager {
             Position = portal.Position,
             Rotation = portal.Rotation,
             EndTick = (FieldTick + (long) TimeSpan.FromSeconds(Constants.QuestPortalKeepTime).TotalMilliseconds).Truncate32(),
-            StartTick = FieldTickInt,
+            StartTick = (FieldTick + Constants.QuestPortalSummonTime).Truncate32(),
             Model = Constants.QuestPortalKeepNif,
         };
         fieldPortals[fieldPortal.ObjectId] = fieldPortal;
@@ -636,7 +638,54 @@ public partial class FieldManager {
         Scheduler.Schedule(() => FieldInteractEvent(metadata, spawnIds, nextTime), nextTime - now);
     }
 
-    public void AddSkill(Ms2TriggerSkill triggerSkill, int interval, in Vector3 position, in Vector3 rotation = default, int triggerId = 0) {
+    // Kritias field puzzles (time-event type 6, FT-10b): the row's key goes to the script it names, and TimeEventLifeTime, which the
+    // script waits out (wait_seconds_user_value), gets the seconds of the row's life.
+    private void StartTriggerValueEvents() {
+        IReadOnlyDictionary<int, TriggerValueEventMetadata>? events = ServerTableMetadata.TimeEventTable.TriggerValue;
+        if (events == null) {
+            return; // metadata ingested before the Kritias field puzzles were added
+        }
+
+        DateTime now = GameClock.Now;
+        foreach (TriggerValueEventMetadata metadata in events.Values) {
+            FieldTrigger? target = fieldTriggers.Values.FirstOrDefault(trigger => trigger.Value.Id == metadata.TriggerId);
+            if (target == null || !metadata.TargetMapIds.Contains(MapId) || metadata.EndTime < now || metadata.CycleTime <= TimeSpan.Zero) {
+                continue;
+            }
+
+            DateTime nextTime = NextCycleTime(metadata.StartTime, metadata.CycleTime, now);
+            Scheduler.Schedule(() => TriggerValueEvent(metadata, target, nextTime), nextTime - now);
+        }
+    }
+
+    private void TriggerValueEvent(TriggerValueEventMetadata metadata, FieldTrigger target, DateTime runTime) {
+        // The scheduler pauses while the field is empty, so this can run late: the puzzle gets the life that is left, none once it is over.
+        DateTime now = GameClock.Now;
+        TimeSpan left = now > runTime ? metadata.LifeTime - (now - runTime) : metadata.LifeTime;
+        if (left > TimeSpan.Zero && (metadata.Probability >= 100 || Random.Shared.Next(100) < metadata.Probability)) {
+            target.Context.SetUserValue(0, "TimeEventLifeTime", (int) Math.Ceiling(left.TotalSeconds));
+            target.Context.SetUserValue(0, metadata.Key, metadata.Value);
+        }
+
+        DateTime nextTime = NextCycleTime(runTime + metadata.CycleTime, metadata.CycleTime, now);
+        if (metadata.RandomTime > TimeSpan.Zero) {
+            nextTime += TimeSpan.FromMilliseconds(Random.Shared.Next((int) metadata.RandomTime.TotalMilliseconds));
+        }
+        if (nextTime > metadata.EndTime) {
+            return;
+        }
+        Scheduler.Schedule(() => TriggerValueEvent(metadata, target, nextTime), nextTime - now);
+    }
+
+    /// <summary>How many times a trigger skill fires. In the original a placement with count 0 repeats until set_skill turns it off, every Interval of
+    /// its map placement (captures: 70000500 every 1 s, 70000572 and 70000573 every 2 s, 70000051 every 0.1 s for its 1 s on).</summary>
+    public static int TriggerFireCount(int count) => count > 0 ? count : int.MaxValue;
+
+    /// <summary>The time between a trigger skill's casts: its Interval, at least 100 ms, as Interval 0 hits every 0.1 s in the captures (70000051,
+    /// 70000055, 70000065 level 3, 70000069, 70000072).</summary>
+    public static int TriggerInterval(int interval) => Math.Max(interval, 100);
+
+    public void AddSkill(Ms2TriggerSkill triggerSkill, in Vector3 position, in Vector3 rotation = default, int triggerId = 0) {
         if (!SkillMetadata.TryGet(triggerSkill.SkillId, triggerSkill.Level, out SkillMetadata? skillMetadata)) {
             logger.Warning("Invalid skill: {Id}", triggerSkill.SkillId);
             return;
@@ -644,12 +693,18 @@ public partial class FieldManager {
 
         // Most trigger skills leave count at the flat default 0. Passed as-is, FireCount 0 made the skill disabled on its
         // first update, so it was removed without firing (Root of Darkness 52000076: the root walls on Lennon's way down
-        // never broke). One cast per set_skill.
-        int fireCount = Math.Max(1, triggerSkill.Count);
-        var fieldSkill = new FieldSkill(this, NextLocalId(), FieldActor, skillMetadata, interval, fireCount, position) {
+        // never broke). One cast per set_skill, unless TriggerFireCount says otherwise.
+        int fireCount = TriggerFireCount(triggerSkill.Count);
+        if (fireCount == int.MaxValue && triggerId != 0) {
+            // Turned on again while on, a repeating placement is replaced, not stacked (captures: 70000572 in 2020120 removed and added at once).
+            RemoveSkillByTriggerId(triggerId);
+        }
+        // The first cast comes at the add, as captured (2,063 trigger adds, a median of 0 ms to the first hit); the later ones follow TriggerInterval.
+        var fieldSkill = new FieldSkill(this, NextLocalId(), FieldActor, skillMetadata, 0, fireCount, position) {
             Position = position,
             Rotation = rotation,
             TriggerId = triggerId,
+            Interval = TriggerInterval(triggerSkill.Interval ?? 0), // every placement of the map data since RB-02 has one (TriggerRepeatDataTest)
         };
 
         fieldSkills[fieldSkill.ObjectId] = fieldSkill;
@@ -758,6 +813,14 @@ public partial class FieldManager {
             case ApplyTargetType.RegionBuff:
             case ApplyTargetType.RegionBuff2:
                 return prisms.Filter(Players.Values, limit, ignore);
+            case ApplyTargetType.Player4:
+                if (caster is FieldActor) {
+                    // A map's region hits monsters, friendly NPCs and players (captures: 70000051, 70000065 level 7). Story NPCs stay out of fights (CombatGroups).
+                    return prisms.Filter(Mobs.Values.Concat<IActor>(Npcs.Values.Where(npc => npc.Value.Metadata.Basic.Friendly == 1)).Concat(Players.Values), limit, ignore);
+                }
+                // From an item or an NPC it hits no one: no capture shows whom (docs/ADAPTATIONS.md).
+                Log.Debug("Unhandled ApplyTargetType:{Entity} for {caster.GetType()}", targetType, caster.GetType());
+                return [];
             default:
                 Log.Debug("Unhandled SkillEntity:{Entity}", targetType);
                 return [];
@@ -844,31 +907,69 @@ public partial class FieldManager {
         Broadcast(FieldPropertyPacket.Background(background));
     }
 
-    private void SetBonusMapPortal(IList<MapMetadata> bonusMaps, Ms2RegionSpawn spawn) {
-        // Spawn a hat within a random range of 5 min to 8 hours
-        var delay = Random.Shared.Next(1, 97) * TimeSpan.FromMinutes(5);
-        Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, spawn), delay);
-        MapMetadata bonusMapMetadata = bonusMaps[Random.Shared.Next(bonusMaps.Count)];
-        IField? bonusMap = FieldFactory.Create(bonusMapMetadata.Id);
-        bonusMap?.Init();
-        if (bonusMap == null) {
-            logger.Warning("Could not create bonus map {BonusMapId} for map {MapId}", bonusMapMetadata.Id, MapId);
+    // Hidden Realm portals (timeEventData type 2): each row naming this map opens its portals once in each of its cycles, with its
+    // probability, on spawns with one of its tags; each portal leads to a new room drawn by weight from the row's room_random group.
+    private void StartHiddenRealmPortals() {
+        IReadOnlyDictionary<int, HiddenRealmPortalMetadata>? portals = ServerTableMetadata.TimeEventTable.HiddenRealmPortal;
+        if (portals == null) {
+            return; // metadata ingested before the portals were added (RB-02)
+        }
+
+        foreach (HiddenRealmPortalMetadata metadata in portals.Values.Where(portal => portal.TargetMapIds.Contains(MapId))) {
+            Ms2RegionSpawn[] spawns = Metadata.Spawns.Where(spawn => spawn.Tags.Any(metadata.SpawnTags.Contains))
+                .Select(spawn => Entities.RegionSpawns.GetValueOrDefault(spawn.Id)).OfType<Ms2RegionSpawn>().ToArray();
+            if (spawns.Length == 0 || !ServerTableMetadata.RandomRoomTable.Entries.TryGetValue(metadata.RoomId, out RandomRoomTable.Group? group)
+                || group.Rooms.Length == 0) {
+                continue;
+            }
+
+            var rooms = new WeightedSet<RandomRoomTable.Room>();
+            foreach (RandomRoomTable.Room room in group.Rooms) {
+                rooms.Add(room, room.Weight);
+            }
+            ScheduleHiddenRealmPortals(metadata, rooms, spawns, GameClock.Now);
+        }
+    }
+
+    // The first cycle at or after time, else the first not yet begun: the scheduler pauses while the field is empty, so a late run
+    // skips the cycles it missed. The portals open at a random point of the cycle's first RandomTime.
+    private void ScheduleHiddenRealmPortals(HiddenRealmPortalMetadata metadata, WeightedSet<RandomRoomTable.Room> rooms, Ms2RegionSpawn[] spawns, DateTime time) {
+        DateTime now = GameClock.Now;
+        if (metadata.NextCycle(time > now ? time : now) is not { } cycle) {
             return;
         }
-        bonusMap.SetRoomTimer(RoomTimerType.Clock, 90000);
-        var portal = new Portal(NextLocalId(), bonusMapMetadata.Id, -1, PortalType.Event, PortalActionType.Interact, spawn.Position, spawn.Rotation,
+        Scheduler.Schedule(() => OpenHiddenRealmPortals(metadata, rooms, spawns, cycle), cycle + metadata.RandomTime * Random.Shared.NextDouble() - now);
+    }
+
+    private void OpenHiddenRealmPortals(HiddenRealmPortalMetadata metadata, WeightedSet<RandomRoomTable.Room> rooms, Ms2RegionSpawn[] spawns, DateTime cycle) {
+        // The next cycle first, so a room that fails to load does not end the row's schedule.
+        ScheduleHiddenRealmPortals(metadata, rooms, spawns, cycle + metadata.CycleTime);
+        // A run that comes after its cycle has ended (the field was empty) opens nothing.
+        if (GameClock.Now < cycle + metadata.CycleTime && Random.Shared.Next(100) < metadata.Probability) {
+            foreach (Ms2RegionSpawn spawn in spawns.OrderBy(_ => Random.Shared.Next()).Take(metadata.RoomCount)) {
+                RandomRoomTable.Room room = rooms.Get();
+                IField? roomField = FieldFactory.Create(room.MapId);
+                if (roomField == null) {
+                    logger.Warning("Could not create hidden realm {RoomMapId} for map {MapId}", room.MapId, MapId);
+                    continue;
+                }
+                roomField.Init();
+                roomField.SetRoomTimer(RoomTimerType.Clock, room.DurationTick);
+                Broadcast(PortalPacket.Add(SpawnHiddenRealmPortal(room, roomField.RoomId, spawn, metadata.LifeTime)));
+                logger.Information("Hidden realm {RoomMapId} portal opened in map {MapId} at {Position} for {LifeTime}", room.MapId, MapId, spawn.Position, metadata.LifeTime);
+            }
+        }
+    }
+
+    /// <summary>The portal to a hidden realm's room at a spawn, open for the row's LifeTime. In the GMS capture of Suffering Wasteland 2000148,
+    /// the portal to Kumbawanka's Vault 80000006 (room 15) has the room's nif, stands at the spawn BonusPortal_spawn1 and closes 29 s after it opens.</summary>
+    public FieldPortal SpawnHiddenRealmPortal(RandomRoomTable.Room room, int roomId, Ms2RegionSpawn spawn, TimeSpan lifeTime) {
+        var portal = new Portal(NextLocalId(), room.MapId, -1, PortalType.Event, PortalActionType.Interact, spawn.Position, spawn.Rotation,
             new Vector3(200, 200, 250), 0, 0, true, false, true);
-        FieldPortal fieldPortal = SpawnPortal(portal, bonusMap.RoomId);
-        fieldPortal.Model = Metadata.Property.Continent switch {
-            Continent.VictoriaIsland => "Eff_event_portal_A01",
-            Continent.KarkarIsland => "Eff_kr_sandswirl_01",
-            Continent.ShadowWorld => "Eff_uw_potral_A01",
-            Continent.Kritias => "Eff_ks_magichole_portal_A01",
-            _ => "Eff_event_portal_A01",
-        };
-        fieldPortal.EndTick = (FieldTick + (long) TimeSpan.FromSeconds(30).TotalMilliseconds).Truncate32();
-        Broadcast(PortalPacket.Add(fieldPortal));
-        logger.Information("Bonus map {BonusMapId} portal opened in map {MapId} at {Position} for 30 s; next one in {Delay}", bonusMapMetadata.Id, MapId, spawn.Position, delay);
+        FieldPortal fieldPortal = SpawnPortal(portal, roomId);
+        fieldPortal.Model = room.Model;
+        fieldPortal.EndTick = (FieldTick + (long) lifeTime.TotalMilliseconds).Truncate32();
+        return fieldPortal;
     }
 
     public void SetRoomTimer(RoomTimerType type, int duration) {
@@ -946,6 +1047,7 @@ public partial class FieldManager {
         var fieldInteract = new FieldFunctionInteract(this, NextLocalId(), cube.Interact, cube.Id) {
             Position = cube.Position,
             Rotation = new Vector3(0, 0, cube.Rotation),
+            ItemId = cube.ItemId,
         };
 
         fieldFunctionInteracts[cube.Interact.Id] = fieldInteract;
@@ -1116,6 +1218,9 @@ public partial class FieldManager {
         }
         added.Session.Send(LiftablePacket.Update(fieldLiftables.Values.Where(liftable => liftable.FinishTick == 0).ToList()));
         added.Session.Send(BreakablePacket.Update(fieldBreakables.Values.Where(breakable => breakable.InFieldList).ToList()));
+        foreach ((string id, bool shown) in brokenVibrates.Visibility()) {
+            added.Session.Send(shown ? VibratePacket.Show(id) : VibratePacket.Hide(id));
+        }
         foreach ((string id, DamageRecord record, int tick) in brokenVibrates.InForceAt(Environment.TickCount64)) {
             added.Session.Send(VibratePacket.Attack(id, record, tick));
         }

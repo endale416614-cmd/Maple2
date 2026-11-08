@@ -121,6 +121,9 @@ public sealed class ItemStatsCalculator {
         return stats;
     }
 
+    /// <summary>What a gem of this tier gives: its data row at the one grade gems have. No gem has a rolled line, so every gem of an id gives the same.</summary>
+    public ItemStats GetGemstoneStats(ItemMetadata gem) => GetStats(new Item(gem, Constant.GemstoneGrade)) ?? new ItemStats();
+
     public ItemSocket? GetSockets(Item item) {
         // Only Earring, Necklace, and Ring have sockets.
         if (!item.Type.IsAccessory || !item.Type.IsEarring && !item.Type.IsNecklace && !item.Type.IsRing) {
@@ -182,6 +185,45 @@ public sealed class ItemStatsCalculator {
         // Update item with result.
         item.Stats[ItemStats.Type.Random] = randomOption;
         return true;
+    }
+
+    /// <summary>Whether a Change Attributes roll of this item can give this line beside its locked lines.</summary>
+    public bool CanRoll(Item item, LockOption line, params LockOption[] locks) {
+        if (item.Metadata.Option == null || item.Stats == null
+            || !TableMetadata.ItemOptionRandomTable.Options.TryGetValue(item.Metadata.Option.RandomId, item.Rarity, out ItemOption? itemOption)) {
+            return false;
+        }
+
+        return CanRoll(itemOption, item.Type, item.Stats[ItemStats.Type.Random].Count, line, locks);
+    }
+
+    /// <summary>A locked line always comes back. Any other needs a line left after the locked ones, a row in the table and the rule RandomItemOption picks by.</summary>
+    public static bool CanRoll(ItemOption option, in ItemType itemType, int lines, LockOption line, params LockOption[] locks) {
+        var lockedBasic = new Dictionary<BasicAttribute, BasicOption>();
+        var lockedSpecial = new Dictionary<SpecialAttribute, SpecialOption>();
+        foreach (LockOption locked in locks) {
+            if (locked.TryGet(out BasicAttribute basic, out _)) {
+                lockedBasic[basic] = default;
+            } else if (locked.TryGet(out SpecialAttribute special, out _)) {
+                lockedSpecial[special] = default;
+            }
+        }
+
+        bool isBasic = line.TryGet(out BasicAttribute lineBasic, out _);
+        line.TryGet(out SpecialAttribute lineSpecial, out _);
+        if (isBasic ? lockedBasic.ContainsKey(lineBasic) : lockedSpecial.ContainsKey(lineSpecial)) {
+            return true;
+        }
+        if (lockedBasic.Count + lockedSpecial.Count >= lines) {
+            return false;
+        }
+
+        foreach (ItemOption.Entry entry in option.Entries) {
+            if (isBasic ? entry.BasicAttribute == lineBasic : entry.SpecialAttribute == lineSpecial) {
+                return IsValidStat(itemType, Math.Min(lines, option.Entries.Length), lockedBasic, lockedSpecial, entry);
+            }
+        }
+        return false;
     }
 
     public bool UpdateFixedOption(ref Item item, params LockOption[] presets) {

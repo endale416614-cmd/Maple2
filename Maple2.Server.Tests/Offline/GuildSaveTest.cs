@@ -95,4 +95,28 @@ public class GuildSaveTest {
             Assert.That(leader.WeeklyContribution, Is.EqualTo(10));
         }
     }
+
+    // BT-169: Expel and Leave delete the row before they remove the member from memory; a save from another request can fall in between.
+    [Test]
+    public void SaveGuild_DoesNotWriteBackAMemberWhoseRowWasDeleted() {
+        Guild guild;
+        using (GameStorage.Request db = NewRequest()) {
+            guild = db.CreateGuild("GuildExpel", leaderId)!;
+            guild.Members.TryAdd(leaderId, new GuildMember { GuildId = guild.Id, Info = infos[leaderId], Rank = 0 });
+            guild.Members.TryAdd(memberId, db.CreateGuildMember(guild.Id, infos[memberId])!);
+        }
+        using (GameStorage.Request db = NewRequest()) {
+            Assert.That(db.DeleteGuildMember(guild.Id, memberId), Is.True);
+        }
+
+        guild.Funds = 340;
+        using (GameStorage.Request db = NewRequest()) {
+            Assert.That(db.SaveGuild(guild), Is.True);
+        }
+
+        using (GameStorage.Request db = NewRequest()) {
+            Assert.That(db.GetGuild(guild.Id)!.Funds, Is.EqualTo(340));
+            Assert.That(db.GetGuildMembers(new Provider(infos), guild.Id).Select(member => member.CharacterId), Is.EqualTo(new[] { leaderId }));
+        }
+    }
 }

@@ -18,6 +18,10 @@ public class StatsManager {
 
     public Stats Values { get; init; }
 
+    // The thread running this actor's rebuild, and whether a rebuild was asked for during it.
+    private int rebuildThread;
+    private bool rebuildAgain;
+
     public StatsManager(IActor actor, UserStatTable userStatsMetadata) {
         Actor = actor;
         levelStats = new Dictionary<short, IReadOnlyDictionary<BasicAttribute, long>>();
@@ -156,13 +160,39 @@ public class StatsManager {
             return;
         }
 
+        RunRebuild(fill, pools => RebuildPlayer(player, pools));
+    }
+
+    /// <summary>
+    /// Runs a player's rebuild. A rebuild asked for during one on the same thread (a stat buff added while the equips are counted) does not run
+    /// inside it, which counted the later equips, the points and the buffs twice (BT-79): it asks for one more pass after this one, and that pass is the last.
+    /// </summary>
+    public void RunRebuild(bool fill, Action<long[]> pass) {
+        int thread = Environment.CurrentManagedThreadId;
+        if (rebuildThread == thread) {
+            rebuildAgain = true;
+            return;
+        }
+
+        rebuildThread = thread;
+        rebuildAgain = false;
+        // A fill clamps to the totals.
+        long[] pools = fill ? [long.MaxValue, long.MaxValue, long.MaxValue] : SavePools(Values);
+        try {
+            pass(pools);
+            if (rebuildAgain) {
+                pass(pools);
+            }
+        } finally {
+            rebuildThread = 0;
+        }
+    }
+
+    private void RebuildPlayer(FieldPlayer player, long[] pools) {
         // Do not refresh stats if player is mounted
         if (player.Session.Ride.RideType is RideOnType.Battle or RideOnType.Object) {
             return;
         }
-
-        // A fill clamps to the totals, which also covers a nested rebuild (a buff added while the equips are counted) leaving Current short.
-        long[] pools = fill ? [long.MaxValue, long.MaxValue, long.MaxValue] : SavePools(Values);
 
         Character character = player.Value.Character;
         if (levelStats.TryGetValue(character.Level, out IReadOnlyDictionary<BasicAttribute, long>? metadata)) {
@@ -180,6 +210,7 @@ public class StatsManager {
         List<Buff> buffs = player.Buffs.EnumerateBuffs();
         AddBuffs(buffs);
         Values.Total();
+        Values.AddStatAttack(character.Job.Code());
         StatConversion(buffs);
         RestorePools(Values, pools);
         player.CheckRegen();

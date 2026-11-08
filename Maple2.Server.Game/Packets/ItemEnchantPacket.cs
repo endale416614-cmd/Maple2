@@ -22,7 +22,7 @@ public static class ItemEnchantPacket {
         Unknown16 = 16,
     }
 
-    public static ByteWriter StageItem(EnchantType type, Item item, ICollection<IngredientInfo> catalysts, IDictionary<BasicAttribute, BasicOption> statDeltas, in EnchantRates rates, int requiredCount) {
+    public static ByteWriter StageItem(EnchantType type, Item item, ICollection<IngredientInfo> catalysts, IDictionary<BasicAttribute, BasicOption> statDeltas, in EnchantRates rates, int requiredCount, EnchantFailType failType) {
         var pWriter = Packet.Of(SendOp.ItemEnchant);
         pWriter.Write<Command>(Command.StageItem);
         pWriter.WriteShort((short) type);
@@ -33,7 +33,7 @@ public static class ItemEnchantPacket {
             pWriter.Write<IngredientInfo>(catalyst);
         }
 
-        pWriter.Write<EnchantFailType>(EnchantFailType.None);
+        pWriter.Write<EnchantFailType>(failType);
 
         pWriter.WriteInt(statDeltas.Count);
         foreach ((BasicAttribute attribute, BasicOption delta) in statDeltas) {
@@ -128,7 +128,7 @@ public static class ItemEnchantPacket {
         pWriter.WriteLong(item.Uid);
         pWriter.WriteClass<Item>(item);
 
-        pWriter.WriteInt();
+        pWriter.WriteInt(40100025); // Defiance Crystal, on every captured failure
         pWriter.WriteInt();
         pWriter.WriteLong();
         pWriter.WriteInt(addCharges);

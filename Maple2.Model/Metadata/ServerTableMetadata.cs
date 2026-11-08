@@ -48,4 +48,6 @@ public class ServerTableMetadata {
 [JsonDerivedType(typeof(EnchantOptionTable), typeDiscriminator: "enchantOption")]
 [JsonDerivedType(typeof(UnlimitedEnchantOptionTable), typeDiscriminator: "unlimitedEnchantOption")]
 [JsonDerivedType(typeof(ConstantsTable), typeDiscriminator: "constants")]
+[JsonDerivedType(typeof(MonsterExpTable), typeDiscriminator: "monsterExpTable")]
+[JsonDerivedType(typeof(RandomRoomTable), typeDiscriminator: "roomRandom")]
 public abstract record ServerTable;

@@ -68,7 +68,8 @@ public static class NpcControlPacket {
             seqId = -1;
         } else {
             state = npc.MovementState.State;
-            seqId = npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId;
+            // A stunned NPC's client plays its own stun motion: all 2,980 captured stun controls carry -1 (NB-24).
+            seqId = state == ActorState.Stun ? (short) -1 : npc.Animation.PlayingSequence?.Id ?? npc.Animation.IdleSequenceId;
         }
 
         buffer.WriteNpcEntry(npc,

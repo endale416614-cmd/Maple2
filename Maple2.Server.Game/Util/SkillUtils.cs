@@ -65,6 +65,11 @@ public static class SkillUtils {
         return new Prism(polygon, position.Z + range.RangeOffset.Z - range.RangeAdd.Z, range.Height + range.RangeAdd.Z);
     }
 
+    /// <summary>The area an NPC's attack looks for targets in. A friendly NPC's cube-path shot (the Cusp of Life cannons) reaches down by RangeAdd.Z, as the original's NPC hits do; every other attack keeps GetPrism.</summary>
+    // TODO BT-150: captured NPC hits favour the downward rule for all RangeAdd.Z attacks; widen after a play check of monster attacks.
+    public static Prism GetNpcTargetPrism(this SkillMetadataRange range, int friendly, long cubeMagicPathId, in Vector3 position, float angle) =>
+        friendly > 0 && cubeMagicPathId != 0 ? range.GetCubePrism(position, angle) : range.GetPrism(position, angle);
+
     /// <summary>The range's origin: the offset turns with the caster only (angle = facing + 180; offset Y is forward); RotateZDegree turns the shape about this origin, not the offset.</summary>
     public static Vector2 Origin(in Vector3 position, in Vector3 rangeOffset, float angle) =>
         new Vector2(position.X, position.Y) + Vector2.Transform(new Vector2(rangeOffset.X, rangeOffset.Y), Matrix3x2.CreateRotation(angle * MathF.PI / 180));

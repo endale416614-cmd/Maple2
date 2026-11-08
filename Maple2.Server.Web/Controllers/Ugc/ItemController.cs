@@ -10,7 +10,7 @@ public class ItemController : ControllerBase {
 
     [HttpGet("{itemId}/{uid}.m2u")]
     public IResult GetItem(long itemId, string uid) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/items/{itemId}/{uid}.m2u";
+        string fullPath = $"{Paths.UGC_DIR}/items/{itemId}/{uid}.m2u";
         if (!System.IO.File.Exists(fullPath)) {
             return Results.NotFound();
         }

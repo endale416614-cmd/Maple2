@@ -295,10 +295,23 @@ public class AnimationManager {
     /// <param name="key">The keyframe to check</param>
     /// <returns>True if the keyframe has been hit, false otherwise</returns>
     private bool HasHitKeyframe(float sequenceTime, AnimationKey key) {
-        bool keyBeforeLoop = !Current?.IsLooping ?? true || Current?.Loop.end == 0 || key.Time <= Current?.Loop.end + 0.001f;
-        bool hitKeySinceLastTick = key.Time > lastSequenceTime && key.Time <= sequenceTime;
+        return KeyPlays(Current, key, lastSequenceTime, sequenceTime);
+    }
 
-        return keyBeforeLoop && hitKeySinceLastTick;
+    /// <summary>
+    /// Whether a key plays in a tick that takes the sequence from lastTime to time. While passes of the loop remain, end and the keys
+    /// after loopend wait for the last pass, so a motion with a LoopCount plays its loop 1 + LoopCount times before its end, as the
+    /// captures show (NB-19b). The bound is the sequence's own loopend key: the data lists end before loopend, and one tick can pass both.
+    /// </summary>
+    public static bool KeyPlays(AnimationRecord? current, AnimationKey key, float lastTime, float time) {
+        if (key.Time <= lastTime || key.Time > time) {
+            return false;
+        }
+        // TODO: NB-19b: a LoopCount sequence with no loop keys plays once; the captures hit again (Mason 24120001), model it once a capture shows how.
+        if (current is not { IsLooping: true, Sequence: { } sequence } || sequence.Keys.Find(loopKey => loopKey.Name == "loopend") is not { } loopEnd) {
+            return true;
+        }
+        return key.Name != "end" && key.Time <= loopEnd.Time + 0.001f;
     }
 
     /// <summary>

@@ -1,4 +1,7 @@
 using System.IO;
+using System.Linq;
+using System.Xml;
+using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
 using Maple2.Tools;
 using NUnit.Framework;
@@ -20,7 +23,7 @@ public class OfflineTriggersTest {
     [Test]
     public void Parse() {
         OfflineTriggers.Config config = Shipped();
-        Assert.That(config.Patches.Length, Is.EqualTo(2));
+        Assert.That(config.Patches.Length, Is.EqualTo(8));
         Assert.That(config.Patches[0].XBlock, Is.EqualTo("52000066_qd"));
         Assert.That(config.Patches[0].Trigger, Is.EqualTo("chase01"));
         Assert.That(config.Patches[0].Find, Is.EqualTo("quest_ids=\"10001028\""));
@@ -53,5 +56,39 @@ public class OfflineTriggersTest {
         const string xml = "<condition name=\"wait_tick\" wait_tick=\"1000\"><transition state=\"MoveToGetWeapon01\" /></condition>";
         Assert.That(OfflineTriggers.Apply("63000024_cs", "WakeUp01", xml, Shipped()),
             Is.EqualTo("<condition name=\"wait_tick\" wait_tick=\"1000\"><transition state=\"QuestStart01\" /></condition>"));
+    }
+
+    // Murpagoth Temple: the healing ritual of 10003090 plays to its end; Global renamed its last two states but not their transitions (TR-11).
+    [Test]
+    public void ApplyHealingRitual() {
+        const string states = "<state name=\"치유의식_05\"><condition name=\"wait_tick\" wait_tick=\"3000\"><transition state=\"의식종료_01\" /></condition></state>"
+                              + "<state name=\"의식종료01\"><condition name=\"wait_tick\" wait_tick=\"1000\"><transition state=\"의식종료_02\" /></condition></state>"
+                              + "<state name=\"의식종료02\"><condition name=\"wait_tick\" wait_tick=\"1000\"><transition state=\"종료\" /></condition></state><state name=\"종료\" />";
+        var document = new XmlDocument();
+        document.LoadXml($"<ms2>{OfflineTriggers.Apply("52010032_qd", "main", states, Shipped())}</ms2>");
+        string?[] next = TriggerCache.ParseTrigger("52010032_qd", "main", document).States.SelectMany(state => state.Conditions).Select(condition => condition.NextState).ToArray();
+        Assert.That(next, Is.EqualTo(new[] { "의식종료01", "의식종료02", "종료" }));
+    }
+
+    // Golden Tower 2F: the room's timer script moved the player out of the dungeon 5 seconds after arrival.
+    [Test]
+    public void ApplyGoldenTower2F() {
+        const string state = "<state name=\"유저이동\" posX=\"746\" posY=\"534\"><onEnter><action name=\"move_user\" map_id=\"02000141\" portal_id=\"2\" /></onEnter><condition name=\"always\"><transition state=\"유저이동음성\" /></condition><onExit /></state>";
+        Assert.That(OfflineTriggers.Apply("02000246_bf", "timer", state, Shipped()),
+            Is.EqualTo("<state name=\"유저이동\" posX=\"746\" posY=\"534\"><onEnter></onEnter><onExit /></state>"));
+    }
+
+    // Crisis in Henesys: a wave also ends on a timeout, so a monster nobody can reach does not hold back the next wave.
+    [TestCase("901,902,903,904,905,906,907,908,909,910", "Battle01End01", 1)]
+    [TestCase("911,912,913,914", "Battle02End01", 1)]
+    [TestCase("921,922,923,924,925,926,927,928", "Battle03End01", 0)] // Battle03End01 removes the wave itself
+    public void ApplyHenesysWaveTimeout(string spawnIds, string endState, int timeoutActions) {
+        string gate = $"<condition name=\"monster_dead\" spawn_ids=\"{spawnIds}\"><transition state=\"{endState}\" /></condition>";
+        var document = new XmlDocument();
+        document.LoadXml($"<ms2><state name=\"Gate\">{OfflineTriggers.Apply("52000120_qd", "01_henesysdefense", gate, Shipped())}</state></ms2>");
+        ICondition[] conditions = TriggerCache.ParseTrigger("52000120_qd", "01_henesysdefense", document).States[0].Conditions.ToArray();
+        Assert.That(conditions.Select(condition => condition.Name), Is.EqualTo(new[] { "monster_dead", "wait_tick" }));
+        Assert.That(conditions[1].NextState, Is.EqualTo(endState));
+        Assert.That(conditions[1].Actions.Count, Is.EqualTo(timeoutActions));
     }
 }

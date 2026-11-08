@@ -171,6 +171,7 @@ public class ItemDropManager {
 
     private IEnumerable<Item> GetAllGroups(GameSession session, int level, List<IndividualDropItemTable.Entry> entry, int index = -1, bool all = false, float dropRate = 1f) {
         var items = new List<Item>();
+        (WeightedSet<IndividualDropItemTable.Item> Set, int Amount)? noJobRow = null;
         foreach (IndividualDropItemTable.Entry group in entry) {
             if (group.MinLevel > level) {
                 continue;
@@ -249,6 +250,12 @@ public class ItemDropManager {
             if (weightedItems.Count == 0) {
                 continue;
             }
+            // A smart-drop group with no row for this job (its job weights sum to 0) gives nothing from it (BT-116); the first
+            // such group gives as before only when the box gave this job nothing else.
+            if (group.SmartDropRate > 0 && weightedItems.Sum(pair => pair.Item2) == 0) {
+                noJobRow ??= (weightedItems, amount);
+                continue;
+            }
 
             for (int i = 0; i < amount; i++) {
                 IndividualDropItemTable.Item selectedItem = weightedItems.Get();
@@ -256,6 +263,11 @@ public class ItemDropManager {
             }
         }
 
+        if (items.Count == 0 && noJobRow is { } fallback) {
+            for (int i = 0; i < fallback.Amount; i++) {
+                items = items.Concat(CreateIndividualDropBoxItems(fallback.Set.Get(), session.Player.Value.Character)).ToList();
+            }
+        }
         return items;
     }
 

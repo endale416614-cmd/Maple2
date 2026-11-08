@@ -10,7 +10,7 @@ public class GuildController : ControllerBase {
 
     [HttpGet("{guildId}/{uid}.png")]
     public IResult GetGuildEmblem(long guildId, string uid) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/guildmark/{guildId}/{uid}.png";
+        string fullPath = $"{Paths.UGC_DIR}/guildmark/{guildId}/{uid}.png";
         if (!System.IO.File.Exists(fullPath)) {
             return Results.NotFound();
         }
@@ -21,7 +21,7 @@ public class GuildController : ControllerBase {
 
     [HttpGet("{guildId}/banner/{uid}.png")]
     public IResult GetGuildBanner(long guildId, string uid) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/guildmark/{guildId}/banner/{uid}.png";
+        string fullPath = $"{Paths.UGC_DIR}/guildmark/{guildId}/banner/{uid}.png";
         if (!System.IO.File.Exists(fullPath)) {
             return Results.NotFound();
         }

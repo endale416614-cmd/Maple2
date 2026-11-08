@@ -124,22 +124,23 @@ public static class PetPacket {
         return pWriter;
     }
 
-    public static ByteWriter Fusion(FieldPet pet) {
+    // The pet's exp after the fusion, within its level (pet_fusion.msb).
+    public static ByteWriter Fusion(int ownerId, Item pet) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
         pWriter.Write<Command>(Command.Fusion);
-        pWriter.WriteInt(pet.OwnerId);
-        pWriter.WriteLong(pet.Pet.Pet?.Exp ?? 0);
-        pWriter.WriteLong(pet.Pet.Uid);
+        pWriter.WriteInt(ownerId);
+        pWriter.WriteLong(pet.Pet?.Exp ?? 0);
+        pWriter.WriteLong(pet.Uid);
 
         return pWriter;
     }
 
-    public static ByteWriter LevelUp(FieldPet pet) {
+    public static ByteWriter LevelUp(int ownerId, Item pet) {
         var pWriter = Packet.Of(SendOp.ResponsePet);
         pWriter.Write<Command>(Command.LevelUp);
-        pWriter.WriteInt(pet.OwnerId);
-        pWriter.WriteInt(pet.Pet.Pet?.Level ?? 1);
-        pWriter.WriteLong(pet.Pet.Uid);
+        pWriter.WriteInt(ownerId);
+        pWriter.WriteInt(pet.Pet?.Level ?? 1);
+        pWriter.WriteLong(pet.Uid);
 
         return pWriter;
     }

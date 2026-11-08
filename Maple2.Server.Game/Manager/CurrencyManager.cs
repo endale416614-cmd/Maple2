@@ -31,6 +31,9 @@ public class CurrencyManager {
             long delta = Math.Min(value, Constant.MaxMeret) - Currency.Meret;
             Currency.Meret = Math.Min(value, Constant.MaxMeret);
             session.Send(CurrencyPacket.UpdateMeret(Currency, delta));
+            if (delta < 0) {
+                session.ConditionUpdate(ConditionType.use_merat, -delta);
+            }
         }
     }
 

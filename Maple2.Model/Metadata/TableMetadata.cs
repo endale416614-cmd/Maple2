@@ -62,6 +62,7 @@ public class TableMetadata {
 [JsonDerivedType(typeof(InsigniaTable), typeDiscriminator: "nametagsymbol")]
 [JsonDerivedType(typeof(ExpTable), typeDiscriminator: "exp")]
 [JsonDerivedType(typeof(CommonExpTable), typeDiscriminator: "commonexp")]
+[JsonDerivedType(typeof(PetExpTable), typeDiscriminator: "petexp")]
 [JsonDerivedType(typeof(UgcDesignTable), typeDiscriminator: "ugc_design")]
 [JsonDerivedType(typeof(LearningQuestTable), typeDiscriminator: "learningquest")]
 [JsonDerivedType(typeof(PrestigeLevelAbilityTable), typeDiscriminator: "adventurelevelability")]

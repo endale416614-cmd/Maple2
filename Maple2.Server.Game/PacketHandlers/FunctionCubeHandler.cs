@@ -76,6 +76,7 @@ public class FunctionCubeHandler : FieldPacketHandler {
                 bool switchedOn = fieldInteract.Switch(session.CharacterId);
                 session.Field?.Broadcast(FunctionCubePacket.UpdateFunctionCube(fieldInteract.InteractCube));
                 session.Field?.Broadcast(FunctionCubePacket.UseFurniture(session.CharacterId, fieldInteract.InteractCube));
+                session.ConditionUpdate(ConditionType.controller, codeLong: fieldInteract.ItemId);
                 // SV-01: a souvenir gives its buff on every switch-on (its timer turns it off again, FieldFunctionInteract.AutoStateTarget).
                 if (switchedOn && NpcSummons.CubeBuff(fieldInteract.Value.Id) is [int buffId, int level]) {
                     session.Player.Buffs.AddBuff(session.Player, session.Player, buffId, (short) level, fieldInteract.Field.FieldTick, notifyField: true);

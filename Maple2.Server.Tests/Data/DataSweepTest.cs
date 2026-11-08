@@ -6,6 +6,7 @@ using System.Text;
 using System.Xml;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Trigger.Helpers;
 using Maple2.Server.Game.Util;
@@ -30,10 +31,10 @@ public class DataSweepTest {
 
     // Error counts per check on the 1.2.2 data (SW-01 triage, RB-01 DBs); a check not listed allows 0. A fix that lowers a count lowers its threshold.
     private static readonly Dictionary<string, int> BaseThresholds = new() {
-        ["Quest references"] = 31, ["Portal -> map"] = 81, ["Trigger names"] = 3, ["Navmesh files"] = 2,
+        ["Quest references"] = 31, ["Portal -> map"] = 81, ["Trigger names"] = 3, ["Navmesh files"] = 2, ["Rewards"] = 829, ["Trigger states"] = 354,
     };
     private static readonly Dictionary<string, int> PackThresholds = new() {
-        ["Quest references"] = 22, ["Portal -> map"] = 76, ["Trigger names"] = 3, ["Navmesh files"] = 2,
+        ["Quest references"] = 22, ["Portal -> map"] = 76, ["Trigger names"] = 3, ["Navmesh files"] = 2, ["Rewards"] = 628, ["Trigger states"] = 354,
     };
     // TODO: the pack data is told by its map 52000189 (Prisoner's Tower, CONTENT_REGISTRY); use data-build.json if a pack ever drops it.
     private const int PackMarkerMapId = 52000189;
@@ -106,6 +107,7 @@ public class DataSweepTest {
         CheckTriggers(context, xblockByMap.Values.ToHashSet(StringComparer.OrdinalIgnoreCase));
         CheckNavmeshes(maps.Select(map => (map.Id, map.XBlock)).ToList(), xblocksWithNpcSpawns);
         CheckItemOptions(context, tables);
+        CheckRewards(context, tables);
         ListDungeons(tables, mapIds);
 
         int orphanXBlocks = entityXBlocks.Except(xblockByMap.Values, StringComparer.OrdinalIgnoreCase).Count();
@@ -131,7 +133,8 @@ public class DataSweepTest {
         Assert.That(OverThresholds([("Item option tables", 1)], thresholds), Is.EqualTo(new[] { "Item option tables: 1 errors, threshold 0" }));
     }
 
-    private static List<string> OverThresholds(IEnumerable<(string Check, int Errors)> counts, IReadOnlyDictionary<string, int> thresholds) =>
+    // BehaviorRegistryTest's fidelity counts (FT-04) use the same gate.
+    internal static List<string> OverThresholds(IEnumerable<(string Check, int Errors)> counts, IReadOnlyDictionary<string, int> thresholds) =>
         counts.Where(c => c.Errors > thresholds.GetValueOrDefault(c.Check)).Select(c => $"{c.Check}: {c.Errors} errors, threshold {thresholds.GetValueOrDefault(c.Check)}").ToList();
 
     private void CheckQuests(MetadataContext context, TableMetadataStorage tables, HashSet<int> npcIds, HashSet<int> mapIds, Dictionary<int, string> xblockByMap, Dictionary<string, HashSet<int>> portalIdsByXBlock) {
@@ -219,17 +222,34 @@ public class DataSweepTest {
         var unknown = new Dictionary<(string Kind, string Name), (int Count, string Example)>();
         var usedActions = new HashSet<string>();
         var usedConditions = new HashSet<string>();
-        int count = 0;
+        int count = 0, missingStates = 0, aheadOfOthers = 0;
         foreach (TriggerMetadata trigger in context.TriggerMetadata) {
             count++;
             var document = new XmlDocument();
+            Trigger parsed;
             try {
-                document.LoadXml(trigger.Xml);
+                // As the game loads it: the map script patches of offline-triggers.json applied first (TriggerCache.TryGet).
+                document.LoadXml(OfflineTriggers.Apply(trigger.MapXBlock, trigger.Name, trigger.Xml));
                 // Same entry point the game uses; catches constructors that throw on odd attributes.
-                TriggerCache.ParseTrigger(trigger.MapXBlock, trigger.Name, document);
+                parsed = TriggerCache.ParseTrigger(trigger.MapXBlock, trigger.Name, document);
             } catch (Exception ex) when (ex is XmlException or ArgumentException or FormatException or InvalidOperationException or NullReferenceException) {
                 Add(Severity.Error, check, $"{trigger.MapXBlock}/{trigger.Name} does not parse: {ex.GetType().Name}: {ex.Message}");
                 continue;
+            }
+            // TR-11 (BT-131, BT-140): at a transition to a state the script does not have, the script stays in its state
+            // (TriggerState.GetNextState), and the state's later conditions are not evaluated while that one is true.
+            HashSet<string> stateNames = parsed.States.Select(state => state.Name).ToHashSet();
+            foreach (Trigger.State state in parsed.States) {
+                int index = 0;
+                foreach (ICondition condition in state.Conditions) {
+                    index++;
+                    if (condition.NextState is not { } next || stateNames.Contains(next)) {
+                        continue;
+                    }
+                    missingStates++;
+                    aheadOfOthers += index < state.Conditions.Count ? 1 : 0;
+                    Add(Severity.Error, "Trigger states", $"{trigger.MapXBlock}/{trigger.Name}: condition {index} of {state.Conditions.Count} in {state.Name} ({condition.Name}) goes to {next}, which the script does not have");
+                }
             }
 
             foreach ((string kind, HashSet<string> used, ICollection<string> known) in new[] {
@@ -262,6 +282,7 @@ public class DataSweepTest {
             Add(Severity.Warning, check, $"condition '{name}' is implemented but no trigger script uses it");
         }
         Add(Severity.Info, "Overview", $"{count} trigger scripts parsed ({usedActions.Count} distinct actions, {usedConditions.Count} distinct conditions in use)");
+        Add(Severity.Info, "Trigger states", $"{missingStates} transitions to a state their script does not have, {aheadOfOthers} of them ahead of a later condition of their state (offline-triggers.json applied)");
     }
 
     private static string? FindNavmeshDir() {
@@ -356,6 +377,66 @@ public class DataSweepTest {
             Add(Severity.Info, check, $"rarity {rarity}: {byRarity[rarity]} GearScore>0 items have at least one option table row");
         }
         Add(Severity.Info, check, $"option tables: {constants.Count} constant, {statics.Count} static, {randoms.Count} random ids");
+    }
+
+    // RW-01: every box, drop and quest reward resolves. A box item opens to something (MeretCatalogBoxTest.Opens), the drop boxes an
+    // NPC or a gacha names are in their tables, and a drop box or quest reward names only items with data.
+    private void CheckRewards(MetadataContext context, TableMetadataStorage tables) {
+        const string check = "Rewards";
+        var serverTables = new ServerTableMetadataStorage(context);
+        IReadOnlyDictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> individual = serverTables.IndividualDropItemTable.Entries;
+        GlobalDropItemBoxTable global = serverTables.GlobalDropItemBoxTable;
+        IReadOnlyDictionary<int, GachaInfoTable.Entry> gacha = tables.GachaInfoTable.Entries;
+        HashSet<int> withData = context.ItemMetadata.Select(item => item.Id).ToHashSet();
+        void NoData(string owner, IEnumerable<int> ids) {
+            int[] missing = ids.Where(id => id > 0 && !withData.Contains(id)).Distinct().Order().ToArray();
+            if (missing.Length > 0) {
+                Add(Severity.Error, check, $"{owner} names {missing.Length} items without item data (e.g. {string.Join(", ", missing.Take(5))})");
+            }
+        }
+
+        int boxes = 0, npcs = 0, quests = 0;
+        foreach (ItemMetadata item in context.ItemMetadata) {
+            if (item.Function?.Type is not (ItemFunction.SelectItemBox or ItemFunction.OpenItemBox or ItemFunction.OpenItemBoxWithKey or ItemFunction.OpenGachaBox)) {
+                continue;
+            }
+            if (new Maple2.Model.Game.ItemType(item.Id).IsTranscendenceCrystal) {
+                continue; // XML parameters (ItemBoxManager.Open)
+            }
+            boxes++;
+            if (!MeretCatalogBoxTest.Opens(item.Function, individual, global.DropGroups, gacha, withData)) {
+                Add(Severity.Error, check, $"box item {item.Id} ({item.Name}) opens to nothing ({item.Function.Type} {item.Function.Parameters})");
+            }
+        }
+        foreach ((int boxId, IDictionary<int, IndividualDropItemTable.Entry> groups) in individual) {
+            NoData($"individual drop box {boxId}", groups.Values.SelectMany(group => group.Items).SelectMany(entry => entry.Ids));
+        }
+        foreach ((int groupId, IList<GlobalDropItemBoxTable.Item> items) in global.Items) {
+            NoData($"global drop group {groupId}", items.Select(entry => entry.Id));
+        }
+        foreach ((int boxId, Dictionary<int, IList<GlobalDropItemBoxTable.Group>> groups) in global.DropGroups) {
+            foreach (int groupId in groups.Values.SelectMany(list => list).Select(group => group.GroupId).Distinct().Where(id => !global.Items.ContainsKey(id))) {
+                Add(Severity.Error, check, $"global drop box {boxId} names group {groupId}, which has no item rows");
+            }
+        }
+        foreach ((int gachaId, GachaInfoTable.Entry entry) in gacha.Where(pair => !individual.ContainsKey(pair.Value.DropBoxId))) {
+            Add(Severity.Error, check, $"gacha {gachaId} names drop box {entry.DropBoxId}, which is not in the individual drop table");
+        }
+        foreach (NpcMetadata npc in context.NpcMetadata) {
+            npcs++;
+            NpcMetadataDropInfo drop = npc.DropInfo;
+            foreach (int id in drop.IndividualDropBoxIds.Concat(drop.IndividualHitDropBoxIds).Where(id => id > 0 && !individual.ContainsKey(id)).Distinct()) {
+                Add(Severity.Error, check, $"npc {npc.Id} ({npc.Name}) drops from individual drop box {id}, which is not in the table");
+            }
+            foreach (int id in drop.GlobalDropBoxIds.Concat(drop.DeadGlobalDropBoxIds).Concat(drop.GlobalHitDropBoxIds).Where(id => id > 0 && !global.DropGroups.ContainsKey(id)).Distinct()) {
+                Add(Severity.Error, check, $"npc {npc.Id} ({npc.Name}) drops from global drop box {id}, which is not in the table");
+            }
+        }
+        foreach (QuestMetadata quest in context.QuestMetadata) {
+            quests++;
+            NoData($"quest {quest.Id} ({quest.Name}) reward", new[] { quest.AcceptReward, quest.CompleteReward }.SelectMany(reward => reward.EssentialItem.Concat(reward.EssentialJobItem)).Select(item => item.Id));
+        }
+        Add(Severity.Info, check, $"{boxes} box items (crystals aside), {individual.Count} individual and {global.DropGroups.Count} global drop boxes, {gacha.Count} gachas, {npcs} npcs and {quests} quests checked");
     }
 
     private void ListDungeons(TableMetadataStorage tables, HashSet<int> mapIds) {

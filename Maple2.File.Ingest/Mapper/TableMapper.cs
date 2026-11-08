@@ -72,6 +72,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         yield return new TableMetadata { Name = TableNames.NAME_TAG_SYMBOL, Table = ParseInsigniaTable() };
         yield return new TableMetadata { Name = TableNames.EXP, Table = ParseExpTable() };
         yield return new TableMetadata { Name = TableNames.COMMON_EXP, Table = ParseCommonExpTable() };
+        yield return new TableMetadata { Name = TableNames.PET_EXP, Table = ParsePetExpTable() };
         yield return new TableMetadata { Name = TableNames.UGC_DESIGN, Table = ParseUgcDesignTable() };
         yield return new TableMetadata { Name = TableNames.LEARNING_QUEST, Table = ParseLearningQuestTable() };
         yield return new TableMetadata { Name = TableNames.BLACK_MARKET_TABLE, Table = ParseBlackMarketTable() };
@@ -1273,6 +1274,14 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new CommonExpTable(results);
     }
 
+    public PetExpTable ParsePetExpTable() {
+        var results = new Dictionary<int, long[]>();
+        foreach ((short level, PetExp exp) in parser.ParsePetExp()) {
+            results.Add(level, new long[] {exp.normal, exp.rare, exp.elite, exp.excellent, exp.legendary, exp.artifact});
+        }
+        return new PetExpTable(results);
+    }
+
     private static ExpType ToExpType(Enum parserExpType) {
         return Enum.TryParse(parserExpType.ToString(), out ExpType expType) ? expType : ExpType.none;
     }
@@ -1588,7 +1597,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
         return new WeddingTable(rewardsResults, packageResults);
     }
 
-    private DungeonRoomTable ParseDungeonRoom() {
+    public DungeonRoomTable ParseDungeonRoom() {
         var dungeons = new Dictionary<int, DungeonRoomMetadata>();
         foreach ((int id, DungeonRoom dungeon) in parser.ParseDungeonRoom()) {
             dungeons.Add(id, new DungeonRoomMetadata(
@@ -1599,6 +1608,7 @@ public class TableMapper : TypeMapper<TableMetadata> {
                 CooldownType: (DungeonCooldownType) dungeon.cooldownType,
                 CooldownValue: dungeon.cooldownType == Parser.Enum.DungeonCooldownType.dayOfWeeks ? dungeon.cooldownValue + 1 : dungeon.cooldownValue, // dayOfWeeks is 0-indexed
                 DurationTick: dungeon.durationTick,
+                ExpireTimeOut: dungeon.isExpireTimeOut,
                 LobbyFieldId: dungeon.lobbyFieldID,
                 FieldIds: dungeon.fieldIDs,
                 Reward: new DungeonRoomRewardMetadata(

@@ -34,9 +34,11 @@ using TimeEventType = Maple2.File.Parser.Enum.TimeEventType;
 namespace Maple2.File.Ingest.Mapper;
 
 public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
+    private readonly M2dReader reader;
     private readonly ServerTableParser parser;
 
     public ServerTableMapper(M2dReader xmlReader) {
+        reader = xmlReader;
         parser = new ServerTableParser(xmlReader);
     }
 
@@ -137,7 +139,33 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             Name = ServerTableNames.CONSTANTS,
             Table = ParseConstants(),
         };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.MONSTER_EXP,
+            Table = MapMonsterExp(RawTable(reader, ServerTableNames.MONSTER_EXP)),
+        };
+        yield return new ServerTableMetadata {
+            Name = ServerTableNames.ROOM_RANDOM,
+            Table = ParseRandomRoomTable(),
+        };
 
+    }
+
+    /// <summary>The XML of a table/Server file the parser has no method for. It applies no feature or locale filter: a table with those attributes filters them itself.</summary>
+    public static XmlDocument RawTable(M2dReader reader, string name) => reader.GetXmlDocument(reader.GetEntry($"table/Server/{name}"));
+
+    public static MonsterExpTable MapMonsterExp(XmlDocument document) {
+        var results = new Dictionary<int, MonsterExpTable.Entry>();
+        foreach (XmlElement row in document.SelectNodes("/ms2/exp")!) {
+            long Value(string column) => long.Parse(row.GetAttribute(column));
+            results.Add(int.Parse(row.GetAttribute("level")), new MonsterExpTable.Entry(
+                Common: Value("common"),
+                Elite: Value("elite"),
+                DungeonElite: Value("dungeonElite"),
+                Boss: Value("boss"),
+                DungeonBoss: Value("dungeonBoss")));
+        }
+
+        return new MonsterExpTable(results);
     }
 
     private InstanceFieldTable ParseInstanceField() {
@@ -631,7 +659,7 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         );
     }
 
-    private IndividualDropItemTable ParseIndividualItemDropTable() {
+    public IndividualDropItemTable ParseIndividualItemDropTable() {
         var results = new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>();
 
         foreach ((int id, IndividualItemDrop dropBox) in parser.ParseIndividualItemDrop()) {
@@ -639,7 +667,9 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
 
             foreach (IndividualItemDrop.Group group in dropBox.group) {
                 List<IndividualDropItemTable.Item> items = [];
-                foreach (IndividualItemDrop.Group.Item item in group.v) {
+                // group.v keeps one row per item id, the parser's feature and locale pick (BT-117): read every row of the picked
+                // feature and locale, in group.v's order.
+                foreach (IndividualItemDrop.Group.Item item in group.v.SelectMany(picked => group.__v.Where(row => row.itemID == picked.itemID && row.Feature == picked.Feature && row.Locale == picked.Locale))) {
                     int minCount = item.minCount <= 0 ? 1 : item.minCount;
                     int maxCount = item.maxCount < item.minCount ? item.minCount : item.maxCount;
                     List<IndividualDropItemTable.Item.Rarity> rarities = item.gradeProbability
@@ -793,10 +823,12 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
         };
     }
 
-    private TimeEventTable ParseTimeEventTable() {
+    public TimeEventTable ParseTimeEventTable() {
         var globalPortals = new Dictionary<int, GlobalPortalMetadata>();
         var worldBosses = new Dictionary<int, WorldBossMetadata>();
         var fieldInteracts = new Dictionary<int, FieldInteractEventMetadata>();
+        var hiddenRealmPortals = new Dictionary<int, HiddenRealmPortalMetadata>();
+        var triggerValues = new Dictionary<int, TriggerValueEventMetadata>();
         foreach ((int id, TimeEventData data) in parser.ParseTimeEventData()) {
             switch (data.type) {
                 case TimeEventType.GlobalEvent: {
@@ -884,9 +916,49 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
                             Reactable: data.interactReactable);
                         break;
                     }
+                case TimeEventType.HiddenRealmPortal: {
+                        int[] startTimeArray = ParseTimeToArray(data.startTime);
+                        int[] endTimeArray = ParseTimeToArray(data.endTime);
+                        int[] cycleArray = ParseTimeToArray(data.cycleTime);
+                        int[] randomArray = ParseTimeToArray(data.randomTime);
+                        int[] lifeArray = ParseTimeToArray(data.lifeTime);
+                        hiddenRealmPortals.Add(id, new HiddenRealmPortalMetadata(
+                            Id: id,
+                            Probability: data.prob,
+                            StartTime: new DateTime(startTimeArray[0], startTimeArray[1], startTimeArray[2], startTimeArray[3], startTimeArray[4], startTimeArray[5]),
+                            EndTime: new DateTime(endTimeArray[0], endTimeArray[1], endTimeArray[2], endTimeArray[3], endTimeArray[4], endTimeArray[5]),
+                            CycleTime: new TimeSpan(cycleArray[2], cycleArray[3], cycleArray[4], cycleArray[5]),
+                            RandomTime: new TimeSpan(randomArray[2], randomArray[3], randomArray[4], randomArray[5]),
+                            LifeTime: new TimeSpan(lifeArray[2], lifeArray[3], lifeArray[4], lifeArray[5]),
+                            TargetMapIds: data.targetFields,
+                            SpawnTags: data.targetSpawnTags,
+                            RoomId: data.roomID,
+                            RoomCount: data.roomCount));
+                        break;
+                    }
+                case TimeEventType.KritiasChestPuzzle: {
+                        int[] startTimeArray = ParseTimeToArray(data.startTime);
+                        int[] endTimeArray = ParseTimeToArray(data.endTime);
+                        int[] cycleArray = string.IsNullOrEmpty(data.cycleTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.cycleTime);
+                        int[] randomArray = string.IsNullOrEmpty(data.randomTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.randomTime);
+                        int[] lifeArray = string.IsNullOrEmpty(data.lifeTime) ? [0, 0, 0, 0, 0, 0] : ParseTimeToArray(data.lifeTime);
+                        triggerValues[id] = new TriggerValueEventMetadata(
+                            Id: id,
+                            Probability: data.prob,
+                            StartTime: new DateTime(startTimeArray[0], startTimeArray[1], startTimeArray[2], startTimeArray[3], startTimeArray[4], startTimeArray[5]),
+                            EndTime: new DateTime(endTimeArray[0], endTimeArray[1], endTimeArray[2], endTimeArray[3], endTimeArray[4], endTimeArray[5]),
+                            CycleTime: new TimeSpan(cycleArray[2], cycleArray[3], cycleArray[4], cycleArray[5]),
+                            RandomTime: new TimeSpan(randomArray[2], randomArray[3], randomArray[4], randomArray[5]),
+                            LifeTime: new TimeSpan(lifeArray[2], lifeArray[3], lifeArray[4], lifeArray[5]),
+                            TargetMapIds: data.targetFields,
+                            TriggerId: data.triggerID,
+                            Key: data.key,
+                            Value: data.value);
+                        break;
+                    }
             }
         }
-        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses, FieldInteract: fieldInteracts);
+        return new TimeEventTable(GlobalPortal: globalPortals, WorldBoss: worldBosses, FieldInteract: fieldInteracts, HiddenRealmPortal: hiddenRealmPortals, TriggerValue: triggerValues);
 
         int[] ParseTimeToArray(string time) {
             string[] timeArray = time.Split('-');
@@ -896,6 +968,22 @@ public class ServerTableMapper : TypeMapper<ServerTableMetadata> {
             }
             return timeInt;
         }
+    }
+
+    // room_random.xml: each group with its rooms in the order it names them; a room's row (ParseRoom) gives its map, clock and portal nif.
+    public RandomRoomTable ParseRandomRoomTable() {
+        Dictionary<int, RoomRandom> rooms = parser.ParseRoom().ToDictionary(pair => pair.Item1, pair => pair.Item2);
+        var results = new Dictionary<int, RandomRoomTable.Group>();
+        foreach ((int id, RandomRoom group) in parser.ParseRoomRandom()) {
+            results.Add(id, new RandomRoomTable.Group(group.prob, group.@ref.Select(entry => new RandomRoomTable.Room(
+                Id: entry.roomid,
+                Weight: entry.weight,
+                MapId: rooms[entry.roomid].fieldIDs[0],
+                DurationTick: rooms[entry.roomid].roomdurationTick,
+                Model: rooms[entry.roomid].nifAssetName)).ToArray()));
+        }
+
+        return new RandomRoomTable(results);
     }
 
     private GameEventTable ParseGameEventTable() {

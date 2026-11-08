@@ -32,6 +32,7 @@ public class DropRollTest {
     private const int GachaId = 1003001; // 22003001's gacha
     private const int GachaBox = 530000001; // 22003001's box: groups that list no entry
     private const int Capsule = 22003001; // Orange Mushroom Power Up Capsule
+    private const int KnightPiece = 11300999; // a made-up item for Knights only
 
     private static readonly GlobalDropItemBoxTable NoGlobal = new(new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>(), new Dictionary<int, IList<GlobalDropItemBoxTable.Item>>());
     private static readonly IndividualDropItemTable NoIndividual = new(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>());
@@ -46,7 +47,7 @@ public class DropRollTest {
         connection.Open();
         context = new MetadataContext(new DbContextOptionsBuilder().UseSqlite(connection).Options);
         context.Database.EnsureCreated();
-        context.ItemMetadata.AddRange(Meta(Real), Meta(Other));
+        context.ItemMetadata.AddRange(Meta(Real), Meta(Other), Meta(KnightPiece) with { Limit = Meta(KnightPiece).Limit with { JobRecommends = [JobCode.Knight] } });
         context.SaveChanges();
         items = new ItemMetadataStorage(context);
     }
@@ -92,6 +93,8 @@ public class DropRollTest {
     private static IndividualDropItemTable.Entry Group(params IndividualDropItemTable.Item[] entries) {
         return new IndividualDropItemTable.Entry(1, 0, [new IndividualDropItemTable.Entry.DropCount(1, 100)], 0, false, false, entries);
     }
+
+    private static IndividualDropItemTable.Entry SmartGroup(params IndividualDropItemTable.Item[] entries) => Group(entries) with { SmartDropRate = 100 };
 
     private static IndividualDropItemTable Individual(int boxId, params IndividualDropItemTable.Entry[] groups) {
         return new IndividualDropItemTable(new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>> {
@@ -185,6 +188,21 @@ public class DropRollTest {
         Assert.That(drop.CanGiveItem(new Dictionary<int, IndividualDropItemTable.Entry> { [1] = Group() }), Is.False, "530000001's shape");
         Assert.That(drop.CanGiveItem(new Dictionary<int, IndividualDropItemTable.Entry> { [1] = Group(Entry(1000, Missing, 0)), [2] = Group(Entry(1, Real, 0)) }), Is.True);
         Assert.That(drop.CanGiveItem(new Dictionary<int, IndividualDropItemTable.Entry> { [1] = Group(Entry(1, Missing, Real)) }), Is.True);
+    }
+
+    // BX-01 (BT-116): a smart-drop group with no row for the player's job gives nothing from it, unless the box would then give
+    // that job nothing.
+    [Test]
+    public void SmartDropGroupWithoutARowForTheJob_GivesNothingFromIt() {
+        IndividualDropItemTable.Entry knights = SmartGroup(Entry(100, KnightPiece) with { ProperJobWeight = 100, ImproperJobWeight = 0 });
+        (ItemDropManager drop, GameSession session) = Build(items, DropTables(Individual(Box, knights, Group(Entry(1, Real))), NoGlobal), GachaTables());
+        (ItemDropManager onlyKnights, GameSession other) = Build(items, DropTables(Individual(Box, knights), NoGlobal), GachaTables());
+
+        for (int i = 0; i < 50; i++) {
+            Assert.That(drop.GetIndividualDropItems(session, 1, Box).Select(item => item.Id), Is.EqualTo(new[] { Real }));
+            Assert.That(onlyKnights.GetIndividualDropItems(other, 1, Box).Select(item => item.Id), Is.EqualTo(new[] { KnightPiece }),
+                "a box with no row for the job gives as before");
+        }
     }
 
     [Test]

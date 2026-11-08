@@ -202,7 +202,7 @@ public class MasteryManager {
 
     public void Gather(MasteryRecipeTable.Entry recipeMetadata, Vector3 position, Vector3 rotation) {
         foreach (ItemComponent itemReward in recipeMetadata.RewardItems) {
-            Item? item = session.Field?.ItemDrop.CreateItem(itemReward.ItemId, itemReward.Rarity, itemReward.Amount);
+            Item? item = session.Field?.ItemDrop.CreateItem(itemReward.ItemId, itemReward.Rarity, WithBuffRate(recipeMetadata.Type, itemReward.Amount));
             if (item == null || session.Field is null) {
                 continue;
             }
@@ -211,6 +211,25 @@ public class MasteryManager {
 
         AfterGather(recipeMetadata, 1);
     }
+
+    /// <summary>Life skill consumables: a buff's rate raises the items a gather gives or the mastery a craft gives; a rate of 1 is +100%.</summary>
+    public int WithBuffRate(MasteryType type, int amount) =>
+        RateAttribute(type) is { } attribute ? WithRate(amount, session.Stats.Values[attribute].Rate) : amount;
+
+    public static SpecialAttribute? RateAttribute(MasteryType type) => type switch {
+        MasteryType.Mining => SpecialAttribute.MiningRewardItem,
+        MasteryType.Gathering => SpecialAttribute.GatheringRewardItem,
+        MasteryType.Breeding => SpecialAttribute.BreedingRewardItem,
+        MasteryType.Farming => SpecialAttribute.FarmingRewardItem,
+        MasteryType.Blacksmithing => SpecialAttribute.SmithingRewardMastery,
+        MasteryType.Engraving => SpecialAttribute.EngravingRewardMastery,
+        MasteryType.Alchemist => SpecialAttribute.AlchemistRewardMastery,
+        MasteryType.Cooking => SpecialAttribute.CookingRewardMastery,
+        _ => null,
+    };
+
+    // Away from zero: 3 mastery at +50% is 5, not 4.
+    public static int WithRate(int amount, float rate) => (int) MathF.Round(amount * (1 + rate), MidpointRounding.AwayFromZero);
 
     public float GatherSuccessRate(MasteryRecipeTable.Entry recipeMetadata) {
         if (!gatheringCounts.TryGetValue(recipeMetadata.Id, out int currentCount)) {

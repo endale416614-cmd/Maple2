@@ -485,11 +485,12 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
 
         // Check that player has not already checked in today.
-        DateTimeOffset today = DateTimeOffset.UtcNow.Date;
-        if (self.CheckinTime >= today.ToUnixTimeSeconds()) {
+        if (self.CheckedInToday(GuildMember.DayStart(DateTimeOffset.UtcNow))) {
             return;
         }
 
+        // The World server adds this row's EXP; the row can change during the call below if the guild levels up.
+        int checkInExp = session.Guild.Properties.CheckInExp;
         try {
             var request = new GuildRequest {
                 RequestorId = session.CharacterId,
@@ -506,6 +507,8 @@ public class GuildHandler : PacketHandler<GameSession> {
             }
 
             session.Send(GuildPacket.CheckedIn());
+            session.ConditionUpdate(ConditionType.guild_attendance);
+            session.ConditionUpdate(ConditionType.guild_exp, counter: checkInExp);
             session.Exp.AddExp(ExpType.guildUserExp, session.Guild.Properties.CheckInPlayerExpRate);
             Item? guildCoin = session.Field?.ItemDrop.CreateItem(Constant.GuildCoinId, Constant.GuildCoinRarity, session.Guild.Properties.CheckInCoin);
             if (guildCoin != null) {
@@ -708,8 +711,7 @@ public class GuildHandler : PacketHandler<GameSession> {
         }
 
         GuildTable.Property properties = session.Guild.Properties;
-        DateTimeOffset today = DateTimeOffset.UtcNow.Date;
-        if ((long) self.DonationsToday(today.ToUnixTimeSeconds()) + count > properties.DonateMax) {
+        if ((long) self.DonationsToday(GuildMember.DayStart(DateTimeOffset.UtcNow)) + count > properties.DonateMax) {
             session.Send(NoticePacket.Notice(NoticePacket.Flags.Message | NoticePacket.Flags.Alert, new InterfaceText("s_guild_err_donateMax")));
             return;
         }

@@ -39,6 +39,15 @@ public static class RevivalPacket {
         return pWriter;
     }
 
+    // source: GMS captures, one int: 0 as a dungeon run's first map is entered, then the count after each safe revival; the
+    // KMS2_DEV client (scenestategame.cpp OnDungeonReviveCount) keeps it for the revival dialog's uses left
+    public static ByteWriter DungeonReviveCount(int count) {
+        var pWriter = Packet.Of(SendOp.DungeonReviveCount);
+        pWriter.WriteInt(count);
+
+        return pWriter;
+    }
+
     public static ByteWriter Tombstone(Tombstone tombstone) {
         var pWriter = Packet.Of(SendOp.Tombstone);
         pWriter.WriteClass<Tombstone>(tombstone);

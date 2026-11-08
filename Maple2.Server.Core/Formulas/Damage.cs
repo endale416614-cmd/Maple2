@@ -12,6 +12,15 @@ public static class Damage {
         return multiplier;
     }
 
+    /// <summary>Damage factor of a rate per stack; a buff added without a stack count has Stacks 0 and counts once.</summary>
+    public static double StackedRate(float rate, int stacks) => 1 + rate * Math.Max(1, stacks);
+
+    /// <summary>A damage special as a fraction: its value in per-mille plus its rate (gear and buffs give damage specials as rates).</summary>
+    public static double Special(long total, float rate) => total / 1000.0 + rate;
+
+    /// <summary>The defense divisor's piercing factor: piercing (a fraction) lowers defense by up to 30 %, less against the target's piercing resistance; 1 without piercing.</summary>
+    public static double DefensePierce(double piercing, float targetPiercingResistance) => 1 - Math.Min(0.3, piercing / (1 + targetPiercingResistance));
+
     /// <summary>The target stat that resists an attack stat: MagicalAtk is resisted by MagicalRes, anything else by PhysicalRes.</summary>
     public static BasicAttribute ResistanceOf(BasicAttribute attack) =>
         attack == BasicAttribute.MagicalAtk ? BasicAttribute.MagicalRes : BasicAttribute.PhysicalRes;

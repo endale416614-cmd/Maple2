@@ -276,6 +276,17 @@ public class ItemCollection : IEnumerable<Item> {
         return remaining;
     }
 
+    /// <summary>
+    /// The open slots an add of this item takes: what does not stack on existing items, in stacks of its slot maximum.
+    /// </summary>
+    /// <param name="item">The item to attempt to add.</param>
+    /// <param name="amount">The amount of item to add.</param>
+    public int SlotsNeeded(Item item, int amount = -1) {
+        int remaining = GetStackResult(item, amount);
+        int slotMax = Math.Max(1, item.Metadata.Property.SlotMax);
+        return remaining / slotMax + (remaining % slotMax > 0 ? 1 : 0);
+    }
+
     private bool ValidSlot(short slot) => slot >= 0 && slot < Size;
 
     // Enumerate array while ignoring nulls

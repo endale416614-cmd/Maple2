@@ -1,6 +1,7 @@
 ﻿using System.Numerics;
 using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
+using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Util;
 using Maple2.Tools;
@@ -674,7 +675,9 @@ public class AiState {
         actor.Field.Broadcast(NpcNoticePacket.TargetEffect(actor.BattleState.TargetId, node.EffectName));
     }
 
-    private void ProcessNode(ShowVibrateNode node) { }
+    private void ProcessNode(ShowVibrateNode node) {
+        actor.Field.SetVibrateShown(node.GroupId, true);
+    }
 
     private void ProcessNode(SidePopupNode node) {
         actor.Field.Broadcast(NpcNoticePacket.SidePopup(node.Type, node.Duration, node.Illust, node.Voice, node.Script, node.Sound));
@@ -713,9 +716,15 @@ public class AiState {
         actor.Field.Broadcast(NpcNoticePacket.Announce(node.Message, node.DurationTick));
     }
 
-    private void ProcessNode(ModifyRoomTimeNode node) { }
+    private void ProcessNode(ModifyRoomTimeNode node) {
+        if (actor.Field is DungeonFieldManager dungeon) {
+            dungeon.ModifyRoomTimer(node.TimeTick);
+        }
+    }
 
-    private void ProcessNode(HideVibrateAllNode node) { }
+    private void ProcessNode(HideVibrateAllNode node) {
+        actor.Field.SetVibrateShown(0, false);
+    }
 
     private void ProcessNode(TriggerModifyUserValueNode node) {
         AddUserValue(actor.Field.UserValues, node.Key, node.Value);

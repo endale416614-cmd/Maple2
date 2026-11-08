@@ -77,4 +77,26 @@ public class SkillPrismTest {
         Assert.That(beam.GetCubePrism(Vector3.Zero, 180).Contains(new Vector3(10, 1939, 50)), Is.True);
         Assert.That(beam.GetPrism(Vector3.Zero, 180).Contains(new Vector3(10, 1939, 50)), Is.False);
     }
+
+    // Cusp of Life cannon 49045001 level 1: a frustum 750 long, RangeAdd.Z 900, RangeOffset.Z 50. Cannon 8008 faces 0, so forward is -Y.
+    private static readonly SkillMetadataRange CuspShot = new(SkillRegion.Frustum, 750, 50, 150, 800, 0, new Vector3(0, 0, 900),
+        new Vector3(0, 0, 50), IncludeCasterType.Exclude, ApplyTargetType.Hostile, SkillTargetType.Owner);
+    private static readonly Vector3 Cannon8008 = new(450, -4800, 1650);
+
+    [Test]
+    public void FriendlyCubePathShotReachesTheFloorBelow() {
+        var monster = new Vector3(450, -5200, 1600); // the middle of a monster on the floor at 1500
+        Assert.That(CuspShot.GetPrism(Cannon8008, 0).Contains(monster), Is.False);
+        Assert.That(CuspShot.GetNpcTargetPrism(1, 490450011, Cannon8008, 0).Contains(monster), Is.True);
+        Assert.That(CuspShot.GetNpcTargetPrism(1, 490450011, Cannon8008, 0).Contains(new Vector3(450, -5200, 1800)), Is.False);
+    }
+
+    [Test]
+    public void OnlyAFriendlyCubePathShotAimsDown() {
+        var below = new Vector3(450, -5200, 1600);
+        var above = new Vector3(450, -5200, 1800);
+        Assert.That(CuspShot.GetNpcTargetPrism(0, 490450011, Cannon8008, 0).Contains(above), Is.True); // a monster keeps GetPrism
+        Assert.That(CuspShot.GetNpcTargetPrism(0, 490450011, Cannon8008, 0).Contains(below), Is.False);
+        Assert.That(CuspShot.GetNpcTargetPrism(1, 0, Cannon8008, 0).Contains(below), Is.False); // friendly, no cube path
+    }
 }

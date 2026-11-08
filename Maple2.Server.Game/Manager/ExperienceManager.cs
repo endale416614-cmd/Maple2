@@ -78,6 +78,9 @@ public sealed class ExperienceManager {
         return elapsedMs >= 5000 ? 1 : Lua.CalcKillCount(myLevel, npcLevel, (int) elapsedMs, chain);
     }
 
+    /// <summary>A reward's relative exp this server pays. A flat Exp goes first, and epicQuest has no factor.</summary>
+    public static bool PaysRelativeExp(ExpType type) => type is ExpType.quest or ExpType.mission or ExpType.dailymission or ExpType.dailymissionLevelUp or ExpType.questSkyFortress;
+
     /// <summary>Counts a kill in the chain (Unstoppable!) and returns the chain's length.</summary>
     public int ChainKill(int npcLevel, long tickCount) {
         ChainKillCount = NextChain(ChainKillCount, Level, npcLevel, tickCount - lastKillTick);
@@ -96,12 +99,12 @@ public sealed class ExperienceManager {
         ChainKillCount++;
         float expRate = Lua.CalcKillCountBonusExpRate(ChainKillCount);
 
-        // TODO: Using table ID 2. Need confirmation if particular maps (or dungeons) use a different table
         long expGained = fieldNpc.Value.Metadata.Basic.CustomExp;
         if (fieldNpc.Value.Metadata.Basic.CustomExp < 0) {
-            if (!session.TableMetadata.ExpTable.ExpBase.TryGetValue(2, fieldNpc.Value.Metadata.Basic.Level, out expGained)) {
+            if (MonsterExp(session.ServerTableMetadata.MonsterExpTable, fieldNpc.Value.Metadata.Basic.Class, fieldNpc.Value.Metadata.Basic.Level) is not { } tableExp) {
                 return;
             }
+            expGained = tableExp;
         }
         expGained += GetRestExp((long) (expGained * expRate));
         LevelUp();
@@ -148,6 +151,11 @@ public sealed class ExperienceManager {
             case ExpType.miniGame:
             case ExpType.userMiniGame:
             case ExpType.guildUserExp:
+            case ExpType.quest:
+            case ExpType.mission:
+            case ExpType.dailymission:
+            case ExpType.dailymissionLevelUp:
+            case ExpType.questSkyFortress:
                 if (!expBase.TryGetValue(Level, out expValue)) {
                     return 0;
                 }
@@ -183,17 +191,24 @@ public sealed class ExperienceManager {
         LevelUp();
     }
 
-    public void AddMobExp(int moblevel, float modifier = 1f, long additionalExp = 0) {
-        if (!session.TableMetadata.ExpTable.ExpBase.TryGetValue(2, out IReadOnlyDictionary<int, long>? expBase)) {
+    public void AddMobExp(int moblevel, int npcClass, float modifier = 1f, long additionalExp = 0) {
+        if (MonsterExp(session.ServerTableMetadata.MonsterExpTable, npcClass, moblevel) is not { } expValue) {
             return;
         }
-
-        if (!expBase.TryGetValue(moblevel, out long expValue)) {
-            return;
-        }
-
 
         AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message());
+    }
+
+    /// <summary>A monster's EXP by its NPC class and level (monsterExpTable): 3 and 7 boss, 4 and 6 dungeonBoss, any other common. The class match is a reconstruction.</summary>
+    public static long? MonsterExp(MonsterExpTable table, int npcClass, int level) {
+        if (!table.Entries.TryGetValue(level, out MonsterExpTable.Entry? entry)) {
+            return null;
+        }
+        return npcClass switch {
+            3 or 7 => entry.Boss,
+            4 or 6 => entry.DungeonBoss,
+            _ => entry.Common,
+        };
     }
 
     public bool LevelUp() {
@@ -278,6 +293,31 @@ public sealed class ExperienceManager {
         session.Send(PrestigePacket.LevelUp(session.Player.ObjectId, PrestigeLevel));
         session.Send(PrestigePacket.LoadMissions(session.Player.Value.Account));
         CheckPrestigeReward();
+        RefreshPrestigeBuffs();
+    }
+
+    /// <summary>The level of a prestige ability's effect, 0 below its required level: one more every Interval levels, up to MaxCount. Golden: 1-Tria.msb, prestige level 402.</summary>
+    public static short PrestigeAbilityLevel(int prestigeLevel, int requiredLevel, int interval, int maxCount) {
+        if (prestigeLevel < requiredLevel) {
+            return 0;
+        }
+
+        int steps = interval > 0 ? (prestigeLevel - requiredLevel) / interval : 0;
+        return (short) Math.Min(steps + 1, maxCount);
+    }
+
+    /// <summary>The prestige level's abilities as effects, in the captures' order. An effect already held at its level stays as it is.</summary>
+    public void RefreshPrestigeBuffs() {
+        if (session.Field == null) {
+            return;
+        }
+
+        foreach (PrestigeLevelAbilityMetadata ability in session.TableMetadata.PrestigeLevelAbilityTable.Entries.Values.OrderBy(ability => ability.RequiredLevel)) {
+            short level = PrestigeAbilityLevel(PrestigeLevel, ability.RequiredLevel, ability.Interval, ability.MaxCount);
+            if (level > 0) {
+                session.Player.Buffs.AddBuff(session.Player, session.Player, ability.BuffId, level, session.Field.FieldTick);
+            }
+        }
     }
 
     private void CheckPrestigeReward() {

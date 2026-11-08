@@ -33,7 +33,10 @@ public partial class TriggerContext {
     }
 
     public void DungeonCloseTimer() {
-        ErrorLog("[DungeonCloseTimer]");
+        if (TraceEnabled) DebugLog("[DungeonCloseTimer]");
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.StopRoomTimer(close: true);
+        }
     }
 
     public void DungeonDisableRanking() {
@@ -47,10 +50,7 @@ public partial class TriggerContext {
 
     public void DungeonFail() {
         if (TraceEnabled) DebugLog("[DungeonFail]");
-        // The failed result window, no reward; a finished run ends once.
-        if (Field is DungeonFieldManager dungeonField && dungeonField.DungeonRoomRecord.State == Maple2.Model.Enum.DungeonState.None) {
-            dungeonField.ChangeState(Maple2.Model.Enum.DungeonState.Fail);
-        }
+        (Field as DungeonFieldManager)?.Fail();
     }
 
     public void DungeonMissionComplete(string feature, int missionId) {
@@ -76,7 +76,7 @@ public partial class TriggerContext {
     public void DungeonResetTime(int seconds) {
         if (TraceEnabled) DebugLog("[DungeonResetTime] seconds:{Seconds}", seconds);
         if (Field is DungeonFieldManager dungeonField) {
-            dungeonField.DungeonRoomRecord.TimerResetTick = Field.FieldTick;
+            dungeonField.ResetRoomTimer(seconds * 1000);
         }
     }
 
@@ -93,7 +93,10 @@ public partial class TriggerContext {
     }
 
     public void DungeonStopTimer() {
-        ErrorLog("[DungeonStopTimer]");
+        if (TraceEnabled) DebugLog("[DungeonStopTimer]");
+        if (Field is DungeonFieldManager dungeonField) {
+            dungeonField.StopRoomTimer(close: false);
+        }
     }
 
     public void RandomAdditionalEffect(
@@ -159,11 +162,18 @@ public partial class TriggerContext {
 
     #region ShadowExpedition
     public void ShadowExpeditionOpenBossGauge(int maxGaugePoint, string title) {
-        ErrorLog("[ShadowExpeditionOpenBossGauge]");
+        if (TraceEnabled) DebugLog("[ShadowExpeditionOpenBossGauge] maxGaugePoint:{Max}, title:{Title}", maxGaugePoint, title);
+        // TODO: SE-01: a player who enters after the Open sees no gauge until the next Open; upgrade when a capture shows the original's re-send.
+        Field.Score.Open(gauge: true);
+        Broadcast(ShadowExpeditionPacket.Open(title, maxGaugePoint));
     }
 
     public void ShadowExpeditionCloseBossGauge() {
-        ErrorLog("[ShadowExpeditionCloseBossGauge]");
+        if (TraceEnabled) DebugLog("[ShadowExpeditionCloseBossGauge] points:{Points}", Field.Score.Points);
+        if (Field.Score.IsGauge) {
+            Broadcast(ShadowExpeditionPacket.Close());
+        }
+        Field.Score.Close();
     }
     #endregion
 
@@ -181,8 +191,8 @@ public partial class TriggerContext {
     }
 
     public bool DungeonTimeout() {
-        ErrorLog("[DungeonTimeout]");
-        return false;
+        if (TraceEnabled) DebugLog("[DungeonTimeout]");
+        return Field is DungeonFieldManager dungeonField && dungeonField.DungeonRoomRecord.TimedOut(Field.FieldTick);
     }
 
     public bool IsDungeonRoom(bool negate) {

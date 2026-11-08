@@ -193,4 +193,50 @@ public partial class FieldManager {
             Broadcast(LoadCubesPacket.PlotExpiry(updateExpirationTime));
         }
     }
+
+    /// <summary>A plot forfeited on another channel or expired (World's check): the field's players see its cubes go, and its function cubes and assistants go with them (HS-03).</summary>
+    public void ForfeitPlot(int plotNumber, GameSession? owner) {
+        OnFieldThread(() => {
+            if (Plots.TryGetValue(plotNumber, out Plot? emptied)) {
+                foreach (Vector3B position in emptied.Cubes.Keys) {
+                    Broadcast(CubePacket.RemoveCube(FieldActor.ObjectId, position));
+                }
+                EmptyPlot(emptied, emptied.OwnerId);
+            }
+
+            UpdateAllPlots(plotNumber);
+            if (Plots.TryGetValue(plotNumber, out Plot? plot)) {
+                Broadcast(CubePacket.ForfeitPlot(plot));
+                owner?.Send(CubePacket.ConfirmForfeitPlot(plot));
+            }
+        });
+    }
+
+    /// <summary>The save holds no more cubes for this plot, so the field drops them, with their function cubes, assistants and UGC portals and the owner's door to the home. On the field's thread: plot.Cubes is a plain Dictionary. The owner comes apart from the plot: a forfeit's UpdatePlotInfo clears plot.OwnerId before a queued call runs.</summary>
+    public void EmptyPlot(Plot plot, long ownerId) {
+        foreach (PlotCube cube in plot.Cubes.Values) {
+            if (cube.Interact?.PortalSettings is not null) {
+                RemovePortal(cube.Interact.PortalSettings.PortalObjectId);
+            }
+            if (cube.Interact is not null) {
+                RemoveFieldFunctionInteract(cube.Interact.Id);
+            }
+        }
+        plot.Cubes.Clear();
+
+        // A map's own portal has HomeId 0: only the type and the owner name the door.
+        FieldPortal? door = fieldPortals.Values.FirstOrDefault(portal => portal.Value.Type is PortalType.FieldToHome && portal.HomeId == ownerId);
+        if (door is not null) {
+            RemovePortal(door.ObjectId);
+        }
+    }
+
+    /// <summary>For a caller off the field's thread: a gRPC call, or a player on another map. A field without players runs no Scheduler (Update), so there the action runs at once: the owner's message can not wait for a visitor, and no player is there to use the plot.</summary>
+    internal void OnFieldThread(Action action) {
+        if (Players.IsEmpty) {
+            action();
+        } else {
+            Scheduler.Schedule(action);
+        }
+    }
 }

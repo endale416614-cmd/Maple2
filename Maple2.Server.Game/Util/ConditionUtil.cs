@@ -134,6 +134,8 @@ public static class ConditionUtil {
             case ConditionType.dungeon_first_clear:
             case ConditionType.quest_revise_achieve:
             case ConditionType.field_mission:
+            case ConditionType.minigame_clear:
+            case ConditionType.controller:
                 if (code.Range != null && InRange((ConditionMetadata.Range<int>) code.Range, (int) longValue)) {
                     return true;
                 }

@@ -84,7 +84,10 @@ public record SkillMetadataDetect(
     bool IncludeCaster, // range & arrow can use 2, but detect & sensor only use 0 & 1
     float Distance);
 
-public record SkillMetadataSensor(SkillMetadataRange Range, int StartDelay, bool ForceInvoke);
+/// <summary>A skill level's sensor. With a TargetHasBuffId (targetSelectType 2) it senses only a target with that buff, cast by the
+/// caster when TargetHasBuffOwner, and without TargetHasNotBuffId.</summary>
+public record SkillMetadataSensor(SkillMetadataRange Range, int StartDelay, bool ForceInvoke,
+    int TargetHasBuffId = 0, bool TargetHasBuffOwner = false, int TargetHasNotBuffId = 0);
 
 public record SkillMetadataRecovery(
     long SpValue,

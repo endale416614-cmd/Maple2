@@ -17,8 +17,11 @@ using Maple2.Tools.Collision;
 namespace Maple2.Server.Game.PacketHandlers;
 
 public class SkillHandler : FieldPacketHandler {
-    /// <summary>A cancel stops the motion only for the newest cast: a late cancel of an older cast must not stop the newer cast's motion (ActiveSkill buffs read it).</summary>
-    public static bool CancelsMotion(long? newestCastUid, long cancelUid) => newestCastUid == cancelUid;
+    /// <summary>A cancel stops the motion only for the cast that started it: a late cancel of an older cast must not stop the newer cast's motion (ActiveSkill buffs read it), and a motionless cast in between must not keep the held cast's cancel from stopping it (BT-162).</summary>
+    public static bool CancelsMotion(long? motionCastUid, long cancelUid) => motionCastUid == cancelUid;
+
+    /// <summary>A cast with no sequence (a potion, Shield of the Archon) leaves the running motion alone: clearing it switches off the held skill's ActiveSkill buffs (BT-162).</summary>
+    public static bool PlaysMotion(string? sequenceName) => !string.IsNullOrEmpty(sequenceName);
 
     public override RecvOp OpCode => RecvOp.Skill;
 
@@ -102,7 +105,9 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         SkillMetadataMotionProperty motion = record.Metadata.Data.Motions.First().MotionProperty;
-        session.Animation.TryPlaySequence(motion.SequenceName, motion.SequenceSpeed, AnimationType.Skill, record.Metadata);
+        if (PlaysMotion(motion.SequenceName)) {
+            session.Animation.TryPlaySequence(motion.SequenceName, motion.SequenceSpeed, AnimationType.Skill, record.Metadata);
+        }
 
         packet.ReadInt(); // ClientTick
         record.Unknown = packet.ReadBool(); // UnkBool
@@ -135,6 +140,10 @@ public class SkillHandler : FieldPacketHandler {
         }
         session.Player.InBattle = record.Metadata.State.InBattle;
         session.Player.ActiveSkills.Add(record);
+        // Only here: a refused cast has no queue entry, so its own Cancel is refused and the cast before it must still stop the motion.
+        if (PlaysMotion(motion.SequenceName)) {
+            session.Player.ActiveSkills.MotionCastUid = record.CastUid;
+        }
         session.Field.Broadcast(SkillPacket.Use(record));
         session.Field.Broadcast(StatsPacket.Init(session.Player));
 
@@ -422,7 +431,7 @@ public class SkillHandler : FieldPacketHandler {
             session.Send(NoticePacket.Message($"Skill.Cancel: {skillUid}"));
         }
 
-        if (CancelsMotion(session.Player.ActiveSkills.GetMostRecent()?.CastUid, skillUid)) {
+        if (CancelsMotion(session.Player.ActiveSkills.MotionCastUid, skillUid)) {
             session.Animation.CancelSequence();
         }
     }

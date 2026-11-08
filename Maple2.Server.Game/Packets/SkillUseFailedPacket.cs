@@ -15,8 +15,8 @@ public static class SkillUseFailedPacket {
         var pWriter = Packet.Of(SendOp.SkillUseFailed);
         pWriter.Write<Command>(Command.Fail);
         pWriter.WriteLong(record.CastUid);
-        pWriter.WriteInt(record.Caster.ObjectId);
-        pWriter.WriteByte(); // Maybe motion point?
+        pWriter.WriteInt(record.SkillId); // 46 of 46 captured packets: the cast's skill id
+        pWriter.WriteByte(6); // 41 of 46 captured packets; 1 in the other 5 (skills 1000001 and 1000002, Port 57949.msb), meaning not established
         pWriter.WriteInt(record.ServerTick);
         pWriter.WriteShort();
         pWriter.WriteInt();

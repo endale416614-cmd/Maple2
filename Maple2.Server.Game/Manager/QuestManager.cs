@@ -262,7 +262,8 @@ public sealed class QuestManager {
         foreach (Quest quest in quests) {
             // TODO: Not sure if ProgressMap really means that only progress counts in this map. It doesn't make sense for some quests.
             // Testing only on FieldMission for now.
-            if (quest.Metadata.Basic is { Type: QuestType.FieldMission, ProgressMaps: not null } && session.Field is not null) {
+            // A map condition names its own map, often not the progress map (72000066: Decor Haven asks for the shop inside it).
+            if (type != ConditionType.map && quest.Metadata.Basic is { Type: QuestType.FieldMission, ProgressMaps: not null } && session.Field is not null) {
                 switch (session.Field.Metadata.Property.ExploreType) {
                     case 1 or 0 when !quest.Metadata.Basic.ProgressMaps.Contains(session.Player.Value.Character.MapId):
                     case 2 when !quest.Metadata.Basic.ProgressMaps.Any(x => session.Player.Value.Character.ReturnMaps.Contains(x)):
@@ -425,6 +426,8 @@ public sealed class QuestManager {
 
         if (reward.Exp > 0) {
             session.Exp.AddExp(reward.Exp);
+        } else if (ExperienceManager.PaysRelativeExp(reward.RelativeExp)) {
+            session.Exp.AddExp(reward.RelativeExp);
         }
 
         if (reward.Meso > 0) {
@@ -687,7 +690,7 @@ public sealed class QuestManager {
 
         FieldPortal portal = session.Field.SpawnPortal(quest.Metadata.SummonPortal!, npc, session.Player);
         session.Send(PortalPacket.Add(portal));
-        session.Send(QuestPacket.SummonPortal(npc.ObjectId, portal.Value.Id, portal.StartTick));
+        session.Send(QuestPacket.SummonPortal(npc.ObjectId, portal.Value.Id, session.Field.FieldTickInt));
     }
 
     /// <summary>

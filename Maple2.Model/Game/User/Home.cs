@@ -148,18 +148,34 @@ public class Home : IByteSerializable {
         return new Vector3(dimension, dimension, height);
     }
 
-    public void GainExp(long exp, IReadOnlyDictionary<int, MasteryUgcHousingTable.Entry> masteryTable) {
-        if (exp <= 0 || DecorationLevel >= Constant.HomeDecorationMaxLevel) {
-            return;
+    /// <summary>Adds decoration exp, which restarts at each level and stops at the top level. Returns the exp that counted.</summary>
+    public long GainExp(long exp, IReadOnlyDictionary<int, MasteryUgcHousingTable.Entry> masteryTable) {
+        if (DecorationLevel >= Constant.HomeDecorationMaxLevel) {
+            DecorationExp = 0; // saves from before 1.2.3 kept the overflow of the last level-up
+            return 0;
+        }
+        if (exp <= 0) {
+            return 0;
         }
 
+        long gained = exp;
         while (masteryTable.TryGetValue((int) DecorationLevel + 1, out MasteryUgcHousingTable.Entry? entry) && DecorationExp + exp >= entry.Exp) {
             exp -= entry.Exp - DecorationExp;
+            DecorationExp = 0;
             DecorationLevel++;
+        }
+        if (DecorationLevel >= Constant.HomeDecorationMaxLevel) {
+            gained -= exp;
+            exp = 0;
         }
 
         DecorationExp += exp;
+        return gained;
     }
+
+    /// <summary>All exp the home holds: the cost of every level reached plus the exp of the current level.</summary>
+    public long TotalExp(IReadOnlyDictionary<int, MasteryUgcHousingTable.Entry> masteryTable) =>
+        masteryTable.Values.Where(entry => entry.Level <= DecorationLevel).Sum(entry => (long) entry.Exp) + DecorationExp;
 
     public void WriteTo(IByteWriter writer) {
         writer.WriteLong(AccountId);

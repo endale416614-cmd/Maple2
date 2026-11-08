@@ -1,10 +1,14 @@
 {
   // Spawn points the map data lacks although quests need their NPCs (both modes). Each spawns Count of NpcId at region spawn
   // RegionId of MapId and refills every RegenSeconds. An educated reconstruction: the original spawn data is missing.
+  // A row with "GrindOnly": true is invented for a kill trophy: it exists only with GrindRates on, so Legacy has none,
+  // and EliteRespawnSeconds of offline-grind.json shortens its RegenSeconds as a field Elite's.
   "Spawns": [
     { "MapId": 2000017, "NpcId": 29000022, "Count": 4, "RegionId": 6, "RegenSeconds": 30,
       "Note": "Wiggler, Sylvan Woods Trail: quest 10001680 Only You Can Preserve the Forest (kill 10)" },
     { "MapId": 2000115, "NpcId": 23000008, "Count": 1, "RegionId": 15, "RegenSeconds": 900,
-      "Note": "Devilin Chief, South Royal Road: quest 30000207 Notorious Monsters: The Devilish Commander" }
+      "Note": "Devilin Chief, South Royal Road: quest 30000207 Notorious Monsters: The Devilish Commander" },
+    { "MapId": 2000142, "NpcId": 22400062, "Count": 1, "RegionId": 14, "RegenSeconds": 300, "GrindOnly": true,
+      "Note": "Dr. Pippy, Clock Tower Square: invented, see docs/ADAPTATIONS.md. No data places him; trophy 21220028 Out of Time counts only his kills. Adapted: a new one 10 to 20 s after a kill, about an hour of waiting for the top grade's 200 kills; about 300 s each (17 h) if EliteRespawnSeconds is 0. Legacy gets no row, so the trophy stays out of reach there, as it is today." }
   ]
 }

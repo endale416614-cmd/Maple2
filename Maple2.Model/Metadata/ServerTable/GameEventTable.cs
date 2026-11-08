@@ -261,6 +261,17 @@ public record SaleAutoFishing(
     int Discount,
     string ContentType) : GameEventData;
 
+/// <summary>
+/// Change Attributes materials at a discount (the original's rows: value1 the discount, value2 the kind).
+/// </summary>
+/// <param name="Discount">In 1/10,000 off each material: 5000 takes half.</param>
+/// <param name="Kind">0 every item, 1 equipment, 3 pets, as the CN and KR server tables' notes name them.</param>
+public record SaleRemake(
+    int Discount,
+    byte Kind) : GameEventData {
+    public const byte Everything = 0, Equipment = 1, Pets = 3;
+}
+
 public record LoginNotice : GameEventData;
 
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "!")]

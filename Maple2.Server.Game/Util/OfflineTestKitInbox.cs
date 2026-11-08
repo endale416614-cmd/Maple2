@@ -14,8 +14,8 @@ public static class OfflineTestKitInbox {
 
     /// <summary>
     /// Runs the lines of the folder's *.cmd files in name order and deletes each file once all its lines ran. Stops at
-    /// the first line <paramref name="run"/> refuses (no player in the world yet): that file and the later ones stay
-    /// for the next call. Returns the number of lines run.
+    /// the first line <paramref name="run"/> refuses (no player in the world yet) or at a file another process holds:
+    /// that file and the later ones stay for the next call. Returns the number of lines run.
     /// </summary>
     public static int Process(string folder, Func<string, bool> run) {
         if (!Directory.Exists(folder)) {
@@ -24,7 +24,20 @@ public static class OfflineTestKitInbox {
 
         int count = 0;
         foreach (string path in Directory.GetFiles(folder, "*.cmd").OrderBy(path => path, StringComparer.OrdinalIgnoreCase)) {
-            foreach (string line in File.ReadAllLines(path).Where(line => !string.IsNullOrWhiteSpace(line))) {
+            FileStream file;
+            try {
+                // Shares only the delete: until File.Delete no other process can open the file to read or write, which would fail the delete and run its lines twice.
+                file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Delete);
+            } catch (IOException) {
+                // Another process still holds it (BT-137). Not an error: it and the later files wait for the next call, in name order.
+                return count;
+            }
+
+            using StreamReader reader = new(file);
+            while (reader.ReadLine() is { } line) {
+                if (string.IsNullOrWhiteSpace(line)) {
+                    continue;
+                }
                 if (!run(line)) {
                     return count;
                 }

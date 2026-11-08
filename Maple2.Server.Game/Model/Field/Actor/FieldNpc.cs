@@ -87,6 +87,7 @@ public class FieldNpc : Actor<Npc> {
     public readonly SkillMetadata?[] Skills;
 
     public int SpawnPointId = 0;
+    public int SpawnScore = 0; // spawn_npc_range's score: what this NPC's kill adds to a gauge or score board (SE-01)
 
     // AI summons (NB-10): who summoned this NPC; a slave (a linked summon) leaves with its summoner and counts toward its cap.
     public FieldNpc? Summoner { get; set; }
@@ -100,10 +101,11 @@ public class FieldNpc : Actor<Npc> {
     /// <summary>Hit by a friendly NPC. Monsters only pick players as targets, so this stands in for "fighting an NPC".</summary>
     public bool HitByFriendlyNpc { get; private set; }
     private int lastAttackerObjectId;
-    // The first player to attack this mob; used to assign drop ownership for regular mobs.
-    // TODO: If the mob loses aggro on all players it should heal to full and clear firstAttackerObjectId and DamageDealers,
-    //       resetting the tag so the next attacker becomes the new owner.
+    // The first player to attack this mob; used to assign drop ownership for regular mobs. RestorePeace clears it when a battle ends.
     private int firstAttackerObjectId;
+    // TODO: FT-11: region spawns and summons have no PeaceRestore in any data we hold, so they keep their health and tag after a battle; upgrade if a capture shows one reset.
+    /// <summary>The PeaceRestore of the NPC's spawn point (map data, FT-11): when a battle ends it heals to full and its next attacker tags it anew.</summary>
+    public bool PeaceRestore { get; init; }
 
     public MS2PatrolData? Patrol { get; private set; }
     private int currentWaypointIndex;
@@ -136,6 +138,21 @@ public class FieldNpc : Actor<Npc> {
         if (percent != HpFloorPercent) { // an AI that sets the same floor again must not restart the 60 s count
             HpFloorPercent = percent;
             hpFloorHeldSince = 0;
+        }
+    }
+
+    /// <summary>A battle ended (DoIdleBehavior): with PeaceRestore the NPC heals to full, and its damage dealers and drop tag are cleared.
+    /// The captures have no health update at the heal (the next one reads full); the one sent here shows the bar full at once.</summary>
+    public void RestorePeace() {
+        if (!PeaceRestore) {
+            return;
+        }
+        firstAttackerObjectId = 0;
+        DamageDealers.Clear();
+        Stat health = Stats.Values[BasicAttribute.Health];
+        if (health.Current < health.Total) {
+            health.Current = health.Total;
+            Field.Broadcast(StatsPacket.Update(this, BasicAttribute.Health));
         }
     }
 
@@ -236,16 +253,20 @@ public class FieldNpc : Actor<Npc> {
         }
 
         bool isSpawning = MovementState.State is ActorState.Spawn or ActorState.Regen;
+        // A stun holds the NPC where it stands (NB-24): its AI, idle routine and queued tasks wait until the buff ends.
+        bool stunned = !isSpawning && MovementState.Stun(Buffs.HasStun(tickCount));
 
         if (!isSpawning) {
             BattleState.Update(tickCount);
+        }
+        if (!isSpawning && !stunned) {
             AiState.Update(tickCount);
             DoIdleBehavior(tickCount);
         }
 
         MovementState.Update(tickCount);
 
-        if (!isSpawning) {
+        if (!isSpawning && !stunned) {
             TaskState.Update(tickCount);
         }
 
@@ -282,6 +303,7 @@ public class FieldNpc : Actor<Npc> {
         }
 
         if (hasBeenBattling && idleTask is null && MovementState.CastTask is null) {
+            RestorePeace(); // the battle ended: it walks back
             Vector3 spawnPoint = Navigation?.GetRandomPatrolPoint() ?? Origin;
 
             idleTask = MovementState.TryMoveTo(spawnPoint, false);
@@ -425,6 +447,7 @@ public class FieldNpc : Actor<Npc> {
         lastAttackerObjectId = caster.ObjectId;
         if (caster is FieldPlayer hitPlayer) {
             DropHitLoot(hitPlayer);
+            hitPlayer.Session.Dungeon.AddNpcDamage(Value.Metadata.Id, amount);
         }
     }
 
@@ -448,6 +471,14 @@ public class FieldNpc : Actor<Npc> {
             lastCorpseBroadcastTick = Environment.TickCount64;
         }
 
+        // A dungeon NPC's extendRoomTime adds to the run's room timer (captured: +60000 at Ishura's death)
+        if (Field is DungeonFieldManager dungeon) {
+            dungeon.ModifyRoomTimer(Value.Metadata.Dead.ExtendRoomTime);
+        }
+        // An open Shadow Expedition gauge or score board counts the kill (SE-01); a captured pet is no kill.
+        if (this is not FieldPet) {
+            Field.AddScore(FieldScore.KillPoints(Value.Metadata, SpawnScore));
+        }
         HandleDamageDealers();
 
         Remove(delay: TimeSpan.FromSeconds(Value.Metadata.Dead.Time));
@@ -684,7 +715,7 @@ public class FieldNpc : Actor<Npc> {
 
         if (Value.Metadata.Basic.CustomExp == -1) {
             // TODO: this is temporary. We need to know how to split exp between players.
-            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, expMultiplier);
+            player.Session.Exp.AddMobExp(Value.Metadata.Basic.Level, Value.Metadata.Basic.Class, expMultiplier);
             return;
         }
 

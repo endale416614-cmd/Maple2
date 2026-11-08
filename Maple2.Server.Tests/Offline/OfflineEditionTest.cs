@@ -148,7 +148,7 @@ public class OfflineEditionTest {
     [Test]
     public void DungeonClears_RaisedOnlyWhenEnabled() {
         // Data as shipped: union dungeon 1006 (30/week, 15/day) and a dungeon without a daily limit (0).
-        DungeonRoomMetadata Room(int id, int weekly, int daily) => new(id, 50, default, default, default, 0, 0, 0, [],
+        DungeonRoomMetadata Room(int id, int weekly, int daily) => new(id, 50, default, default, default, 0, 0, false, 0, [],
             new DungeonRoomRewardMetadata(false, weekly, daily, 0, 0, 0, [], [], 0, 0, 0),
             null!, 0, 0, 0, false, 0, 0, false, [], [], false);
         var shipped = new DungeonRoomTable(new Dictionary<int, DungeonRoomMetadata> {
@@ -204,7 +204,7 @@ public class OfflineEditionTest {
         // Featured, Packages, Outfits and its sub-tabs, Summons sub-tabs, Functional, Expression, Badges, Lifestyle, Design Templates, Furniture
         int[] known = [10, 40000, 40101, 40102, 40103, 40104, 40105, 40106, 40107, 40108, 40109, 40201, 40202, 40203, 40300, 40400, 40500, 40600, 40700, 40800];
         Assert.That(tabs.Except(known), Is.Empty);
-        Assert.That(tabs.Count(tab => tab == 10), Is.LessThan(255 - 6), "the Featured page is one packet with a byte slot count (6 shipped entries too)");
+        Assert.That(tabs.Count(tab => tab == 10), Is.LessThanOrEqualTo(90 - 6), "the client pages Featured itself, 5 pages of 18 tiles (BT-123), the 6 shipped entries too");
         Assert.That(tabs.Count(tab => tab == 40700), Is.GreaterThan(0));
         Assert.That(tabs.Count(tab => tab == 40800), Is.GreaterThan(0));
     }
@@ -219,6 +219,22 @@ public class OfflineEditionTest {
 
         // The NA client hides Wedding and Mentoring items (empty rows) and names 20300484 and 20301697 after other items.
         Assert.That(items.Intersect(new[] { 11050067, 11050068, 11250210, 11301057, 20300484, 20301697 }), Is.Empty);
+    }
+
+    [Test]
+    public void MeretCatalog_SellsNoItemItsBuyerCannotUse() {
+        string path = Path.Combine(Paths.SOLUTION_DIR, "offline-meret-catalog.json");
+        Assume.That(File.Exists(path), "offline-meret-catalog.json not generated");
+        HashSet<int> items = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path)).RootElement.GetProperty("Entries")
+            .EnumerateArray().Select(entry => entry.GetProperty("ItemId").GetInt32()).ToHashSet();
+
+        // The server has no way to spend a Daily Mission voucher (no reader of its tag, no quest command for it).
+        int[] missionVouchers = [20302387, 20302601, 20302953, 20302948];
+        Assert.That(items.Intersect(missionVouchers), Is.Empty);
+        // Items nothing on the server can use (BT-122): the Guild/Party Summon Scroll boxes, the Instant Gathering Voucher box, a capsule giving only it.
+        Assert.That(items.Intersect(new[] { 20393045, 20393048, 20393049, 22004504 }), Is.Empty);
+        // Named (PC Cafe) without the client's PC cafe flag: they work, so a removal by name would be wrong.
+        Assert.That(items, Is.SupersetOf(new[] { 20300008, 20300031, 20300032, 20300131, 20300296, 20300489 }));
     }
 
     [Test]

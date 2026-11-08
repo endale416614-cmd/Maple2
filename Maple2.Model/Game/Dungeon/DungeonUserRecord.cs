@@ -11,6 +11,7 @@ public class DungeonUserRecord : IUserContentRecord {
     public bool WithParty { get; set; }
     public readonly ConcurrentDictionary<DungeonAccumulationRecordType, int> AccumulationRecords;
     public Dictionary<int, DungeonMission> Missions = [];
+    private readonly ConcurrentDictionary<int, long> npcDamage = []; // the player's damage per NPC id in this run; hits arrive on two threads
     public DungeonBonusFlag BonusFlag = DungeonBonusFlag.None;
     public Dictionary<DungeonRewardType, int> Rewards { get; init; } = [];
     public ICollection<RewardItem> RewardItems { get; init; } = [];
@@ -45,6 +46,19 @@ public class DungeonUserRecord : IUserContentRecord {
         foreach (RewardItem item in record.Items) {
             BonusRewardItems.Add(item);
         }
+    }
+
+    /// <summary>The total of the player's missions, which the fame challenges' rank check reads.</summary>
+    public int MissionScore() => Missions.Values.Sum(mission => (int) mission.Score);
+
+    /// <summary>Adds the player's damage to one NPC id, completes the DamageToNpc missions it reaches and returns them.</summary>
+    public DungeonMission[] AddNpcDamage(int npcId, long amount) {
+        long dealt = npcDamage.AddOrUpdate(npcId, amount, (_, total) => total + amount);
+        DungeonMission[] completed = Missions.Values.Where(mission => mission.CompletesOnDamage(npcId, dealt)).ToArray();
+        foreach (DungeonMission mission in completed) {
+            mission.Complete();
+        }
+        return completed;
     }
 
     public void WriteTo(IByteWriter writer) {

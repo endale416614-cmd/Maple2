@@ -66,7 +66,9 @@ public class BuffManager : IUpdatable {
         // Prestige
         EnterField();
         if (Actor is FieldPlayer player) {
+            player.Session.Exp.RefreshPrestigeBuffs();
             player.Session.Config.RefreshPremiumClubBuffs();
+            player.Session.Config.RefreshLapenshardBuffs();
         }
     }
 
@@ -82,6 +84,13 @@ public class BuffManager : IUpdatable {
         // Offline cheat /godmode: monsters cannot debuff the player (stuns, slows, poisons...).
         if (owner is FieldPlayer { GodMode: true } && caster is FieldNpc { Value.Metadata.Basic.Friendly: 0 }
             && additionalEffect.Property.Type is BuffType.Debuff or BuffType.Debuff2) {
+            return;
+        }
+
+        // A stun reaches an NPC only when its break is above the NPC's abnormal immunity, as captured (NB-24): 209 of 209 stuns on NPCs
+        // were above it, and none came where it was not. Debuffs without a stun ignore the immunity, as captured.
+        if (additionalEffect.Property.Stun != 0 && owner is FieldNpc npc
+            && additionalEffect.Property.ImmuneBreak <= npc.Value.Metadata.Basic.AbnormalImmune) {
             return;
         }
 
@@ -247,6 +256,11 @@ public class BuffManager : IUpdatable {
     public bool HasBuff(BuffEventType eventType) {
         return EnumerateBuffs().Any(buff => buff.Metadata.Property.EventType == eventType);
     }
+
+    /// <summary>Whether the actor holds a stun at the tick (MotionProperty stun, NB-24). It ends at its end tick plus its DelayTick, as
+    /// captured, though a buff of IntervalTick 0 (346 of the 355 stun levels) is removed only 1000 ms later. Read on every NPC tick, so it copies no list.</summary>
+    public bool HasStun(long tickCount) => buffs.Any(entry => entry.Value.Exists(buff => buff.Metadata.Property.Stun != 0
+        && tickCount <= buff.EndTick + buff.Metadata.Property.DelayTick));
 
     private void SetReflect(Buff buff) {
         if (buff.Metadata.Reflect.EffectId == 0 || !Actor.Field.SkillMetadata.TryGetEffect(buff.Metadata.Reflect.EffectId, buff.Metadata.Reflect.EffectLevel,

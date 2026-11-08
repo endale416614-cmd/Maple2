@@ -1,10 +1,13 @@
 ﻿using Maple2.Model.Enum;
 using Maple2.Model.Game;
+using Maple2.Model.Game.Dungeon;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.PacketHandlers.Field;
 using Maple2.Server.Core.Packets;
 using Maple2.Server.Game.LuaFunctions;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
 
 namespace Maple2.Server.Game.PacketHandlers;
@@ -37,11 +40,27 @@ public class RevivalHandler : FieldPacketHandler {
         if (session.Field.Metadata.Property.NoRevivalHere) {
             return;
         }
+        // At the room's limit the dialog offers only Leave the Dungeon.
+        DungeonRoomRecord? run = (session.Field as DungeonFieldManager)?.DungeonRoomRecord;
+        int revivals = run?.Revivals.GetValueOrDefault(session.CharacterId) ?? 0;
+        if (run is not null && !CanSafeRevive(run.Metadata.Limit.MaxRevivalCount, revivals)) {
+            return;
+        }
         // Revive player - this will handle moving to spawn point
         if (session.Player.Revive()) {
             session.Player.Tombstone = null;
+            if (run is not null) {
+                run.Revivals[session.CharacterId] = revivals + 1;
+                session.Send(RevivalPacket.DungeonReviveCount(revivals + 1));
+            }
         }
     }
+
+    /// <summary>
+    /// A dungeon room's revival limit (defaultRevivalLimitCount, 0 for none) counts safe revivals only: the captures send no
+    /// DungeonReviveCount after an instant or an automatic revival.
+    /// </summary>
+    public static bool CanSafeRevive(int maxRevivalCount, int revivals) => maxRevivalCount <= 0 || revivals < maxRevivalCount;
 
     /// <summary>
     /// Handles instant revival (using mesos or voucher)

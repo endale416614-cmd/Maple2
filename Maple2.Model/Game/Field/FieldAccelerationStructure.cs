@@ -20,6 +20,7 @@ internal enum FieldEntityMembers : byte {
     Scale = 0x8,
     Bounds = 0x10,
     Llid = 0x20,
+    HideGroup = 0x40, // a vibrate's hide group; map-data written without it reads 0
 }
 
 /*
@@ -753,6 +754,9 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
             case FieldMeshColliderEntity meshCollider:
                 memberFlags |= (meshCollider.MeshLlid == 0) ? 0 : FieldEntityMembers.Llid;
                 break;
+            case FieldVibrateEntity vibrate:
+                memberFlags |= (vibrate.HideGroupId == 0) ? 0 : FieldEntityMembers.HideGroup;
+                break;
             default:
                 break;
         }
@@ -792,6 +796,9 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                 writer.WriteInt(vibrateEntity.BreakTick);
                 writer.WriteString(vibrateEntity.MaterialTag);
                 writer.WriteInt(vibrateEntity.ResetTimer);
+                if ((memberFlags & FieldEntityMembers.HideGroup) != 0) {
+                    writer.WriteInt(vibrateEntity.HideGroupId);
+                }
                 break;
             case FieldSpawnTile spawnTile:
                 break;
@@ -947,7 +954,8 @@ public class FieldAccelerationStructure : IByteSerializable, IByteDeserializable
                     BreakDefense: reader.ReadInt(),
                     BreakTick: reader.ReadInt(),
                     MaterialTag: reader.ReadString(),
-                    ResetTimer: reader.ReadInt());
+                    ResetTimer: reader.ReadInt(),
+                    HideGroupId: (memberFlags & FieldEntityMembers.HideGroup) != 0 ? reader.ReadInt() : 0);
             case FieldEntityType.SpawnTile:
                 return new FieldSpawnTile(
                     Id: id,

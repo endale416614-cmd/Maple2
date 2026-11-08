@@ -193,6 +193,17 @@ public class InventoryManager {
             // Unified logic for stack splitting (works for both SlotMax == 1 and SlotMax > 1)
             int slotMax = Math.Max(1, add.Metadata.Property.SlotMax);
             if (add.Amount > slotMax) {
+                // Counted first, on what the steps below create: a refused add changes nothing, and its caller mails or refunds the whole item (BT-85).
+                // TODO: IV-01 a stack with a duration made across a minute change takes one slot more than counted; no data row is above one stack with a duration.
+                var created = new Item(add.Metadata, add.Rarity, add.Amount);
+                if (add.Metadata.Limit.TransferType is TransferType.BindOnLoot) {
+                    created.Transfer?.Bind(session.Player.Value.Character);
+                }
+                if (items.OpenSlots < items.SlotsNeeded(created)) {
+                    session.Send(ItemInventoryPacket.Error(s_err_inventory));
+                    return false;
+                }
+
                 int totalAmount = add.Amount;
 
                 // 1. Fill partially filled stacks first
@@ -211,12 +222,6 @@ public class InventoryManager {
 
                 int fullStacks = totalAmount / slotMax;
                 int remainder = totalAmount % slotMax;
-                int stacksNeeded = fullStacks + (remainder > 0 ? 1 : 0);
-
-                if (items.OpenSlots < stacksNeeded) {
-                    session.Send(ItemInventoryPacket.Error(s_err_inventory));
-                    return false;
-                }
 
                 // 2. Add full stacks
                 for (int i = 0; i < fullStacks; i++) {
@@ -234,6 +239,8 @@ public class InventoryManager {
                     if (!Add(remainderItem, notifyNew, commit)) return false;
                 }
 
+                // The new stacks replace it: a row it already has (a mail's attachment) must not stay where it can be taken again.
+                Discard(add, commit);
                 return true;
             }
 
@@ -334,7 +341,9 @@ public class InventoryManager {
             // case 90000007: // Karma
             // case 90000012: // Unknown (BookIcon)
             // case 90000018: // ShadowFragment
-            // case 90000019: // DistinctPaul
+            case 90000019: // DistinctPaul: the treasure maps' (80000014, 80000015) score item fills their score board (SE-01)
+                session.Field?.AddScore(add.Amount);
+                break;
             case 90000021: // GuildFunds
             case 90000022: // ReverseCoin
                 session.Currency[CurrencyType.ReverseCoin] += add.Amount;
@@ -359,7 +368,7 @@ public class InventoryManager {
             }
 
             if (tabs.TryGetValue(item.Inventory, out ItemCollection? items)) {
-                return items.OpenSlots > 0 || items.GetStackResult(item, amount) == 0;
+                return items.OpenSlots >= items.SlotsNeeded(item, amount);
             }
 
             return false;

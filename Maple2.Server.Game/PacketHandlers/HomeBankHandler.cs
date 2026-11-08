@@ -1,4 +1,5 @@
 ﻿using Maple2.Database.Storage;
+using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.PacketLib.Tools;
 using Maple2.Server.Core.Constants;
@@ -29,12 +30,14 @@ public class HomeBankHandler : FieldPacketHandler {
         switch (command) {
             case Command.Home:
                 long time = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                if (session.Player.Value.Character.StorageCooldown + Constants.HomeBankCallCooltime > time) {
+                // The table holds milliseconds; the cooldown is kept in seconds.
+                if (session.Player.Value.Character.StorageCooldown + Constants.HomeBankCallCooltime / 1000 > time) {
                     return;
                 }
 
                 session.Player.Value.Character.StorageCooldown = time;
                 session.Send(HomeBank(time));
+                session.ConditionUpdate(ConditionType.home_bank);
                 return;
             case Command.Premium:
                 session.Send(HomeBank());

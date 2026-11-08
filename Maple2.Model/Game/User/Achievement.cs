@@ -54,7 +54,8 @@ public class Achievement : IByteSerializable {
         writer.Write<AchievementStatus>(Status);
         writer.WriteInt(Completed ? 1 : 0);
         writer.WriteInt(CurrentGrade);
-        writer.WriteInt(RewardGrade);
+        // Saves from before the claim fix can hold a reward grade past the current one on an unfinished trophy: it means already paid, and GiveReward needs it kept.
+        writer.WriteInt(Completed ? RewardGrade : Math.Min(RewardGrade, CurrentGrade));
         writer.WriteBool(Favorite);
         writer.WriteLong(Counter);
         writer.WriteInt(Grades.Count);

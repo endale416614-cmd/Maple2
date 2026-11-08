@@ -185,6 +185,7 @@ public class QuestHandler : FieldPacketHandler {
             return;
         }
 
+        quest.Track = tracking; // QuestManager.Save keeps it; LoadQuestStates sends it at the next login
         session.Send(QuestPacket.SetTracking(questId, tracking));
     }
 

@@ -39,12 +39,16 @@ public class SkillMapper : TypeMapper<StoredSkillMetadata> {
                     Detect: new SkillMetadataDetect(
                         IncludeCaster: level.detectProperty?.includeCaster == 1,
                         Distance: level.detectProperty?.distance ?? 0),
-                    // targetSelectType picks targets by buff, which the sensor does not model
-                    Sensor: level.sensorProperty != null && !string.IsNullOrEmpty(level.sensorProperty.rangeType) && level.sensorProperty.targetSelectType == 0
+                    // targetSelectType 2 senses only targets by buff (the sensor's buff fields); other values pick targets in ways
+                    // the sensor does not model
+                    Sensor: level.sensorProperty != null && !string.IsNullOrEmpty(level.sensorProperty.rangeType) && level.sensorProperty.targetSelectType is 0 or 2
                         ? new SkillMetadataSensor(
                             Range: Convert(level.sensorProperty),
                             StartDelay: level.sensorProperty.sensorStartDelay,
-                            ForceInvoke: level.sensorProperty.sensorForceInvokeByInterval)
+                            ForceInvoke: level.sensorProperty.sensorForceInvokeByInterval,
+                            TargetHasBuffId: level.sensorProperty.targetSelectType == 2 ? level.sensorProperty.targetHasBuffID : 0,
+                            TargetHasBuffOwner: level.sensorProperty.targetSelectType == 2 && level.sensorProperty.targetHasBuffOwner,
+                            TargetHasNotBuffId: level.sensorProperty.targetSelectType == 2 ? level.sensorProperty.targetHasNotBuffID : 0)
                         : null,
                     Recovery: new SkillMetadataRecovery(
                         SpValue: level.recoveryProperty.spValue,

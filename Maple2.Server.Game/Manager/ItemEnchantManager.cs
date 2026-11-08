@@ -15,6 +15,7 @@ public class ItemEnchantManager {
     private const int MaxFodderRate = 30;
     private const int MaxExp = 10000;
     private const int ChargeRate = 1;
+    private const int MaxEnchants = 15;
 
     private static readonly int[] RequireFodder = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 3, 3, 4];
     private static readonly int[] GainExp = [10000, 10000, 10000, 5000, 5000, 5000, 2500, 2500, 2500, 2000, 3334, 2000, 2000, 1250, 1250];
@@ -94,6 +95,10 @@ public class ItemEnchantManager {
         upgraded = false;
     }
 
+    /// <summary>What the window warns of: Ophelia from +9 as captured at +9 and +10, nothing else. Only a warning: 8 captured failures at +9 left the item as it was.</summary>
+    public static EnchantFailType FailType(EnchantType type, int enchants) =>
+        type is EnchantType.Ophelia && enchants >= 9 ? EnchantFailType.Unstabilize : EnchantFailType.None;
+
     public bool StageItem(EnchantType enchantType, long itemUid) {
         if (enchantType is not (EnchantType.Ophelia or EnchantType.Peachy)) {
             return false;
@@ -107,15 +112,20 @@ public class ItemEnchantManager {
         }
 
         Reset();
+        // +15 is the top: nothing to stage, and the client gets no reply, as it did when this threw.
+        if (item.Enchant?.Enchants >= MaxEnchants) {
+            return false;
+        }
+
         Type = enchantType;
         upgradeItem = item;
 
         // Ensure this item has an Enchant field set.
         upgradeItem.Enchant ??= new ItemEnchant();
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
-        int minFodder = RequireFodder[enchants];
+        int minFodder = RequiredFodder(enchants);
 
-        foreach (IngredientInfo ingredient in GetRequiredCatalysts()) {
+        foreach (IngredientInfo ingredient in GetRequiredCatalysts(Type, upgradeItem)) {
             catalysts.Add(ingredient);
         }
         foreach ((BasicAttribute attribute, BasicOption option) in GetEnchant(session, upgradeItem).BasicOptions) {
@@ -131,7 +141,7 @@ public class ItemEnchantManager {
                 break;
         }
         NpcTalkEvent(ScriptEventType.EnchantSelect);
-        session.Send(ItemEnchantPacket.StageItem(Type, upgradeItem, catalysts, attributeDeltas, rates, minFodder));
+        session.Send(ItemEnchantPacket.StageItem(Type, upgradeItem, catalysts, attributeDeltas, rates, minFodder, FailType(Type, enchants)));
         return true;
     }
 
@@ -153,7 +163,7 @@ public class ItemEnchantManager {
             }
 
             // Can't go over 30% rate with fodders
-            if (Type is EnchantType.Ophelia && fodders.Count >= RequireFodder[enchants] && rates.Success + rates.Fodder >= MaxFodderRate) {
+            if (Type is EnchantType.Ophelia && fodders.Count >= RequiredFodder(enchants) && rates.Success + rates.Fodder >= MaxFodderRate) {
                 NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.max_fodder);
                 return false;
             }
@@ -186,7 +196,7 @@ public class ItemEnchantManager {
 
         switch (Type) {
             case EnchantType.Ophelia:
-                int extra = fodderWeight - RequireFodder[enchants];
+                int extra = fodderWeight - RequiredFodder(enchants);
                 int maxFodder = Math.Max(0, MaxFodderRate - rates.Success);
                 rates.Fodder = Math.Clamp(extra * FodderRate[enchants], 0, maxFodder);
 
@@ -218,8 +228,15 @@ public class ItemEnchantManager {
         }
 
         upgradeItem.Enchant ??= new ItemEnchant();
+        if (upgradeItem.Enchant.Enchants >= MaxEnchants) {
+            return false;
+        }
+        if (OfflineAutoEnchant.Goal(session.CharacterId, upgradeItem.Enchant.Enchants) is { } goal) {
+            return AutoEnchant(itemUid, goal);
+        }
+
         int enchants = Math.Clamp(upgradeItem.Enchant.Enchants, 0, 14);
-        if (fodderWeight < RequireFodder[enchants]) {
+        if (fodderWeight < RequiredFodder(enchants)) {
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.not_enough_fodder);
             return false;
         }
@@ -227,19 +244,6 @@ public class ItemEnchantManager {
         if (!ConsumeMaterial()) {
             NpcTalkEvent(ScriptEventType.EnchantFail, ItemEnchantError.s_itemenchant_lack_ingredient);
             return false;
-        }
-
-        void ApplyEnchantStats() {
-            // GetBasicOptions() again to ensure rates match those in table.
-            // This *MUST* be called before incrementing Enchants.
-            foreach ((BasicAttribute attribute, BasicOption option) in GetEnchant(session, upgradeItem).BasicOptions) {
-                if (upgradeItem.Enchant.BasicOptions.TryGetValue(attribute, out BasicOption existing)) {
-                    upgradeItem.Enchant.BasicOptions[attribute] = option + existing;
-                } else {
-                    upgradeItem.Enchant.BasicOptions[attribute] = option;
-                }
-            }
-            upgradeItem.Enchant.Enchants++;
         }
 
         switch (Type) {
@@ -287,9 +291,172 @@ public class ItemEnchantManager {
         }
     }
 
+    private void ApplyEnchantStats() {
+        Item item = upgradeItem!;
+        ItemEnchant enchant = item.Enchant!;
+        // GetBasicOptions() again to ensure rates match those in table.
+        // This *MUST* be called before incrementing Enchants.
+        foreach ((BasicAttribute attribute, BasicOption option) in GetEnchant(session, item).BasicOptions) {
+            if (enchant.BasicOptions.TryGetValue(attribute, out BasicOption existing)) {
+                enchant.BasicOptions[attribute] = option + existing;
+            } else {
+                enchant.BasicOptions[attribute] = option;
+            }
+        }
+        enchant.Enchants++;
+    }
+
+    // /autoenchant: one request runs many attempts, each paid and applied as a single attempt is, and the client gets one result.
+    private bool AutoEnchant(long itemUid, int goal) {
+        Item item = upgradeItem!;
+        ItemEnchant enchant = item.Enchant!;
+        var deltas = new Dictionary<BasicAttribute, BasicOption>();
+        bool first = true;
+
+        RunStop? Pay() {
+            int missing = RequiredFodder(enchant.Enchants) - fodderWeight;
+            List<Item> picked = missing <= 0 ? [] : session.Item.Inventory
+                .Filter(copy => !fodders.ContainsKey(copy.Uid) && IsCleanCopy(item, copy), InventoryType.Gear)
+                .Take(missing)
+                .ToList();
+            if (picked.Count < missing) {
+                return RunStop.Copies;
+            }
+
+            foreach (Item copy in picked) {
+                fodders[copy.Uid] = copy;
+            }
+            fodderWeight += picked.Count;
+            if (!ConsumeMaterial(quiet: !first)) {
+                foreach (Item copy in picked) {
+                    fodders.Remove(copy.Uid);
+                }
+                fodderWeight -= picked.Count;
+                return RunStop.Materials;
+            }
+
+            // The copies and charges the player picked go on the first attempt only.
+            first = false;
+            fodders.Clear();
+            fodderWeight = 0;
+            useCharges = 0;
+            rates.Fodder = 0;
+            rates.Charge = 0;
+            return null;
+        }
+
+        void Applied(Attempt attempt) {
+            enchant.EnchantExp = attempt.Exp;
+            enchant.Charges += attempt.AddCharges;
+            if (attempt.LevelUp) {
+                foreach ((BasicAttribute attribute, BasicOption option) in GetEnchant(session, item).BasicOptions) {
+                    deltas[attribute] = deltas.TryGetValue(attribute, out BasicOption sum) ? option + sum : option;
+                }
+                ApplyEnchantStats();
+                catalysts.Clear();
+                catalysts.AddRange(GetRequiredCatalysts(Type, item));
+            }
+            // As a single attempt: Ophelia per roll, Peachy per level.
+            if (attempt.LevelUp || Type == EnchantType.Ophelia) {
+                session.ConditionUpdate(ConditionType.enchant_result, codeLong: (int) (attempt.LevelUp ? EnchantResult.Success : EnchantResult.Fail), targetLong: enchant.Enchants);
+            }
+        }
+
+        RunResult run = AutoRun(Type, enchant.Enchants, enchant.EnchantExp, goal, rates.Fodder + rates.Charge, Random.Shared.NextSingle, Pay, Applied);
+        logger.Debug("Auto enchant: {Attempts} attempts, {Levels} levels, now +{Enchants}, stopped by {Stop}", run.Attempts, run.Levels, run.Enchants, run.Stop);
+        if (run.Attempts == 0) {
+            NpcTalkEvent(ScriptEventType.EnchantFail, run.Stop == RunStop.Copies ? ItemEnchantError.not_enough_fodder : ItemEnchantError.s_itemenchant_lack_ingredient);
+            return false;
+        }
+
+        if (run.Levels > 0) {
+            session.Send(ItemEnchantPacket.Success(item, deltas));
+        } else if (Type == EnchantType.Ophelia) {
+            session.Send(ItemEnchantPacket.Failure(item, run.AddCharges));
+        }
+        if (Type == EnchantType.Peachy) {
+            session.Send(ItemEnchantPacket.UpdateExp(itemUid, enchant.EnchantExp));
+        }
+        if (run.Levels > 0) {
+            ChatUtil.SendEnchantAnnouncement(session, item);
+        }
+
+        if (Type == EnchantType.Ophelia) {
+            enchantResult = run.Levels > 0 ? EnchantResult.Success : EnchantResult.Fail;
+        } else if (run.Levels > 0) {
+            Reset();
+        }
+        return true;
+    }
+
+    /// <summary>Why a /autoenchant run ended.</summary>
+    public enum RunStop { Goal, Top, Materials, Copies }
+
+    /// <summary>One attempt's outcome: AddCharges is what a failed Ophelia roll adds, Exp the item's Peachy exp after it.</summary>
+    public readonly record struct Attempt(bool LevelUp, int Exp, int AddCharges);
+
+    /// <summary>What a /autoenchant run did. AddCharges sums its failed rolls.</summary>
+    public readonly record struct RunResult(int Enchants, int Exp, int Attempts, int Levels, int AddCharges, RunStop Stop);
+
+    /// <summary>The copies an attempt asks for: none below the rank that opens them (constants: EnchantEquipIngredientOpenRank 4; captures: rank 3 at +10 asks 0, rank 5 at +10 asks 2).</summary>
+    public static int RequiredFodder(int rarity, int enchants, int openRank) =>
+        rarity >= openRank ? RequireFodder[Math.Clamp(enchants, 0, MaxEnchants - 1)] : 0;
+
+    private int RequiredFodder(int enchants) =>
+        RequiredFodder(upgradeItem?.Rarity ?? 0, enchants, session.ServerTableMetadata.ConstantsTable.EnchantEquipIngredientOpenRank);
+
+    /// <summary>A copy /autoenchant may spend by itself: not the item, and nothing on it the player put there or could want back.</summary>
+    public static bool IsCleanCopy(Item item, Item copy) =>
+        copy.Uid != item.Uid && copy.Id == item.Id && copy.Rarity == item.Rarity
+        && !copy.IsLocked && !copy.IsExpired() && copy.Amount >= 1
+        && copy.TimeChangedOption == 0
+        && copy.Enchant is null or { Enchants: 0, EnchantExp: 0, Charges: 0 }
+        && copy.LimitBreak is null or { Level: 0 }
+        && (copy.Socket == null || copy.Socket.Sockets.All(gem => gem == null))
+        && !IsValidToolkit(item, copy);
+
+    /// <summary>One attempt at this level, with nothing paid and nothing applied. bonusRate is what the player's own copies and charges add to the table's rate.</summary>
+    public static Attempt Step(EnchantType type, int enchants, int exp, int bonusRate, Func<float> random) {
+        if (type == EnchantType.Peachy) {
+            int gained = exp + GainExp[enchants];
+            return gained >= MaxExp ? new Attempt(true, 0, 0) : new Attempt(false, gained, 0);
+        }
+
+        bool success = random() * MaxRate < SuccessRate[enchants] + bonusRate;
+        return new Attempt(success, exp, success ? 0 : FailCharge[enchants]);
+    }
+
+    /// <summary>
+    /// The attempts of one /autoenchant request: until goal, never past +15, or until pay says why the next attempt can not be paid.
+    /// pay returns null when the attempt is paid; applied takes each attempt's outcome. bonusRate counts for the first attempt only.
+    /// No cap on attempts: every level's rate is at least 5, so a run ends, and materials end it sooner.
+    /// </summary>
+    public static RunResult AutoRun(EnchantType type, int enchants, int exp, int goal, int bonusRate, Func<float> random, Func<RunStop?> pay, Action<Attempt> applied) {
+        int start = enchants;
+        int attempts = 0;
+        int addCharges = 0;
+        RunStop? stop = null;
+        while (enchants < goal) {
+            stop = enchants >= MaxEnchants ? RunStop.Top : pay();
+            if (stop != null) {
+                break;
+            }
+
+            Attempt attempt = Step(type, enchants, exp, attempts == 0 ? bonusRate : 0, random);
+            applied(attempt);
+            attempts++;
+            exp = attempt.Exp;
+            addCharges += attempt.AddCharges;
+            if (attempt.LevelUp) {
+                enchants++;
+            }
+        }
+        return new RunResult(enchants, exp, attempts, enchants - start, addCharges, stop ?? RunStop.Goal);
+    }
+
     // session.Item must be locked before calling.
     // Consumes materials and charges for this upgrade.
-    private bool ConsumeMaterial() {
+    private bool ConsumeMaterial(bool quiet = false) {
         if (upgradeItem?.Enchant == null) {
             return false;
         }
@@ -310,7 +477,9 @@ public class ItemEnchantManager {
 
             // Note: All validation should be above this point.
             if (!session.Item.Inventory.Consume(catalysts)) {
-                session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
+                if (!quiet) {
+                    session.Send(ItemEnchantPacket.Error(ItemEnchantError.s_itemenchant_lack_ingredient));
+                }
                 return false;
             }
 
@@ -327,13 +496,13 @@ public class ItemEnchantManager {
         }
     }
 
-    private IEnumerable<IngredientInfo> GetRequiredCatalysts() {
-        if (upgradeItem == null) {
+    public static IEnumerable<IngredientInfo> GetRequiredCatalysts(EnchantType type, Item item) {
+        int enchants = item.Enchant?.Enchants ?? 0;
+        if (enchants >= MaxEnchants) {
             yield break;
         }
 
-        int enchants = upgradeItem.Enchant?.Enchants ?? 0;
-        IEnumerable<IngredientInfo> costs = Type == EnchantType.Peachy ? PeachyCost[enchants] : Core.Formulas.Enchant.GetEnchantCost(upgradeItem);
+        IEnumerable<IngredientInfo> costs = type == EnchantType.Peachy ? PeachyCost[enchants] : Core.Formulas.Enchant.GetEnchantCost(item);
         foreach (IngredientInfo cost in costs) {
             yield return cost;
         }

@@ -215,75 +215,7 @@ public partial class FieldManager {
         /// </summary>
         private void DisposeLoop() {
             while (!cancel.IsCancellationRequested) {
-                foreach ((int mapId, ConcurrentDictionary<int, FieldManager> fieldList) in fields) {
-                    foreach ((int roomId, FieldManager field) in fieldList) {
-                        if (!field.Players.IsEmpty) {
-                            logger.Verbose("Field {MapId} {RoomId} has players", field.MapId, field.RoomId);
-                            field.fieldEmptySince = null;
-                            continue;
-                        }
-
-                        if (field.fieldAdBalloons.Values
-                            .Any(fieldInteract => fieldInteract.Object is InteractBillBoardObject billboard && DateTime.Now.ToEpochSeconds() < billboard.ExpirationTime)) {
-                            logger.Verbose("Field {MapId} {RoomId} has ad balloons", field.MapId, field.RoomId);
-                            field.fieldEmptySince = null;
-                            continue;
-                        }
-
-                        Model.RoomTimer? roomTimer = field.RoomTimer;
-                        if (roomTimer is null) {
-                            if (field.fieldEmptySince is null) {
-                                logger.Verbose("Field {MapId} {RoomId} is empty, starting timer", field.MapId, field.RoomId);
-                                field.fieldEmptySince = DateTime.UtcNow;
-                            } else if (DateTime.UtcNow - field.fieldEmptySince > Constant.FieldDisposeEmptyTime) {
-                                logger.Debug("Field {MapId} {RoomId} has been empty for more than {Time}, disposing", field.MapId, field.RoomId, Constant.FieldDisposeEmptyTime);
-                                field.Dispose();
-                            }
-                            continue;
-                        }
-
-                        // An empty field's FieldTick stopped when its last player left.
-                        if (roomTimer.Expired(Environment.TickCount64)) {
-                            logger.Debug("Field {MapId} {RoomId} room timer expired, disposing", field.MapId, field.RoomId);
-                            field.Dispose();
-                        } else {
-                            logger.Verbose("Field {MapId} {RoomId} room timer has not expired", field.MapId, field.RoomId);
-                        }
-                    }
-                }
-
-                // remove fields disposed
-                foreach (int mapId in fields.Keys) {
-                    foreach ((int roomId, FieldManager fieldManager) in fields[mapId]) {
-                        if (fieldManager.Disposed) {
-                            bool success = fields[mapId].TryRemove(roomId, out _);
-                            logger.Debug("Field {MapId}, RoomId {RoomId}, removed: {Success}", mapId, roomId, success);
-                        }
-                    }
-                }
-
-                foreach (HomeFieldManager homeField in homes.Values) {
-                    if (!homeField.Players.IsEmpty) {
-                        logger.Verbose("Home Field {MapId} Owner: {OwnerId} has players", homeField.MapId, homeField.OwnerId);
-                        homeField.fieldEmptySince = null;
-                        continue;
-                    }
-
-                    if (homeField.fieldEmptySince is null) {
-                        logger.Verbose("Home Field {MapId} Owner: {OwnerId} is empty, starting timer", homeField.MapId, homeField.OwnerId);
-                        homeField.fieldEmptySince = DateTime.UtcNow;
-                    } else if (DateTime.UtcNow - homeField.fieldEmptySince > Constant.FieldDisposeEmptyTime) {
-                        logger.Debug("Field {MapId} {OwnerId} has been empty for more than {Time}, disposing", homeField.MapId, homeField.OwnerId, Constant.FieldDisposeEmptyTime);
-                        homeField.Dispose();
-                    }
-                }
-
-                foreach (long ownerId in homes.Keys) {
-                    if (homes[ownerId].Disposed) {
-                        bool success = homes.TryRemove(ownerId, out _);
-                        logger.Debug("Home {OwnerId} removed: {Success}", ownerId, success);
-                    }
-                }
+                DisposeExpiredFields();
 
                 foreach (DungeonFieldManager dungeonField in dungeons.Values) {
                     // Calculate total players across lobby + sub fields
@@ -322,6 +254,88 @@ public partial class FieldManager {
             }
         }
 
+        /// <summary>
+        /// One pass over the regular fields and homes. Each is judged and taken off its list under its map's lock, which Get holds, so a Get either
+        /// restarts the empty timer first or no longer finds the field (BT-130). Dispose comes after the lock: it joins the field's thread, which can be waiting in Get.
+        /// </summary>
+        private void DisposeExpiredFields() {
+            foreach ((int mapId, ConcurrentDictionary<int, FieldManager> fieldList) in fields) {
+                foreach ((int roomId, FieldManager field) in fieldList) {
+                    if (RemoveIf(mapId, () => FieldExpired(field), () => fieldList.TryRemove(roomId, out _))) {
+                        field.Dispose();
+                    }
+                }
+            }
+
+            foreach ((long ownerId, HomeFieldManager homeField) in homes) {
+                if (RemoveIf(homeField.MapId, () => HomeExpired(homeField), () => homes.TryRemove(ownerId, out _))) {
+                    homeField.Dispose();
+                }
+            }
+        }
+
+        private bool RemoveIf(int mapId, Func<bool> expired, Func<bool> remove) {
+            SemaphoreSlim mapLock = GetMapLock(mapId);
+            mapLock.Wait();
+            try {
+                return expired() && remove();
+            } finally {
+                mapLock.Release();
+            }
+        }
+
+        private bool FieldExpired(FieldManager field) {
+            if (!field.Players.IsEmpty) {
+                logger.Verbose("Field {MapId} {RoomId} has players", field.MapId, field.RoomId);
+                field.fieldEmptySince = null;
+                return false;
+            }
+
+            if (field.fieldAdBalloons.Values
+                .Any(fieldInteract => fieldInteract.Object is InteractBillBoardObject billboard && DateTime.Now.ToEpochSeconds() < billboard.ExpirationTime)) {
+                logger.Verbose("Field {MapId} {RoomId} has ad balloons", field.MapId, field.RoomId);
+                field.fieldEmptySince = null;
+                return false;
+            }
+
+            Model.RoomTimer? roomTimer = field.RoomTimer;
+            if (roomTimer is null) {
+                if (field.fieldEmptySince is null) {
+                    logger.Verbose("Field {MapId} {RoomId} is empty, starting timer", field.MapId, field.RoomId);
+                    field.fieldEmptySince = DateTime.UtcNow;
+                } else if (DateTime.UtcNow - field.fieldEmptySince > Constant.FieldDisposeEmptyTime) {
+                    logger.Debug("Field {MapId} {RoomId} has been empty for more than {Time}, disposing", field.MapId, field.RoomId, Constant.FieldDisposeEmptyTime);
+                    return true;
+                }
+                return false;
+            }
+
+            // An empty field's FieldTick stopped when its last player left.
+            if (roomTimer.Expired(Environment.TickCount64)) {
+                logger.Debug("Field {MapId} {RoomId} room timer expired, disposing", field.MapId, field.RoomId);
+                return true;
+            }
+            logger.Verbose("Field {MapId} {RoomId} room timer has not expired", field.MapId, field.RoomId);
+            return false;
+        }
+
+        private bool HomeExpired(HomeFieldManager homeField) {
+            if (!homeField.Players.IsEmpty) {
+                logger.Verbose("Home Field {MapId} Owner: {OwnerId} has players", homeField.MapId, homeField.OwnerId);
+                homeField.fieldEmptySince = null;
+                return false;
+            }
+
+            if (homeField.fieldEmptySince is null) {
+                logger.Verbose("Home Field {MapId} Owner: {OwnerId} is empty, starting timer", homeField.MapId, homeField.OwnerId);
+                homeField.fieldEmptySince = DateTime.UtcNow;
+            } else if (DateTime.UtcNow - homeField.fieldEmptySince > Constant.FieldDisposeEmptyTime) {
+                logger.Debug("Field {MapId} {OwnerId} has been empty for more than {Time}, disposing", homeField.MapId, homeField.OwnerId, Constant.FieldDisposeEmptyTime);
+                return true;
+            }
+            return false;
+        }
+
         private MigrationError DisposeDungeon(DungeonFieldManager dungeon) {
             int playerCount = dungeon.Players.Values.Count + dungeon.RoomFields.Values.Sum(x => x.Players.Values.Count);
             if (playerCount > 0) {
@@ -341,6 +355,10 @@ public partial class FieldManager {
         }
 
         public void Dispose() {
+            // The loop takes the map locks, so it ends before they go.
+            cancel.Cancel();
+            thread.Join();
+
             foreach (ConcurrentDictionary<int, FieldManager> fields in fields.Values) {
                 foreach (FieldManager field in fields.Values) {
                     field.Dispose();
@@ -367,8 +385,6 @@ public partial class FieldManager {
             homes.Clear();
             dungeons.Clear();
             subDungeonFields.Clear();
-            cancel.Cancel();
-            thread.Join();
         }
 
         private SemaphoreSlim GetMapLock(int mapId) {

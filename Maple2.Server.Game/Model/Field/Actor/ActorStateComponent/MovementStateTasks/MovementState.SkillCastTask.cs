@@ -107,7 +107,13 @@ public partial class MovementState {
         }
 
         if (!actor.Animation.TryPlaySequence(cast.Motion.MotionProperty.SequenceName, cast.Motion.MotionProperty.SequenceSpeed, AnimationType.Skill, out AnimationSequenceMetadata? sequence, skill: cast.Metadata, loopCount: cast.Motion.MotionProperty.LoopCount)) {
-            task.Cancel();
+            // With no such sequence the original fires every attack of the motion at once and goes on to the next one (NB-19, by the captures).
+            FireKeylessAttacks(cast, null);
+            if (!task.IsDone && motion + 1 < cast.Metadata.Data.Motions.Length) {
+                SkillCast(task, id, level, 0, (byte) (motion + 1));
+            } else {
+                task.Completed();
+            }
 
             return;
         }

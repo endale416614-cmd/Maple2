@@ -2,6 +2,7 @@
 using DotRecast.Core;
 using DotRecast.Core.Numerics;
 using DotRecast.Detour;
+using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Game.Field;
 using Maple2.Model.Metadata;
@@ -31,6 +32,7 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
     private readonly List<Vector3> validSpawns;
     private long spawnTick;
     private int spawnId;
+    private readonly int cooldown;
 
     public FieldMobSpawn(FieldManager field, int objectId, MapMetadataSpawn metadata, WeightedSet<NpcMetadata> npcs, WeightedSet<ItemMetadata> pets) : base(field, objectId, metadata) {
         this.npcs = npcs;
@@ -38,6 +40,8 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         spawnedMobs = new List<int>(metadata.Population);
         spawnedPets = new List<int>(metadata.PetPopulation);
         spawnId = metadata.Id;
+        // Offline edition (GrindRates): field Elites come back sooner (OfflineGrind.RespawnSeconds).
+        cooldown = OfflineGrind.RespawnSeconds(metadata.Cooldown, IsFieldElite(field.Metadata.Property.Type, npcs));
         if (Value.Cooldown <= 0) {
             Log.Logger.Information("No respawn for mapId:{MapId} spawnId:{SpawnId}", Field.MapId, Value.Id);
         }
@@ -54,7 +58,7 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
         }
 
         // No respawn without a non-zero cooldown.
-        if (Value.Cooldown <= 0) {
+        if (cooldown <= 0) {
             return;
         }
 
@@ -66,10 +70,22 @@ public class FieldMobSpawn : FieldEntity<MapMetadataSpawn> {
 #endif
 
         if (spawnedMobs.Count == 0) {
-            spawnTick = Math.Min(spawnTick, Environment.TickCount64 + Value.Cooldown * spawnRate);
+            spawnTick = Math.Min(spawnTick, Environment.TickCount64 + cooldown * spawnRate);
         } else if (spawnTick == long.MaxValue) {
-            spawnTick = Environment.TickCount64 + Value.Cooldown * spawnRate * FORCE_SPAWN_MULTIPLIER;
+            spawnTick = Environment.TickCount64 + cooldown * spawnRate * FORCE_SPAWN_MULTIPLIER;
         }
+    }
+
+    /// <summary>A field map's spawn whose monsters are all Elites (class 3, hostile): the field Elites of the data.</summary>
+    public static bool IsFieldElite(MapType mapType, IEnumerable<(NpcMetadata Npc, int Weight)> pool) {
+        bool any = false;
+        foreach ((NpcMetadata npc, int _) in pool) {
+            if (npc.Basic.Class != 3 || npc.Basic.Friendly != 0) {
+                return false;
+            }
+            any = true;
+        }
+        return mapType == MapType.Telescope && any;
     }
 
     /// <summary><paramref name="count"/> positions from <paramref name="pool"/>: distinct while the pool lasts (a partial

@@ -248,6 +248,8 @@ public partial class Trigger {
 
     public class ScoreBoardScore(int score, OperatorType operatorType) : ICondition {
         public string Name => "score_board_score";
+        public int Score => score;
+        public OperatorType OperatorType => operatorType;
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
         public bool Evaluate(TriggerContext context) => context.ScoreBoardScore(score, operatorType);
@@ -255,6 +257,7 @@ public partial class Trigger {
 
     public class ShadowExpeditionPoints(int score) : ICondition {
         public string Name => "shadow_expedition_points";
+        public int Score => score;
         public string? NextState { get; set; }
         public LinkedList<IAction> Actions { get; set; } = [];
         public bool Evaluate(TriggerContext context) => context.ShadowExpeditionPoints(score);

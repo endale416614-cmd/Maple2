@@ -353,13 +353,18 @@ public class ItemUseHandler : FieldPacketHandler {
     }
 
     private static void HandleExpandCharacterSlot(GameSession session, Item item) {
-        if (session.Player.Value.Account.MaxCharacters >= Constant.ServerMaxCharacters) {
+        Account account = session.Player.Value.Account;
+        using GameStorage.Request db = session.GameStorage.Context();
+        int characters = db.CountCharacters(account.Id);
+        // With every slot open (OfflineCharacterSlots) the card is refused and stays in the bag.
+        if (OfflineCharacterSlots.Unlocked(account.MaxCharacters, characters) >= Constant.ServerMaxCharacters) {
             session.Send(ItemUsePacket.MaxCharacterSlots());
             return;
         }
 
         if (session.Item.Inventory.Consume(item.Uid, 1)) {
-            session.Player.Value.Account.MaxCharacters++;
+            // One past the slots the list opens, so the card shows a new slot after characters made with every slot open.
+            account.MaxCharacters = OfflineCharacterSlots.AfterCard(account.MaxCharacters, characters);
             session.Send(ItemUsePacket.CharacterSlotAdded());
         }
     }

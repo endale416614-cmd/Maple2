@@ -114,6 +114,7 @@ public class HomeHandler : PacketHandler<GameSession> {
             session.Housing.InitNewHome(session.Player.Value.Character.Name, exportedUgcMap);
         }
 
+        session.ConditionUpdate(ConditionType.home_goto);
         session.Migrate(home.Indoor.MapId, home.Indoor.OwnerId);
     }
 }

@@ -960,6 +960,58 @@ public static class Lua {
         return grade == 3 ? 1 : 3;
     }
 
+    // Pet fusion (PE-03): the bytecode's tables by rarity 1 to 5 (a sixth throws there).
+    private static readonly long[] PetEnchantBaseExp = [1500, 3000, 12000, 24000, 48000];
+    private static readonly long[] PetEnchantLevelExp = [22000, 55000, 90000, 90000, 90000]; // petexp.xml's columns
+    private static readonly long[] PetEnchantBaseCost = [3000, 5000, 10000, 30000, 50000];
+    private static readonly long[] PetEnchantLevelCost = [1000, 10000, 50000, 150000, 250000];
+
+    // The bytecode's floor(x): math.floor(x + FLOAT_EPSILON), FLOAT_EPSILON 1e-06.
+    private static double LuaFloor(double value) => Math.Floor(value + 0.000001);
+
+    private static double PetLevelLimitFactor(int levelLimit) => levelLimit switch {
+        60 => 1.5,
+        70 => 2.25,
+        _ => 1,
+    };
+
+    // calc_petExp: petexp.xml's exp for a level, raised for pets of level limit 60 and 70.
+    public static long CalcPetExp(long exp, int levelLimit) {
+        return (long) (exp * PetLevelLimitFactor(levelLimit));
+    }
+
+    // calc_petEnchantExp: what a fodder pet gives in fusion (its rarity's base and 80% of its exp), and the bonus while the day's
+    // fusions are within dailyMaxCount; past it the base falls to 20% at 60 fusions. grade, the target's rarity, is not read.
+    public static (long, long) CalcPetEnchantExp(int grade, int petGrade, int petLevel, long petExp, int fusionCount, int dailyMaxCount, int levelLimit) {
+        double factor = PetLevelLimitFactor(levelLimit);
+        double baseExp = PetEnchantBaseExp[petGrade - 1] * factor;
+        double levelExp = PetEnchantLevelExp[petGrade - 1] * factor;
+        int fusion = fusionCount + 1;
+        double rate;
+        double bonus = 0;
+        if (fusion <= dailyMaxCount) {
+            rate = 1;
+            bonus = 3000 * factor;
+        } else if (fusion < 60) {
+            rate = 1 - (fusion - dailyMaxCount) * (1 - 0.2) / (60 - dailyMaxCount);
+        } else {
+            rate = 0.2;
+        }
+
+        double exp = LuaFloor(rate * baseExp) + LuaFloor(0.8 * (levelExp * Math.Max(0, petLevel - 1) + petExp));
+        return ((long) exp, (long) bonus);
+    }
+
+    // calc_petEnchantCost: a fodder pet's mesos, by the target's rarity and the fodder's level.
+    public static long CalcPetEnchantCost(int grade, int petGrade, int petLevel, long petExp) {
+        return PetEnchantBaseCost[grade - 1] + Math.Max(0, petLevel - 1) * PetEnchantLevelCost[grade - 1];
+    }
+
+    // calc_petEnchantBookCost: calc_petEnchantBaseCost, the base mesos of a fusion by the target's rarity.
+    public static long CalcPetEnchantBookCost(int grade) {
+        return PetEnchantBaseCost[grade - 1];
+    }
+
     #region StaticRate
     public static (float, float) StaticRateAbp(int baseValue, int deviation, int itemType, int jobCode, int optionLevelFactor, int grade, int levelLimit, int p7 = 0) {
         float abpMin = MathF.Round(0.0016f * optionLevelFactor + 0.0624f, 3);

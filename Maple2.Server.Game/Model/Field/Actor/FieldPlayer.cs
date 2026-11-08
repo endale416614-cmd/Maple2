@@ -697,7 +697,7 @@ public class FieldPlayer : Actor<Player> {
 
         if (metadata.Data.Consume.Stat.TryGetValue(BasicAttribute.Stamina, out long staminaCost)) {
             if (Stats.Values[BasicAttribute.Stamina].Current < staminaCost) {
-                Logger.Error("Not enough stamina to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
+                Logger.Debug("Not enough stamina to cast skill: {SkillId},{Level}", metadata.Id, metadata.Level);
                 return false;
             }
             ConsumeStamina((int) staminaCost);

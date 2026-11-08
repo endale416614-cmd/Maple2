@@ -237,12 +237,28 @@ public class HousingManager {
         }
 
         using GameStorage.Request db = session.GameStorage.Context();
-        plotInfo = db.ForfeitPlot(session.AccountId, plot);
+        // The store adds to the saved amounts, and placing a cube drops its amount only in memory until the next save: save first, with a request of
+        // its own, as the store updates the same rows. The lock keeps the session's autosave out until the storage is read back (BT-192).
+        lock (session.Item) {
+            using (GameStorage.Request amounts = session.GameStorage.Context()) {
+                session.Item.Furnishing.Save(amounts);
+            }
+
+            plotInfo = db.ForfeitPlot(session.AccountId, plot);
+            // An empty plot stored nothing: its packets stay as captured.
+            if (plotInfo != null && plot.Cubes.Count > 0) {
+                session.Item.ReInstantiateFurnishing();
+            }
+        }
+
         if (plotInfo == null) {
             logger.Warning("Failed to forfeit plot: {PlotId}, {OwnerId}", plot.Id, plot.OwnerId);
             session.Send(CubePacket.Error(UgcMapError.s_ugcmap_db));
             return null;
         }
+
+        // The save dropped the cubes, and UpdatePlotInfo keeps this Plot with them (HS-03).
+        fieldManager.OnFieldThread(() => fieldManager.EmptyPlot(plot, session.AccountId));
 
         if (fieldManager.UpdatePlotInfo(plotInfo) != true) {
             logger.Warning("Failed to update map plot in field: {PlotId}", plotInfo.Id);
@@ -475,7 +491,14 @@ public class HousingManager {
             }
         }
 
-        Home.GainExp(decorationScore, tableMetadata.MasteryUgcHousingTable.Entries);
+        long gained = Home.GainExp(decorationScore, tableMetadata.MasteryUgcHousingTable.Entries);
+        if (gained > 0) {
+            session.ConditionUpdate(ConditionType.interior_exp_offset, counter: gained);
+            session.ConditionUpdate(ConditionType.interior_level, counter: Home.DecorationLevel);
+        }
+        if (decorationScore > 0) {
+            session.ConditionUpdate(ConditionType.interior_point, counter: decorationScore);
+        }
         Home.DecorationRewardTimestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         session.Send(CubePacket.DesignRankReward(Home));
     }
@@ -515,7 +538,7 @@ public class HousingManager {
         if (functionCubeMetadata is not null) {
             result.Interact = new InteractCube(position, functionCubeMetadata);
             if (result.Interact.Nurturing is not null && result.Interact.Metadata.Nurturing is not null) {
-                Nurturing? nurturing = db.GetNurturing(session.AccountId, result.ItemId, result.Interact.Metadata.Nurturing);
+                Nurturing? nurturing = db.GetNurturing(session.AccountId, result.Interact.Metadata.Id, result.Interact.Metadata.Nurturing);
                 if (nurturing is null) {
                     nurturing = db.CreateNurturing(session.AccountId, result.Interact.Metadata.Nurturing, result.Interact.Metadata.Id);
                     if (nurturing is null) {

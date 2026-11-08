@@ -47,8 +47,8 @@ public static class OfflineEconomy {
     private static Dictionary<int, int> newPositions = new();
 
     /// <summary>
-    /// Adds the offline Meret catalog (offline-meret-catalog.json, built by tools/build_meret_catalog.py from the
-    /// original shop_merat.xml and the gacha prize pools) to the Meret Market. Shipped entries keep priority.
+    /// Adds the offline Meret catalog (offline-meret-catalog.json, first built from the original shop_merat.xml and the
+    /// gacha prize pools, edited in place since: ADAPTATIONS A6) to the Meret Market. Shipped entries keep priority.
     /// The entries the file's New list names show in the New tab this release; the file keeps their own tab.
     /// </summary>
     public static MeretMarketTable Apply(MeretMarketTable table) {
@@ -71,6 +71,9 @@ public static class OfflineEconomy {
         int added = 0;
         foreach (int id in (catalog?.New ?? []).Take(NEW_TAB_MAX)) {
             newPositions.TryAdd(id, newPositions.Count);
+        }
+        if (catalog?.New is { Length: > NEW_TAB_MAX } newIds) {
+            Logger.Warning("Offline Meret catalog {Path}: {Count} New ids, the New tab shows the first {Max}", path, newIds.Length, NEW_TAB_MAX);
         }
         foreach (MeretMarketItemMetadata entry in catalog?.Entries ?? []) {
             if (entry.Price > 0 && entries.TryAdd(entry.Id, entry with { SalePrice = entry.Price, TabId = newPositions.ContainsKey(entry.Id) ? NEW_TAB : entry.TabId })) {

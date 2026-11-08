@@ -246,7 +246,10 @@ public class Buff : IUpdatable, IByteSerializable {
         }
 
         Field.Broadcast(StatsPacket.Update(Owner, targetUpdated.ToArray()));
-        Field.Broadcast(SkillDamagePacket.DotDamage(record));
+        // A tick that only drains spirit or stamina shows no number: the original sends no damage packet for it.
+        if (record.HpAmount != 0) {
+            Field.Broadcast(SkillDamagePacket.DotDamage(record));
+        }
         if (record.RecoverHp != 0) {
             Caster.Stats.Values[BasicAttribute.Health].Add(record.RecoverHp);
             Field.Broadcast(StatsPacket.Update(Caster, BasicAttribute.Health));

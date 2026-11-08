@@ -137,6 +137,8 @@ public class GuildManager : IDisposable {
         session.Player.Value.Character.GuildName = Guild.Name;
         if (addTag) {
             session.Field?.Broadcast(GuildPacket.AddTag(session.PlayerName, Guild.Name));
+            // A real join, not the login rebuild: the login call runs before session.Dungeon exists, and RankUp needs it.
+            session.ConditionUpdate(ConditionType.guild_join);
         }
 
         session.ConditionUpdate(ConditionType.guild_join_req);
@@ -237,6 +239,7 @@ public class GuildManager : IDisposable {
 
         session.Send(GuildPacket.GuildContribution(member, contribution));
         if (member.CharacterId == session.CharacterId) {
+            logger.Information("Guild donation: today {Count}, time {Time}", member.DailyDonationCount, member.DonationTime);
             session.Send(GuildPacket.Donated(member));
         }
         return true;

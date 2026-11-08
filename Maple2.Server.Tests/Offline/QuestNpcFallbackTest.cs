@@ -12,10 +12,10 @@ public class QuestNpcFallbackTest {
     private const int Placed = 11003476;
 
     private static EventSpawnPointNPC Event(int spawnId, int npcId) =>
-        new($"e{spawnId}", spawnId, Vector3.Zero, Vector3.Zero, true, true, 0, 1, [new SpawnPointNPCListEntry(npcId, 1)], 10, 0, "Regen_A");
+        new($"e{spawnId}", spawnId, Vector3.Zero, Vector3.Zero, true, true, 0, 1, [new SpawnPointNPCListEntry(npcId, 1)], 10, 0, "Regen_A", true);
 
     private static SpawnPointNPC Regular(int npcId) =>
-        new("r", 0, Vector3.Zero, Vector3.Zero, true, true, 0, [new SpawnPointNPCListEntry(npcId, 1)], 10, "");
+        new("r", 0, Vector3.Zero, Vector3.Zero, true, true, 0, [new SpawnPointNPCListEntry(npcId, 1)], 10, "", true);
 
     [Test]
     public void TriggerOnlyNpcSpawns_PicksLowestEventSpawn_AndSkipsPlacedNpcs() {

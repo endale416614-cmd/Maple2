@@ -115,7 +115,10 @@ public class TriggerBox {
 
         var min = new Vector2(metadata.Position.X - metadata.Dimensions.X / 2 - EXTRA_WIDTH, metadata.Position.Y - metadata.Dimensions.Y / 2 - EXTRA_WIDTH);
         var max = new Vector2(metadata.Position.X + metadata.Dimensions.X / 2 + EXTRA_WIDTH, metadata.Position.Y + metadata.Dimensions.Y / 2 + EXTRA_WIDTH);
-        box = new Prism(new BoundingBox(min, max), metadata.Position.Z - metadata.Dimensions.Z / 2 - EXTRA_HEIGHT, metadata.Dimensions.Z + EXTRA_HEIGHT);
+        // The map data turns a box about its centre (TB-01): Trial by Ordeal's fight area 1003 holds the captured fight only turned its 45 degrees.
+        IPolygon shape = metadata.Rotation.Z == 0 ? new BoundingBox(min, max)
+            : new Rectangle(new Vector2(metadata.Position.X, metadata.Position.Y), metadata.Dimensions.X + 2 * EXTRA_WIDTH, metadata.Dimensions.Y + 2 * EXTRA_WIDTH, metadata.Rotation.Z);
+        box = new Prism(shape, metadata.Position.Z - metadata.Dimensions.Z / 2 - EXTRA_HEIGHT, metadata.Dimensions.Z + EXTRA_HEIGHT);
     }
 
     public bool Contains(in Vector3 point) => box.Contains(point);

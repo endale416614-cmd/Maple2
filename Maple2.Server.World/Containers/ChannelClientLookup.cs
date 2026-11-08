@@ -8,6 +8,7 @@ using Grpc.Net.Client;
 using Maple2.Database.Extensions;
 using Maple2.Model.Game;
 using Maple2.Server.Core.Constants;
+using Maple2.Server.Core.Modules;
 using Serilog;
 using ChannelClient = Maple2.Server.Channel.Service.Channel.ChannelClient;
 
@@ -140,7 +141,7 @@ public class ChannelClientLookup : IEnumerable<(int, ChannelClient)> {
             grpcUri = new Uri($"http://{grpcIpAddress}:{newGrpcChannelPort}");
         }
 
-        GrpcChannel grpcChannel = GrpcChannel.ForAddress(grpcUri);
+        GrpcChannel grpcChannel = DirectGrpc.Channel(grpcUri);
         var client = new ChannelClient(grpcChannel);
         var healthClient = new Health.HealthClient(grpcChannel);
         var activeChannel = new Channel(ChannelStatus.Pending, channelId, instancedContent, gameEndpoint, client, healthClient, (ushort) newGamePort, newGrpcChannelPort);

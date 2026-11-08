@@ -10,7 +10,7 @@ public class BlueprintController : ControllerBase {
 
     [HttpGet("{blueprintId}/{ugcUid}.png")]
     public IResult GetBlueprint(long blueprintId, string ugcUid) {
-        string fullPath = Path.Combine(Paths.WEB_DATA_DIR, "blueprint", blueprintId.ToString(), $"{ugcUid}.png");
+        string fullPath = Path.Combine(Paths.UGC_DIR, "blueprint", blueprintId.ToString(), $"{ugcUid}.png");
         if (!System.IO.File.Exists(fullPath)) {
             return Results.NotFound();
         }

@@ -2,12 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Maple2.Database.Context;
 using Maple2.Database.Storage;
 using Maple2.Model.Enum;
 using Maple2.Model.Game;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Items;
+using Maple2.Server.Game.Session;
 using Maple2.Server.Game.Util;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -289,6 +292,100 @@ public class GearRepairTest {
             Assert.That(second, Is.EqualTo(0), "second run changes nothing");
         } finally {
             saveConnection.Dispose();
+        }
+    }
+
+    // SO-02 (BT-190): gems an older upgrade left behind, in a save, through the pass a login runs. Golden: the data's rows.
+    private const int WISDOM_1 = 40200001, WISDOM_2 = 40200002, WISDOM_5 = 40200005, WISDOM_10 = 40200010, DESTRUCTION_5 = 40200205, DUST = 40300001, EARRINGS = 11250046;
+
+    private ItemGemstone Socketed(int gemId, int statsOf) => new(gemId, stats: Create(statsOf, Constant.GemstoneGrade).Stats);
+
+    private static int Intelligence(ItemStats? stats) => stats![ItemStats.Type.Constant].Basic[BasicAttribute.Intelligence].Value;
+
+    private static void Set(object target, string member, object? value) {
+        const BindingFlags any = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
+        PropertyInfo? property = target.GetType().GetProperty(member, any);
+        if (property != null) {
+            property.SetValue(target, value);
+            return;
+        }
+        for (Type? type = target.GetType(); type != null; type = type.BaseType) {
+            FieldInfo? field = type.GetField(member, any | BindingFlags.DeclaredOnly);
+            if (field != null) {
+                field.SetValue(target, value);
+                return;
+            }
+        }
+        throw new MissingMemberException(target.GetType().Name, member);
+    }
+
+    [Test]
+    public void TheLoginPass_GivesGemsTheirTiersStats_AlsoOnGearItRepairs_Idempotent() {
+        NeedsGameData();
+        using var connection = new SqliteConnection("Data Source=:memory:");
+        connection.Open();
+        saveOptions = new DbContextOptionsBuilder().UseSqlite(connection).Options;
+        using (var context = new Ms2Context(saveOptions)) {
+            context.Database.EnsureCreated();
+        }
+
+        long owner, bagUid, goodUid, dustUid, earringsUid, weaponUid;
+        using (GameStorage.Request db = NewStorage().Context()) {
+            owner = db.CreateAccount(new Account { Username = "gems", MachineId = Guid.NewGuid() }, "password").Id;
+
+            Item bag = Create(WISDOM_5);
+            bag.Stats = Create(WISDOM_1).Stats;
+            bagUid = db.CreateItem(owner, bag)!.Uid;
+            goodUid = db.CreateItem(owner, Create(WISDOM_2))!.Uid;
+            dustUid = db.CreateItem(owner, Create(DUST))!.Uid;
+
+            Item earrings = Create(EARRINGS);
+            earrings.Socket = new ItemSocket(3, 2);
+            earrings.Socket.Sockets[0] = Socketed(WISDOM_10, WISDOM_1);
+            earrings.Socket.Sockets[1] = Socketed(DESTRUCTION_5, DESTRUCTION_5); // a rate holds its value through the save
+            earringsUid = db.CreateItem(owner, earrings)!.Uid;
+
+            // Both repairs on one item: built at Epic with no base stats, and with an old gem.
+            Item weapon = Create(RIENA, 4);
+            weapon.Slot = (short) EquipSlot.RH;
+            weapon.Group = ItemGroup.Gear;
+            weapon.Socket = new ItemSocket(1, 1);
+            weapon.Socket.Sockets[0] = Socketed(WISDOM_2, WISDOM_1);
+            weaponUid = db.CreateItem(owner, weapon)!.Uid;
+        }
+
+        var lines = new List<string>();
+        ILogger logger = new LoggerConfiguration().WriteTo.Sink(new CollectSink(lines)).CreateLogger();
+        var session = (GameSession) RuntimeHelpers.GetUninitializedObject(typeof(GameSession));
+        GC.SuppressFinalize(session);
+        Set(session, "Logger", logger);
+        Set(session, "CharacterId", owner);
+        Set(session, "AccountId", 0L);
+        Set(session, "GameStorage", NewStorage());
+        Set(session, "TableMetadata", tables);
+        Set(session, "ItemMetadata", items);
+        Set(session, "ItemStatsCalc", calculator);
+
+        typeof(GameSession).GetMethod("RepairGearWithoutStats", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(session, null);
+
+        Assert.That(lines.Any(line => line.StartsWith("Gear repair failed")), Is.False, string.Join(Environment.NewLine, lines));
+        using (GameStorage.Request db = NewStorage().Context()) {
+            Dictionary<long, Item> all = db.GetAllItems(owner).ToDictionary(item => item.Uid);
+            Assert.That(Intelligence(all[bagUid].Stats), Is.EqualTo(13), "a gem in the bag");
+            Assert.That(Intelligence(all[goodUid].Stats), Is.EqualTo(4), "a gem that was right");
+            Assert.That(all[dustUid].Stats![ItemStats.Type.Constant].Count, Is.Zero, "dust");
+            Assert.That(Intelligence(all[earringsUid].Socket!.Sockets[0]!.Stats), Is.EqualTo(36), "a gem in a socket");
+            Assert.That(all[earringsUid].Socket!.Sockets[1]!.Stats![ItemStats.Type.Constant].Basic[BasicAttribute.MaxWeaponAtk].Rate, Is.EqualTo(0.026f));
+            Assert.That(all[earringsUid].Stats![ItemStats.Type.Constant].Count, Is.GreaterThan(0), "the earrings' own stats stay");
+            Assert.That(all[weaponUid].Rarity, Is.EqualTo(1), "the gear pass ran");
+            Assert.That(HasAttack(all[weaponUid]), Is.True);
+            Assert.That(Intelligence(all[weaponUid].Socket!.Sockets[0]!.Stats), Is.EqualTo(4), "the gem pass ran on the same item");
+            Assert.That(all[weaponUid].Group, Is.EqualTo(ItemGroup.Gear));
+            Assert.That(all[weaponUid].Slot, Is.EqualTo((short) EquipSlot.RH));
+        }
+
+        using (GameStorage.Request db = NewStorage().Context()) {
+            Assert.That(OfflineGearRepair.RepairGemstones(db, calculator, items, logger, owner), Is.Zero, "second run changes nothing");
         }
     }
 

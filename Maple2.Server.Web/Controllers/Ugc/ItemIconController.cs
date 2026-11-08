@@ -10,7 +10,7 @@ public class ItemIconController : ControllerBase {
 
     [HttpGet("{itemId}/{uid}.png")]
     public IResult GetItem(long itemId, string uid) {
-        string fullPath = $"{Paths.WEB_DATA_DIR}/itemicon/{itemId}/{uid}.png";
+        string fullPath = $"{Paths.UGC_DIR}/itemicon/{itemId}/{uid}.png";
         if (!System.IO.File.Exists(fullPath)) {
             return Results.NotFound();
         }

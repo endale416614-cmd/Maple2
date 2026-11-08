@@ -17,7 +17,7 @@ namespace Maple2.Server.Game.Util;
 public static class OfflineGrind {
     public sealed record UpgradeDrop(int ItemId, string Name, int MinLevel, int MaxLevel, float Chance, int Amount, float AmountPerLevel, float? BossChance = null, float? BossMultiplier = null, int? MaxAmount = null);
     public sealed record Config(int TargetKillsPerLevel, float MaxExpMultiplier, float DropRateMultiplier, float BossMultiplier, UpgradeDrop[] UpgradeDrops,
-        float MesoMultiplier = 1, ChestBonus? Chests = null);
+        float MesoMultiplier = 1, ChestBonus? Chests = null, int EliteRespawnSeconds = 0);
 
     // Extra loot for treasure chests: each drop rolls once per chest and gives one random item of ItemIds.
     // Rare chests multiply both the chance and the amount.
@@ -46,6 +46,15 @@ public static class OfflineGrind {
     }
 
     public static int ScaledMeso(int amount, float rate) => (int) Math.Clamp(Math.Round(amount * (double) rate), 1, int.MaxValue);
+
+    /// <summary>
+    /// Respawn time in seconds of a region spawn: one whose monsters are all field Elites waits at most EliteRespawnSeconds
+    /// (in the data they wait 300 s, and their kill trophies go up to 300 kills); every other spawn keeps its own time.
+    /// </summary>
+    public static int RespawnSeconds(int cooldown, bool fieldElite) => RespawnSeconds(cooldown, fieldElite, Settings?.EliteRespawnSeconds ?? 0);
+
+    public static int RespawnSeconds(int cooldown, bool fieldElite, int eliteSeconds) =>
+        fieldElite && eliteSeconds > 0 && cooldown > eliteSeconds ? eliteSeconds : cooldown;
 
     /// <summary>Loot-roll chance multiplier for monster kills (1 when off).</summary>
     public static float DropRate => Math.Max(1f, Settings?.DropRateMultiplier ?? 1f);

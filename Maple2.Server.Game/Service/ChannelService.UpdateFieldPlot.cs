@@ -53,20 +53,9 @@ public partial class ChannelService {
         }
 
         if (request.Forfeit) {
-            // remove all cubes from the plot
-            if (fieldManager.Plots.TryGetValue(plotNumber, out Plot? plot)) {
-                foreach (KeyValuePair<Vector3B, PlotCube> plotCube in plot.Cubes) {
-                    fieldManager.Broadcast(CubePacket.RemoveCube(fieldManager.FieldActor.ObjectId, plotCube.Key));
-                }
-            }
-        }
-
-        fieldManager.UpdateAllPlots(plotNumber);
-        if (request.Forfeit) {
-            if (fieldManager.Plots.TryGetValue(plotNumber, out Plot? plot)) {
-                fieldManager.Broadcast(CubePacket.ForfeitPlot(plot));
-                session?.Send(CubePacket.ConfirmForfeitPlot(plot));
-            }
+            fieldManager.ForfeitPlot(plotNumber, session);
+        } else {
+            fieldManager.UpdateAllPlots(plotNumber);
         }
     }
 

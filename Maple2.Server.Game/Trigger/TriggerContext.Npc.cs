@@ -211,7 +211,7 @@ public partial class TriggerContext {
             string.Join(", ", spawnIds), isAutoTargeting, randomPickCount, score);
 
         foreach (int spawnId in spawnIds) {
-            SpawnNpc(spawnId);
+            SpawnNpc(spawnId, score: score);
         }
     }
 
@@ -332,7 +332,7 @@ public partial class TriggerContext {
         return Field.EnumerateNpcs().Where(mob => boxes.Any(box => box.Contains(mob.Position) || box.Intersects(mob.Shape)));
     }
 
-    private void SpawnNpc(int spawnId, bool useSpawnAnimation = false) {
+    private void SpawnNpc(int spawnId, bool useSpawnAnimation = false, int score = 0) {
         if (!Field.Entities.EventNpcSpawns.TryGetValue(spawnId, out EventSpawnPointNPC? spawn)) {
             // original data in 296 of 313 cases (63000041: 505, 507)
             DebugLog("[SpawnNpc] Invalid spawnId:{SpawnId}", spawnId);
@@ -372,6 +372,7 @@ public partial class TriggerContext {
             }
 
             fieldNpc.SpawnPointId = spawnId;
+            fieldNpc.SpawnScore = score;
             Field.OnTriggerSpawnNpc(npcId);
 
             Field.Broadcast(FieldPacket.AddNpc(fieldNpc));

@@ -212,11 +212,8 @@ public partial class FieldManager : IField {
             SpawnPortal(portal);
         }
 
-        foreach (FieldTrigger trigger in fieldTriggers.Values) {
-            trigger.Update(FieldTick);
-        }
+        UpdateTriggers();
 
-        IList<MapMetadata> bonusMaps = MapMetadata.GetMapsByType(Metadata.Property.Continent, MapType.PocketRealm);
         foreach (MapMetadataSpawn spawn in Metadata.Spawns) {
             if (!Entities.RegionSpawns.TryGetValue(spawn.Id, out Ms2RegionSpawn? regionSpawn)) {
                 continue;
@@ -233,16 +230,11 @@ public partial class FieldManager : IField {
 
             if (npcIds.Count > 0 && spawn.Population > 0) {
                 AddMobSpawn(spawn, regionSpawn, npcIds);
-                continue;
-            }
-
-            if (spawn.Tags.Contains("보너스맵")) { // Bonus Map
-                // Spawn a hat within a random range of 5 min to 8 hours
-                TimeSpan delay = Random.Shared.Next(1, 97) * TimeSpan.FromMinutes(5);
-                Scheduler.Schedule(() => SetBonusMapPortal(bonusMaps, regionSpawn), delay);
             }
         }
         StartFieldInteractEvents();
+        StartTriggerValueEvents();
+        StartHiddenRealmPortals();
 
         foreach (Ms2RegionSkill regionSkill in Entities.RegionSkills) {
             if (!SkillMetadata.TryGet(regionSkill.SkillId, regionSkill.Level, out SkillMetadata? skill)) {
@@ -353,7 +345,7 @@ public partial class FieldManager : IField {
         }
     }
 
-    public void Update() {
+    public virtual void Update() {
         ProcessPackets();
 
         if (Players.IsEmpty) {
@@ -363,7 +355,7 @@ public partial class FieldManager : IField {
         Scheduler.InvokeAll();
 
         FieldTick = Environment.TickCount64;
-        foreach (FieldTrigger trigger in fieldTriggers.Values) trigger.Update(FieldTick);
+        UpdateTriggers();
         UpdateQuestNpcFallback();
 
         foreach (FieldPlayer player in Players.Values) player.Update(FieldTick);
@@ -753,10 +745,10 @@ public partial class FieldManager : IField {
         }
     }
 
-    /// <summary>Tells the field the cube vibrates, unless it is still broken, and keeps its break when the attack beats it. The vibrate counts for the hitter's vibrate_object conditions. True if it broke.</summary>
+    /// <summary>Tells the field the cube vibrates, unless it is still broken or the AI hid it, and keeps its break when the attack beats it. The vibrate counts for the hitter's vibrate_object conditions. True if it broke.</summary>
     public bool Vibrate(FieldVibrateEntity cube, DamageRecord record, GameSession? hitter = null) {
         long now = Environment.TickCount64;
-        if (brokenVibrates.InForce(cube.Id.Id, now)) {
+        if (brokenVibrates.InForce(cube.Id.Id, now) || brokenVibrates.IsHidden(cube.Id.Id)) {
             return false;
         }
 
@@ -822,6 +814,32 @@ public partial class FieldManager : IField {
         }
 
         return cubes;
+    }
+
+    /// <summary>The cubes of hide group <paramref name="groupId"/> (ShowVibrate), or with 0 the cubes of every hide group (HideVibrateAll).</summary>
+    public static List<FieldVibrateEntity> HideGroupCubes(FieldAccelerationStructure structure, int groupId) {
+        var cubes = new List<FieldVibrateEntity>();
+        foreach (FieldVibrateEntity cube in structure.VibrateEntities) {
+            if (cube.HideGroupId != 0 && (groupId == 0 || cube.HideGroupId == groupId)) {
+                cubes.Add(cube);
+            }
+        }
+
+        return cubes;
+    }
+
+    /// <summary>ShowVibrate (<paramref name="shown"/>) and HideVibrateAll (AI): the cubes of <see cref="HideGroupCubes"/> come back whole or go, for the
+    /// field and for players who enter it later.</summary>
+    // TODO: FT-18: before an AI names a hide group its cubes are as the client loads them, which no capture shows, and they vibrate as before; revisit when a play check shows a fight start wrong.
+    public void SetVibrateShown(int groupId, bool shown) {
+        if (AccelerationStructure is null) {
+            return;
+        }
+
+        foreach (FieldVibrateEntity cube in HideGroupCubes(AccelerationStructure, groupId)) {
+            brokenVibrates.SetShown(cube.Id.Id, shown);
+            Broadcast(shown ? VibratePacket.Show(cube.Id.Id) : VibratePacket.Hide(cube.Id.Id));
+        }
     }
 
     private static Home? GetHome(GameSession session, FieldPortal fieldPortal) {

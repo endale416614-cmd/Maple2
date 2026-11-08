@@ -24,7 +24,8 @@ public record SpawnPointNPC(
     float SpawnRadius,
     IList<SpawnPointNPCListEntry> NpcList,
     int RegenCheckTime,
-    string? PatrolData
+    string? PatrolData,
+    bool PeaceRestore // heals to full when its battle ends (FT-11); false in map data ingested before FT-11
 ) : SpawnPoint(SpawnPointId, Position, Rotation, Visible);
 
 public record EventSpawnPointNPC(
@@ -39,8 +40,9 @@ public record EventSpawnPointNPC(
     IList<SpawnPointNPCListEntry> NpcList,
     int RegenCheckTime,
     int LifeTime,
-    string SpawnAnimation
-) : SpawnPointNPC(EntityId, SpawnPointId, Position, Rotation, Visible, SpawnOnFieldCreate, SpawnRadius, NpcList, RegenCheckTime, String.Empty);
+    string SpawnAnimation,
+    bool PeaceRestore
+) : SpawnPointNPC(EntityId, SpawnPointId, Position, Rotation, Visible, SpawnOnFieldCreate, SpawnRadius, NpcList, RegenCheckTime, String.Empty, PeaceRestore);
 
 public record EventSpawnPointItem(
     int SpawnPointId,

@@ -49,7 +49,7 @@ public class StateSkillHandler : FieldPacketHandler {
         }
 
         cast.StateNextTick = session.Field.FieldTick + (int) TimeSpan.FromSeconds(cast.Motion.MotionProperty.SequenceSpeed).TotalMilliseconds;
-        session.Player.ActiveSkills.Add(cast);
+        session.Player.ActiveSkills.AddState(cast);
         session.Field.Broadcast(SkillPacket.StateSkill(session.Player, skillId, skillCastUid));
     }
 }
