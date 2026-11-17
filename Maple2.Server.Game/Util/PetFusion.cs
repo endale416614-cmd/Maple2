@@ -31,6 +31,13 @@ public static class PetFusion {
         return null;
     }
 
+    /// <summary>PE-04: whether exp can raise the pet: it is below maxLevel and petexp.xml has a threshold above 0 for its level and
+    /// rarity (it has none for an artifact pet, rarity 6).</summary>
+    public static bool CanLevel(Item pet, PetExpTable table, int maxLevel) {
+        return pet.Pet is { } data && data.Level < maxLevel && table.Entries.TryGetValue(data.Level, out long[]? row)
+            && pet.Rarity >= 1 && pet.Rarity <= row.Length && Lua.CalcPetExp(row[pet.Rarity - 1], pet.Metadata.Limit.Level) > 0;
+    }
+
     /// <summary>
     /// Adds exp to the pet and raises its level while its exp reaches the threshold of its level: petexp.xml's for its rarity, through
     /// calc_petExp for its level limit (pet_fusion.msb: 95416 at level 12 stays below 202500 at limit 70). The rest carries over;

@@ -235,15 +235,12 @@ public class SkillHandler : FieldPacketHandler {
                 if (!record.Targets.IsEmpty) {
                     session.Player.TargetAttack(record);
                     record.Targets.Clear();
-                    session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnSkillCastEnd, skillId: record.SkillId);
                     continue;
                 }
             }
 
             session.Field?.Broadcast(SkillDamagePacket.Target(record, targets), session);
-
-            // Unsure if this is correct.
-            session.Buffs.TriggerEvent(session.Player, session.Player, session.Player, EventConditionType.OnSkillCastEnd, skillId: record.SkillId);
+            // PI-07 (BT-262): event 14 is raised where the cast's motion ends (FieldPlayer.KeyframeEvent, HandleCancel), not at an attack point.
         }
     }
 
@@ -432,6 +429,7 @@ public class SkillHandler : FieldPacketHandler {
         }
 
         if (CancelsMotion(session.Player.ActiveSkills.MotionCastUid, skillUid)) {
+            session.Player.CancelCastEnd();
             session.Animation.CancelSequence();
         }
     }

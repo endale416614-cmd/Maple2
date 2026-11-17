@@ -5,6 +5,8 @@ using Maple2.Model.Metadata;
 using Maple2.Model.Metadata.FieldEntity;
 using Maple2.Server.Core.Network;
 using Maple2.Server.Game.Manager;
+using Maple2.Server.Game.Manager.Field;
+using Maple2.Server.Game.Model.ActorStateComponent;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
@@ -408,6 +410,7 @@ public class FieldPlayer : Actor<Player> {
 
     protected override void OnDeath() {
         if (Session.Field is null) return;
+        PlayLedger.CountDeath((Field as DungeonFieldManager)?.DungeonRoomRecord); // TM-01 (BT-240)
         Field.Broadcast(SetCraftModePacket.Stop(ObjectId));
 
         Session.HeldCube = null;
@@ -622,7 +625,22 @@ public class FieldPlayer : Actor<Player> {
         }
     }
 
-    public override void KeyframeEvent(string keyName) { }
+    /// <summary>PI-07 (BT-262): the skill whose motion a key ends: the playing sequence's skill at its "end" key, else 0.</summary>
+    public static int CastEndSkillId(string keyName, AnimationRecord? current) => keyName == "end" ? current?.Skill?.Id ?? 0 : 0;
+
+    public override void KeyframeEvent(string keyName) {
+        int skillId = CastEndSkillId(keyName, Animation.Current);
+        if (skillId != 0) {
+            Buffs.TriggerEvent(this, this, this, EventConditionType.OnSkillCastEnd, skillId: skillId);
+        }
+    }
+
+    /// <summary>PI-07 (BT-262): a cancel before the motion's end key ends the cast too (the end key raises it itself).</summary>
+    public void CancelCastEnd() {
+        if (Animation.Current is { EndTick: 0, Skill: { } playing }) {
+            Buffs.TriggerEvent(this, this, this, EventConditionType.OnSkillCastEnd, skillId: playing.Id);
+        }
+    }
 
     public void MoveToPosition(Vector3 position, Vector3 rotation) {
         if (!Field.ValidPosition(position)) {

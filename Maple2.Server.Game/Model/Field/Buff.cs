@@ -33,7 +33,8 @@ public class Buff : IUpdatable, IByteSerializable {
     public long ShieldHealth { get; set; }
 
     public bool Enabled { get; private set; }
-    public bool HasStats => Metadata.Status.Values.Count > 0 || Metadata.Status.Rates.Count > 0 || Metadata.Status.SpecialValues.Count > 0 || Metadata.Status.SpecialRates.Count > 0 || Metadata.Status.Conversion != null;
+    public bool HasStats => Metadata.Status.Values.Count > 0 || Metadata.Status.Rates.Count > 0 || Metadata.Status.SpecialValues.Count > 0 || Metadata.Status.SpecialRates.Count > 0 || Metadata.Status.Conversion != null
+        || FinalStatusEffects.Get(Id, Level) != null; // PI-09 (BT-264): final rates and values change the totals too
 
     private bool activated;
     private readonly bool canExpire;
@@ -55,10 +56,29 @@ public class Buff : IUpdatable, IByteSerializable {
         IntervalTick = metadata.Property.IntervalTick > 0 ? metadata.Property.IntervalTick : metadata.Property.DurationTick + 1000;
 
         Stack(stacks, true);
-        NextProcTick = startTick + Metadata.Property.DelayTick + IntervalTick;
+        NextProcTick = FirstProcTick(metadata.Property, startTick, IntervalTick);
         UpdateEnabled(false);
         canProc = metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration;
         canExpire = metadata.Property.KeepCondition != BuffKeepCondition.UnlimitedDuration && EndTick >= startTick;
+    }
+
+    /// <summary>PI-04 (BT-253): a buff with interval 0 acts once, at its start plus its delay, as the GMS captures show (Cunning Tactics'
+    /// 10700141 heals at the tick it is added; 10100164 with a duration of 100 ms is gone 102 ms after its add). One with an interval acts
+    /// first after one interval. It was a duration plus a second late, and never again on a second application.</summary>
+    public static long FirstProcTick(AdditionalEffectMetadataProperty property, long startTick, long intervalTick) =>
+        startTick + property.DelayTick + (property.IntervalTick > 0 ? intervalTick : 0);
+
+    /// <summary>PI-04 (BT-253): a one-shot buff (interval 0) ends at its end tick plus its delay, as a stun does (NB-24); the others at their end tick.</summary>
+    public static long ExpireTick(AdditionalEffectMetadataProperty property, long endTick) => property.IntervalTick > 0 ? endTick : endTick + property.DelayTick;
+
+    /// <summary>PI-04 (BT-253, BT-272): a held one-shot buff applied again acts again (Fount of Renewal's 30 fires heal 30 times).</summary>
+    public void Reapply(long startTick) {
+        if (Metadata.Property.IntervalTick > 0 || Metadata.Property.KeepCondition == BuffKeepCondition.UnlimitedDuration || !Enabled) {
+            return;
+        }
+
+        NextProcTick = FirstProcTick(Metadata.Property, startTick, IntervalTick);
+        canProc = true;
     }
 
     public void ResetActor(IActor actor) {
@@ -130,7 +150,7 @@ public class Buff : IUpdatable, IByteSerializable {
             }
         }
 
-        if (canExpire && !canProc && tickCount > EndTick) {
+        if (canExpire && !canProc && tickCount > ExpireTick(Metadata.Property, EndTick)) {
             Owner.Buffs.Remove(Id, Caster.ObjectId);
             return;
         }

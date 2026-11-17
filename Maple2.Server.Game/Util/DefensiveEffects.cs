@@ -37,7 +37,7 @@ public static class DefensiveEffects {
     /// <summary>The hit a target holding these buffs takes at <paramref name="tick"/> in place of damage, or null (NB-21). As the GMS
     /// captures show: while an enabled buff has invincible 1 a hit by another actor is type 4 for 0, with 2 type 8 for 0; 3 and 150 are
     /// not enforced, no capture shows them enabled; 1 wins over 2, inferred: no capture has both. A buff past its end no longer counts,
-    /// since one with interval 0 is removed about a second after its end (Buff.cs).</summary>
+    /// though one with interval 0 and a delay is removed up to its delay later (Buff.cs, PI-04).</summary>
     public static DamageType? InvincibleHit(IEnumerable<Buff> buffs, long tick) {
         int[] values = buffs.Where(buff => buff.Enabled && (buff.EndTick <= buff.StartTick || tick <= buff.EndTick))
             .Select(buff => Invincible(buff.Id, buff.Level)).ToArray();
@@ -52,6 +52,11 @@ public static class DefensiveEffects {
         }
         try {
             Config? config = Parse(File.ReadAllText(path));
+            if (config is { Effects: null }) {
+                // Every read of Effects would throw on a hit on a buffed target (BT-220), so a file without it counts as invalid.
+                Log.Logger.Error("Invalid damage-reduction file {Path}: it has no Effects", path);
+                return null;
+            }
             if (config != null) {
                 Log.Logger.Information("Loaded damage-reduction rates of {Count} effects", config.Effects.Count);
             }

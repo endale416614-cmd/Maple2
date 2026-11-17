@@ -6,6 +6,7 @@ using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
 using Maple2.Server.Game.Session;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 using Serilog;
 
@@ -58,6 +59,7 @@ public sealed class ExperienceManager {
     public IList<int> PrestigeRewardsClaimed => session.Player.Value.Account.PrestigeRewardsClaimed;
 
     private int ChainKillCount { get; set; }
+    private string expSource = "other"; // TM-01 (BT-237): where the EXP that may level the character up came from
     private long lastKillTick;
 
     public ExperienceManager(GameSession session) {
@@ -118,10 +120,11 @@ public sealed class ExperienceManager {
         return addedRestExp;
     }
 
-    public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp) {
+    public long AddExp(long expGained, ExpMessageCode message = ExpMessageCode.s_msg_take_exp, string source = "other") {
         if (expGained <= 0) {
             return 0;
         }
+        Gain(expGained, source);
         expGained += GetRestExp(expGained);
         LevelUp();
         AddPrestigeExp(message.Type());
@@ -178,13 +181,14 @@ public sealed class ExperienceManager {
                 return 0;
         }
 
-        return AddExp((long) ((expValue * modifier) * entry.Factor) + additionalExp, expType.Message());
+        return AddExp((long) ((expValue * modifier) * entry.Factor) + additionalExp, expType.Message(), expType.ToString());
     }
 
     public void AddStaticExp(long amount) {
         if (amount <= 0) {
             return;
         }
+        Gain(amount, "static");
         Exp += amount;
         session.Send(ExperienceUpPacket.Add(amount, Exp, RestExp, ExpMessageCode.s_msg_take_exp));
         session.ConditionUpdate(ConditionType.exp, counter: amount);
@@ -196,7 +200,12 @@ public sealed class ExperienceManager {
             return;
         }
 
-        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message());
+        AddExp((long) (expValue * modifier) + additionalExp, ExpType.monster.Message(), "monster:" + npcClass switch { 3 or 7 => "boss", 4 or 6 => "dungeonboss", _ => "common" });
+    }
+
+    private void Gain(long amount, string source) {
+        expSource = source;
+        PlayLedger.Exp(amount, source);
     }
 
     /// <summary>A monster's EXP by its NPC class and level (monsterExpTable): 3 and 7 boss, 4 and 6 dungeonBoss, any other common. The class match is a reconstruction.</summary>
@@ -222,6 +231,7 @@ public sealed class ExperienceManager {
             Level++;
         }
         if (Level > startLevel) {
+            PlayLedger.LevelUp(startLevel, Level, expSource);
             session.Player.Flag |= PlayerObjectFlag.Level;
             session.Dungeon.UpdateDungeonEnterLimit();
             session.Field?.Broadcast(LevelUpPacket.LevelUp(session.Player));

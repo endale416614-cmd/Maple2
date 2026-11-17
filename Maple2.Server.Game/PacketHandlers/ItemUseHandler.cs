@@ -131,7 +131,8 @@ public class ItemUseHandler : FieldPacketHandler {
                 // The client opens the instrument window itself; playing comes through InstrumentHandler (PlayInstrument).
                 break;
             default:
-                Logger.Warning("Unhandled item function: {Name}", item.Metadata.Function?.Type);
+                // IU-01 (BT-251): the item id, so a report tells which item the use was for.
+                Logger.Warning("Unhandled item function: {Name} (item {ItemId})", item.Metadata.Function?.Type, item.Id);
                 return;
         }
     }

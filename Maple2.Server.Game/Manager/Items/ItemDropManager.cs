@@ -135,10 +135,10 @@ public class ItemDropManager {
 
         if (index >= 0 && dropGroupId > 0) {
             if (entryDict.TryGetValue(dropGroupId, out IndividualDropItemTable.Entry? entry)) {
-                return GetAllGroups(session, level, [entry], index).ToList();
+                return GetAllGroups(session, level, individualDropBoxId, [entry], index).ToList();
             }
         }
-        return GetAllGroups(session, level, entryDict.Values.ToList(), all: all, dropRate: dropRate).ToList();
+        return GetAllGroups(session, level, individualDropBoxId, entryDict.Values.ToList(), all: all, dropRate: dropRate).ToList();
     }
 
     public ICollection<Item> GetIndividualDropItems(int individualDropBoxId, int rarity = -1) {
@@ -152,26 +152,26 @@ public class ItemDropManager {
                 if (itemEntry.MapIds.Length > 0 && !itemEntry.MapIds.Contains(field.Metadata.Id)) {
                     continue;
                 }
-                items = items.Concat(CreateIndividualDropBoxItems(itemEntry, rarity: rarity)).ToList();
+                items = items.Concat(CreateIndividualDropBoxItems(itemEntry, rarity: rarity, boxId: individualDropBoxId, groupId: group.GroupId)).ToList();
             }
         }
 
         return items;
     }
 
-    private IEnumerable<Item> GetSelectedIndividualDropBoxItem(GameSession session, IEnumerable<IndividualDropItemTable.Item> itemEntries, int index) {
+    private IEnumerable<Item> GetSelectedIndividualDropBoxItem(GameSession session, int boxId, int groupId, IEnumerable<IndividualDropItemTable.Item> itemEntries, int index) {
         IndividualDropItemTable.Item? selectedItem = itemEntries.ElementAtOrDefault(index);
         if (selectedItem == null) {
             return new List<Item>();
         }
 
         // assuming selectedBoxes skip requirements otherwise they wouldn't have seen the item in the item selection.
-        return CreateIndividualDropBoxItems(selectedItem, session.Player.Value.Character).ToList();
+        return CreateIndividualDropBoxItems(selectedItem, session.Player.Value.Character, boxId: boxId, groupId: groupId).ToList();
     }
 
-    private IEnumerable<Item> GetAllGroups(GameSession session, int level, List<IndividualDropItemTable.Entry> entry, int index = -1, bool all = false, float dropRate = 1f) {
+    private IEnumerable<Item> GetAllGroups(GameSession session, int level, int boxId, List<IndividualDropItemTable.Entry> entry, int index = -1, bool all = false, float dropRate = 1f) {
         var items = new List<Item>();
-        (WeightedSet<IndividualDropItemTable.Item> Set, int Amount)? noJobRow = null;
+        (WeightedSet<IndividualDropItemTable.Item> Set, int Amount, int GroupId)? noJobRow = null;
         foreach (IndividualDropItemTable.Entry group in entry) {
             if (group.MinLevel > level) {
                 continue;
@@ -201,13 +201,13 @@ public class ItemDropManager {
                     if (itemEntry.MapIds.Length > 0 && !itemEntry.MapIds.Contains(field.Metadata.Id)) {
                         continue;
                     }
-                    items = items.Concat(CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character)).ToList();
+                    items = items.Concat(CreateIndividualDropBoxItems(itemEntry, session.Player.Value.Character, boxId: boxId, groupId: group.GroupId)).ToList();
                 }
                 continue;
             }
 
             if (index >= 0) {
-                items = items.Concat(GetSelectedIndividualDropBoxItem(session, itemEntries, index)).ToList();
+                items = items.Concat(GetSelectedIndividualDropBoxItem(session, boxId, group.GroupId, itemEntries, index)).ToList();
                 continue;
             }
 
@@ -215,7 +215,7 @@ public class ItemDropManager {
             if (group.SmartDropRate > 0 && itemEntries.All(x => x.Weight == 0)) {
                 IndividualDropItemTable.Item? jobRecommendedItems = itemEntries.FirstOrDefault(x => x.Ids.Length > 0 && IsItemJobRecommended(x.Ids.FirstOrDefault(), session.Player.Value.Character.Job.Code()));
                 if (jobRecommendedItems is not null) {
-                    items = items.Concat(CreateIndividualDropBoxItems(jobRecommendedItems, session.Player.Value.Character)).ToList();
+                    items = items.Concat(CreateIndividualDropBoxItems(jobRecommendedItems, session.Player.Value.Character, boxId: boxId, groupId: group.GroupId)).ToList();
                     continue;
                 }
                 continue;
@@ -253,19 +253,19 @@ public class ItemDropManager {
             // A smart-drop group with no row for this job (its job weights sum to 0) gives nothing from it (BT-116); the first
             // such group gives as before only when the box gave this job nothing else.
             if (group.SmartDropRate > 0 && weightedItems.Sum(pair => pair.Item2) == 0) {
-                noJobRow ??= (weightedItems, amount);
+                noJobRow ??= (weightedItems, amount, group.GroupId);
                 continue;
             }
 
             for (int i = 0; i < amount; i++) {
                 IndividualDropItemTable.Item selectedItem = weightedItems.Get();
-                items = items.Concat(CreateIndividualDropBoxItems(selectedItem, session.Player.Value.Character)).ToList();
+                items = items.Concat(CreateIndividualDropBoxItems(selectedItem, session.Player.Value.Character, boxId: boxId, groupId: group.GroupId)).ToList();
             }
         }
 
         if (items.Count == 0 && noJobRow is { } fallback) {
             for (int i = 0; i < fallback.Amount; i++) {
-                items = items.Concat(CreateIndividualDropBoxItems(fallback.Set.Get(), session.Player.Value.Character)).ToList();
+                items = items.Concat(CreateIndividualDropBoxItems(fallback.Set.Get(), session.Player.Value.Character, boxId: boxId, groupId: fallback.GroupId)).ToList();
             }
         }
         return items;
@@ -278,7 +278,7 @@ public class ItemDropManager {
         return (int) Math.Min(int.MaxValue / 64, probability * (double) dropRate);
     }
 
-    private IEnumerable<Item> CreateIndividualDropBoxItems(IndividualDropItemTable.Item selectedItem, Character? character = null, int rarity = -1) {
+    private IEnumerable<Item> CreateIndividualDropBoxItems(IndividualDropItemTable.Item selectedItem, Character? character = null, int rarity = -1, int boxId = 0, int groupId = 0) {
         int itemAmount = Random.Shared.Next(selectedItem.DropCount.Min, selectedItem.DropCount.Max + 1);
 
         if (rarity <= 0) {
@@ -291,7 +291,7 @@ public class ItemDropManager {
         }
 
         foreach (int itemId in selectedItem.Ids) {
-            Item? createdItem = CreateDropItem(itemId, rarity, itemAmount);
+            Item? createdItem = CreateDropItem(itemId, rarity > 0 || boxId <= 0 ? rarity : ClientRarity(boxId, groupId, itemId), itemAmount);
             if (createdItem == null) {
                 continue;
             }
@@ -366,6 +366,34 @@ public class ItemDropManager {
 
     // DR-01 (BT-99): an entry none of whose ids has item data gives nothing, so it never joins a weighted roll (0 pads the id lists).
     private bool HasItemData(IndividualDropItemTable.Item entry) => entry.Ids.Any(id => id > 0 && field.ItemMetadata.TryGet(id, out _));
+
+    // PI-10 (BT-268): an entry with no rarity of its own takes the client table's grade for its box, group and item, so the Navigator
+    // boxes give rare accessories. -1 (the default rarity) when the client table has none.
+    private int ClientRarity(int boxId, int groupId, int itemId) {
+        TableMetadataStorage tables = field.TableMetadata;
+        if (ClientGrade(tables.IndividualItemDropTable, boxId, groupId, itemId) <= 1 || !field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemMetadata)) {
+            return -1;
+        }
+        return ClientRarity(tables.IndividualItemDropTable, boxId, groupId, itemId,
+            ItemOptionRarity.Defined(itemMetadata.Option, tables.ItemOptionConstantTable, tables.ItemOptionStaticTable, tables.ItemOptionRandomTable).ToList());
+    }
+
+    // PI-10 (BT-268): the client table's grade of the item in this box and group; 0 for none. The client keys groups 0 to 255 (a byte).
+    private static int ClientGrade(IndividualItemDropTable client, int boxId, int groupId, int itemId) {
+        if (groupId is < 0 or > byte.MaxValue || !client.Entries.TryGetValue(boxId, out Dictionary<byte, IList<IndividualItemDropTable.Entry>>? groups) ||
+            !groups.TryGetValue((byte) groupId, out IList<IndividualItemDropTable.Entry>? entries)) {
+            return 0;
+        }
+
+        return entries.Where(entry => entry.ItemIds.FirstOrDefault() == itemId).Select(entry => entry.Rarity ?? 0).FirstOrDefault(rarity => rarity > 0);
+    }
+
+    /// <summary>The client table's grade (2 to 6) of the item in this box and group, when the item's option tables define it or
+    /// define no rarity at all; -1 otherwise (a grade the item does not exist at falls back to the default rarity).</summary>
+    public static int ClientRarity(IndividualItemDropTable client, int boxId, int groupId, int itemId, ICollection<int> defined) {
+        int grade = ClientGrade(client, boxId, groupId, itemId);
+        return grade > 1 && (defined.Count == 0 || defined.Contains(grade)) ? grade : -1;
+    }
 
     private Item? CreateDropItem(int itemId, int rarity, int amount) {
         if (EpicGear && field.ItemMetadata.TryGet(itemId, out ItemMetadata? itemMetadata)) {

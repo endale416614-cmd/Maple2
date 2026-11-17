@@ -6,6 +6,7 @@ using Maple2.Server.Core.Formulas;
 using Maple2.Server.Game.LuaFunctions;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Serilog;
 
 namespace Maple2.Server.Game.Manager;
@@ -143,6 +144,7 @@ public class StatsManager {
         AddBuffs(buffs);
         Values.Total();
         StatConversion(buffs);
+        AddFinalStats(Values, buffs);
         RestorePools(Values, pools);
     }
 
@@ -210,8 +212,8 @@ public class StatsManager {
         List<Buff> buffs = player.Buffs.EnumerateBuffs();
         AddBuffs(buffs);
         Values.Total();
-        Values.AddStatAttack(character.Job.Code());
-        StatConversion(buffs);
+        ConvertThenAddStatAttack(buffs, character.Job.Code());
+        AddFinalStats(Values, buffs);
         RestorePools(Values, pools);
         player.CheckRegen();
 
@@ -313,6 +315,13 @@ public class StatsManager {
         }
     }
 
+    /// <summary>FT-26c (BT-243): the conversions come first, so a stat they make (Strength, Dexterity, Luck, Intelligence) adds attack like the stats
+    /// of gear and points. No conversion reads an attack as its base (the data's two read Strength and Accuracy).</summary>
+    public void ConvertThenAddStatAttack(IEnumerable<Buff> buffs, JobCode jobCode) {
+        StatConversion(buffs);
+        Values.AddStatAttack(jobCode);
+    }
+
     public void StatConversion(IEnumerable<Buff> buffs) {
         foreach (Buff buff in buffs) {
             if (buff.Enabled && buff.Metadata.Status.Conversion != null) {
@@ -321,6 +330,34 @@ public class StatsManager {
                 Values[buff.Metadata.Status.Conversion.ResultAttribute].AddTotal((long) sum);
             }
         }
+    }
+
+    // PI-09 (BT-264): FinalStatusProperty of enabled buffs (Shadow Power: +1150 % max health) comes last, after the totals and conversions:
+    // total += total * the summed rate, then the summed values.
+    public static void AddFinalStats(Stats values, IEnumerable<Buff> buffs) {
+        var rates = new Dictionary<BasicAttribute, float>();
+        var added = new Dictionary<BasicAttribute, float>();
+        foreach (Buff buff in buffs) {
+            if (!buff.Enabled) {
+                continue;
+            }
+            foreach ((BasicAttribute attribute, float rate, float value) in FinalStatusEffects.Attributes(buff.Id, buff.Level)) {
+                rates[attribute] = rates.GetValueOrDefault(attribute) + rate;
+                added[attribute] = added.GetValueOrDefault(attribute) + value;
+            }
+        }
+        foreach ((BasicAttribute attribute, float rate) in rates) {
+            values[attribute].AddTotal((long) ((double) values[attribute].Total * rate) + (long) added[attribute]); // double: a float product loses digits above 16 million
+        }
+    }
+
+    // PI-09 (BT-264): the share of a pool that stays when its maximum changes: full stays full, half stays half; never above the new maximum, never 0 for a living owner.
+    public static long KeepShare(long current, long oldMax, long newMax) {
+        if (current <= 0 || newMax <= 0) {
+            return 0;
+        }
+        long scaled = oldMax <= 0 ? newMax : (long) Math.Round((double) current / oldMax * newMax);
+        return Math.Clamp(scaled, 1, newMax);
     }
 
     private void AddItemStats(ItemStats stats) {

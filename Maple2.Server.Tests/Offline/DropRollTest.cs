@@ -241,4 +241,29 @@ public class DropRollTest {
             Assert.That(realItems.TryGet(rolled.Id, out _), Is.True);
         }
     }
+
+    // PI-10 (BT-268): a box entry with no rarity of its own takes the client table's grade for its box, group and item; one with its own keeps it.
+    private static TableMetadataStorage ClientGradeTables(int grade) {
+        TableMetadataStorage storage = GachaTables();
+        var client = new IndividualItemDropTable(new Dictionary<int, Dictionary<byte, IList<IndividualItemDropTable.Entry>>> {
+            [Box] = new() { [1] = [new IndividualItemDropTable.Entry([Real], false, 0, grade, 0, false, false, false, 1, 1)] },
+        });
+        SetField(storage, "individualItemDropTable", new Lazy<IndividualItemDropTable>(() => client));
+        var constants = new ItemOptionConstantTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOptionConstant>>());
+        var statics = new ItemOptionStaticTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>());
+        var randoms = new ItemOptionRandomTable(new Dictionary<int, IReadOnlyDictionary<int, ItemOption>>());
+        SetField(storage, "itemOptionConstantTable", new Lazy<ItemOptionConstantTable>(() => constants));
+        SetField(storage, "itemOptionStaticTable", new Lazy<ItemOptionStaticTable>(() => statics));
+        SetField(storage, "itemOptionRandomTable", new Lazy<ItemOptionRandomTable>(() => randoms));
+        return storage;
+    }
+
+    [Test]
+    public void EntryWithoutARarity_TakesTheClientGrade_AndOneWithItsOwnKeepsIt() {
+        (ItemDropManager drop, GameSession session) = Build(items, DropTables(Individual(Box, Group(Entry(1, Real) with { Rarities = [] })), NoGlobal), ClientGradeTables(4));
+        (ItemDropManager own, GameSession ownSession) = Build(items, DropTables(Individual(Box, Group(Entry(1, Real))), NoGlobal), ClientGradeTables(4));
+
+        Assert.That(drop.GetIndividualDropItems(session, 1, Box).Single().Rarity, Is.EqualTo(4));
+        Assert.That(own.GetIndividualDropItems(ownSession, 1, Box).Single().Rarity, Is.EqualTo(1), "the entry's own rarity (grade 1)");
+    }
 }

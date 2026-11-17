@@ -128,7 +128,7 @@ public partial class FieldManager : IField {
         }
 
         initialized = true;
-        FieldTick = Environment.TickCount64;
+        FieldTick = TickSource();
 
         if (MapData.TryGet(Metadata.XBlock, out FieldAccelerationStructure? accelerationStructure)) {
             AccelerationStructure = accelerationStructure;
@@ -295,6 +295,9 @@ public partial class FieldManager : IField {
     /// <returns>Returns a local ObjectId</returns>
     private int NextLocalId() => Interlocked.Increment(ref localIdCounter);
 
+    // VR-01a: where Init and Update read the time; a test sets it to step game time by hand.
+    public Func<long> TickSource { get; set; } = static () => Environment.TickCount64;
+
     // Use this to keep systems in sync. Do not use Environment.TickCount directly
     public long FieldTick { get; private set; }
 
@@ -337,11 +340,49 @@ public partial class FieldManager : IField {
     private void UpdateLoop() {
         while (!cancel.IsCancellationRequested) {
             if (!(DebugRenderer?.IsActive ?? false)) {
-                Update();
+                try {
+                    Update();
+                } catch (Exception ex) {
+                    // GU-01 (BT-230): players, pets, spawns, the room timer and a subclass's Update have no guard of their own.
+                    UpdateFault(ex, "field", MapId, 0);
+                }
             }
 
             // Environment.TickCount has ~16ms precision so sleep until next update
             Thread.Sleep(15);
+        }
+    }
+
+    // GU-01 (BT-230): the faults of this field's updates by object id (0 is the field's own Update), and their sum.
+    private readonly Dictionary<int, int> updateFaults = new();
+    private int updateFaultCount;
+    // A region that has thrown this often is removed, a map's own region too: its update can hit before it throws, and it
+    // would hit again every tick. An NPC or portal is tried again every tick: its fault can pass.
+    private const int RegionFaults = 3;
+
+    // Counts one fault and logs an entity's first one and every 1000th (about 15 s of ticks) with its ids, so a later,
+    // different fault is named too. Returns the entity's fault count.
+    private int UpdateFault(Exception ex, string kind, int id, int objectId) {
+        updateFaultCount++;
+        int faults = updateFaults.GetValueOrDefault(objectId) + 1;
+        updateFaults[objectId] = faults;
+        if (faults == 1 || faults % 1000 == 0) {
+            logger.Error(ex, "Field update fault: {Kind} {Id} (object {ObjectId}) in map {MapId}, room {RoomId}", kind, id, objectId, MapId, RoomId);
+        }
+        return faults;
+    }
+
+    // One entity's exception must not end the tick for the others, nor the field thread and with it the Game server.
+    private void UpdateEach<T>(IEnumerable<T> entities, string kind, Func<T, int> id, int dropAfter = 0) where T : IFieldEntity {
+        foreach (T entity in entities) {
+            try {
+                entity.Update(FieldTick);
+            } catch (Exception ex) {
+                if (UpdateFault(ex, kind, id(entity), entity.ObjectId) == dropAfter) {
+                    RemoveSkill(entity.ObjectId);
+                    cubeSkills.TryRemove(entity.ObjectId, out _);
+                }
+            }
         }
     }
 
@@ -354,13 +395,13 @@ public partial class FieldManager : IField {
 
         Scheduler.InvokeAll();
 
-        FieldTick = Environment.TickCount64;
+        FieldTick = TickSource();
         UpdateTriggers();
         UpdateQuestNpcFallback();
 
         foreach (FieldPlayer player in Players.Values) player.Update(FieldTick);
-        foreach (FieldNpc npc in Npcs.Values) npc.Update(FieldTick);
-        foreach (FieldNpc mob in Mobs.Values) mob.Update(FieldTick);
+        UpdateEach(Npcs.Values, "npc", static npc => npc.Value.Id);
+        UpdateEach(Mobs.Values, "npc", static mob => mob.Value.Id);
         foreach (FieldPet pet in Pets.Values) pet.Update(FieldTick);
         foreach (FieldBreakable breakable in fieldBreakables.Values) breakable.Update(FieldTick);
         foreach (FieldLiftable liftable in fieldLiftables.Values) liftable.Update(FieldTick);
@@ -372,9 +413,9 @@ public partial class FieldManager : IField {
         foreach (FieldItem item in fieldItems.Values) item.Update(FieldTick);
         foreach (FieldMobSpawn mobSpawn in fieldMobSpawns.Values) mobSpawn.Update(FieldTick);
         foreach (FieldSpawnPointNpc spawnPointNpc in fieldSpawnPointNpcs.Values) spawnPointNpc.Update(FieldTick);
-        foreach (FieldSkill skill in fieldSkills.Values) skill.Update(FieldTick);
-        foreach (FieldSkill skill in cubeSkills.Values) skill.Update(FieldTick);
-        foreach (FieldPortal portal in fieldPortals.Values) portal.Update(FieldTick);
+        UpdateEach(fieldSkills.Values, "region", static skill => skill.Value.Id, RegionFaults);
+        UpdateEach(cubeSkills.Values, "region", static skill => skill.Value.Id, RegionFaults);
+        UpdateEach(fieldPortals.Values, "portal", static portal => portal.Value.Id);
         UpdateBanners();
 
         RoomTimer?.Update(FieldTick);
@@ -902,6 +943,9 @@ public partial class FieldManager : IField {
         }
 
         logger.Debug("Disposing FieldManager {MapId}", MapId);
+        if (updateFaultCount > 0) {
+            logger.Warning("Field update faults: {Count} in map {MapId}, room {RoomId}", updateFaultCount, MapId, RoomId);
+        }
 
         DebugGraphicsContext.FieldRemoved(this);
         try {

@@ -134,7 +134,11 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     /// <summary>Whom this region's attack hits: the monsters for a MonsterOnly skill, else the field's target pool.</summary>
     public IEnumerable<IActor> FindTargets(Prism[] prisms, SkillMetadataRange range, int targetCount) => MonsterOnly(Value.Id, Value.Level)
         ? prisms.Filter<IActor>(Field.Mobs.Values, targetCount)
-        : Field.GetTargets(Caster, prisms, CasterRange(range, Caster is FieldNpc, Caster is not (FieldNpc or FieldPlayer) || HoldsCaster(prisms, Caster.Shape)), targetCount);
+        : Field.GetTargets(Caster, prisms, CasterRange(range, Caster is FieldNpc, Caster is not (FieldNpc or FieldPlayer) || HoldsCaster(prisms, Caster.Shape), Caster is FieldPlayer && !TakesCasterByPriority(Value.Data)), targetCount);
+
+    /// <summary>PI-13 (BT-272): whether an attack of the skill takes its caster by Priority, which gives him his own effect (Eagle Squad 10500291's 10500293,
+    /// Heavenly Wings 10400151 and 10400153's 10400152), so the skill's other friendly attacks need not count him.</summary>
+    public static bool TakesCasterByPriority(SkillMetadataLevel data) => data.Motions.SelectMany(motion => motion.Attacks).Any(attack => attack.Range.IncludeCaster == IncludeCasterType.Priority);
 
     /// <summary>The range a region's attack picks its targets by: an NPC's region counts its caster only for an attack on his own side
     /// (Friendly) and only while he stands in it, as the captures show: Lazy Stumpy's 60036032 (IncludeCaster, Hostile) never hits him in
@@ -142,12 +146,22 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
     /// him 4 times, each as he steps on one (NB-27). A player's region counts him only while he stands in it, on either side (NB-29): the
     /// captures hit him in 850 of 99900462's 1,620 hits and 121 of Honing Runes' 10900162 level 5's 373, and his position says which in
     /// 3,218 of the 3,393 hits of the players' regions that count their caster. The map's regions keep their range (holdsCaster true).</summary>
-    public static SkillMetadataRange CasterRange(SkillMetadataRange range, bool npcCaster, bool holdsCaster) =>
-        (npcCaster && range.ApplyTarget != ApplyTargetType.Friendly) || !holdsCaster ? range with { IncludeCaster = IncludeCasterType.Exclude } : range;
+    public static SkillMetadataRange CasterRange(SkillMetadataRange range, bool npcCaster, bool holdsCaster, bool playerCaster = false) =>
+        (npcCaster && range.ApplyTarget != ApplyTargetType.Friendly) || !holdsCaster ? range with { IncludeCaster = IncludeCasterType.Exclude }
+        // PI-13 (BT-272): a player's friendly region counts him while he stands in it, whatever IncludeCaster says: Fount of Renewal's
+        // 11100172 (IncludeCaster 0) healed no solo player. A reconstruction: only Divine Wave's 10400212 shows it in the captures (NB-29).
+        // FindTargets passes playerCaster false when another attack of the skill takes him by Priority (TakesCasterByPriority).
+        : playerCaster && range is { ApplyTarget: ApplyTargetType.Friendly, IncludeCaster: IncludeCasterType.Exclude } ? range with { IncludeCaster = IncludeCasterType.Last }
+        : range;
 
     /// <summary>Whether the caster stands in the region, by his shape as the pool's targets are: an NPC stands 1 below the block top, so
     /// Pink Bean at 1349 is under his speakers' 1350 by his position and on them by his shape (NB-27).</summary>
     public static bool HoldsCaster(IEnumerable<Prism> prisms, IPrism casterShape) => prisms.Any(prism => prism.Intersects(casterShape));
+
+    /// <summary>PI-06 (BT-256): the bounce path looks for targets in a circle of the bounce radius around the region's point and made each
+    /// target attack itself. A piercing attack has no radius (Guardian's Wings 10100203, 50100951, 60128001): it takes the plain path, its
+    /// targets from the attack's range, hit as the region's caster. Range, chain and boomerang keep the bounce path.</summary>
+    public static bool TakesBounceBranch(BounceType bounceType) => bounceType != BounceType.None && bounceType != BounceType.Pierce;
 
     private SkillMetadataRange? FirstAttackRange => Value.Data.Motions.SelectMany(motion => motion.Attacks).FirstOrDefault()?.Range;
 
@@ -278,7 +292,7 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Direction = Rotation,
                 };
                 var targetRecords = new List<TargetRecord>();
-                if (attack.Arrow.BounceType > 0) {
+                if (TakesBounceBranch(attack.Arrow.BounceType)) {
                     IActor[] targets = [];
                     var bounceTargets = new List<IActor>();
                     Vector3 position = Position;
@@ -327,7 +341,9 @@ public class FieldSkill : FieldEntity<SkillMetadata> {
                     Prism[] prisms = Points
                         .Select(point => attack.Range.GetPrism(point, skillAngle, attack.Range.ApplyTarget))
                         .ToArray();
-                    IActor[] targets = FindTargets(prisms, attack.Range, attack.TargetCount).Where(target => !Dying(target)).ToArray();
+                    // PI-06 (BT-256): a piercing attack takes its targets from the attack's range, up to the skill's limit.
+                    int limit = SkillUtils.MaxTargets(attack.TargetCount, attack.Arrow.BounceType, attack.Arrow.BounceCount);
+                    IActor[] targets = FindTargets(prisms, attack.Range, limit).Where(target => !Dying(target)).ToArray();
                     // if (targets.Length > 0) {
                     //     logger.Debug("[{Tick}] {ObjectId}:{AttackPoint} Targeting: {Count}/{Limit} {Type}",
                     //         NextTick, ObjectId, attack.Point, targets.Length, attack.TargetCount, attack.Range.ApplyTarget);

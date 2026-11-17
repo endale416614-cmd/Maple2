@@ -97,4 +97,7 @@ app.UseRouting();
 app.MapGet("/", () => "Communication with gRPC endpoints must be made through a gRPC client.");
 app.MapGrpcService<LoginService>();
 
+// SV-01 (BT-248): a host that stops says so; a process that is ended from outside leaves no such line.
+app.Lifetime.ApplicationStopping.Register(() => Log.Information("LoginServer stopping"));
+
 await app.RunAsync();

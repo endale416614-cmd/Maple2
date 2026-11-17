@@ -1,6 +1,7 @@
 ﻿using Maple2.Database.Context;
 using Maple2.Model.Metadata;
 using System.Diagnostics.CodeAnalysis;
+using System.Text.RegularExpressions;
 
 namespace Maple2.Database.Storage;
 
@@ -31,11 +32,26 @@ public class AiMetadataStorage(MetadataContext context) : MetadataStorage<string
         return true;
     }
 
-    /// <summary>The AI to use for a path the data does not have: the one other path with the same file name, else the file name
+    // NB-31 (BT-244): the AI_Default_Summon_<id> and _Normal sibling rules are reconstructions; the original's substitute rule is not captured.
+    /// <summary>The AI to use for a path the data does not have: AI_Default_Summon_&lt;id&gt;.xml runs AI_Default_Summon.xml; the same path
+    /// in a sibling folder named with "_Normal" (BossDungeon/Pinkbean/Chaos to BossDungeon/Pinkbean_Normal/Chaos); the one other path
+    /// with the same file name, else the file name
     /// without a trailing "NA" (Papulatus ChaosNA -> Chaos); null when neither exists or the file name is not unique.</summary>
     public static string? Substitute(string path, IEnumerable<string> names) {
         static string FileName(string value) => value.Replace('\\', '/').Split('/')[^1];
         string file = FileName(path);
+        if (Regex.IsMatch(file, @"^AI_Default_Summon_\d+\.xml$", RegexOptions.IgnoreCase)) {
+            // The NPC's own summon list has the id first, which is what the base file's summon node 1 resolves to (38 of 38 NPCs).
+            return names.FirstOrDefault(name => string.Equals(name, "AI_Default_Summon.xml", StringComparison.OrdinalIgnoreCase));
+        }
+        string[] parts = path.Replace('\\', '/').Split('/');
+        for (int i = 0; i < parts.Length - 1; i++) {
+            string sibling = string.Join('/', parts.Select((part, index) => index == i ? part + "_Normal" : part));
+            string? found = names.FirstOrDefault(name => string.Equals(name.Replace('\\', '/'), sibling, StringComparison.OrdinalIgnoreCase));
+            if (found != null) {
+                return found;
+            }
+        }
         string[] same = names.Where(name => string.Equals(FileName(name), file, StringComparison.OrdinalIgnoreCase)).ToArray();
         if (same.Length == 1) {
             return same[0];

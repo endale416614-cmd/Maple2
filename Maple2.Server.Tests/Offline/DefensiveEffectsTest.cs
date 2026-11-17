@@ -105,6 +105,28 @@ public class DefensiveEffectsTest {
         }
     }
 
+    // GU-01b (BT-220): a defensive-effects.json that parses without Effects gives no config, as an invalid file does; today the log
+    // line in Load reads config.Effects.Count and throws, and the Lazy would throw it on every hit on a buffed target.
+    [Test]
+    [NonParallelizable] // DEFENSIVE_EFFECTS_FILE is process-wide.
+    public void Load_NoEffectsGivesNoConfig() {
+        MethodInfo load = typeof(DefensiveEffects).GetMethod("Load", BindingFlags.Static | BindingFlags.NonPublic)!;
+        string? before = Environment.GetEnvironmentVariable("DEFENSIVE_EFFECTS_FILE");
+        string path = Path.GetTempFileName();
+        try {
+            Environment.SetEnvironmentVariable("DEFENSIVE_EFFECTS_FILE", path);
+            File.WriteAllText(path, "{}");
+            Assert.That(load.Invoke(null, null), Is.Null, "an empty object");
+            File.WriteAllText(path, """{"Effects": null, "Invincible": {}}""");
+            Assert.That(load.Invoke(null, null), Is.Null, "Effects null");
+            File.WriteAllText(path, """{"Effects": {}}""");
+            Assert.That(load.Invoke(null, null), Is.Not.Null, "no effects, but the key is there");
+        } finally {
+            Environment.SetEnvironmentVariable("DEFENSIVE_EFFECTS_FILE", before);
+            File.Delete(path);
+        }
+    }
+
     // NB-21: hits by another actor on an NPC holding Pink Bean's 50170019 are one type 8 entry for 0 each, whatever the hit count, as
     // captured (120020198 level 7, count 3; 10900207 level 5, count 0); its own hit without damage gives none. Today the first takes 300
     // health (and needs a whole field to do it), and the second gives no entry.

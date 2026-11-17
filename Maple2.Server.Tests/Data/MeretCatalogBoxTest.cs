@@ -27,6 +27,22 @@ public class MeretCatalogBoxTest {
     }
 
     [Test]
+    public void Opens_ABoxThatNamesItsItemNeedsNoDropBox() {
+        var none = new Dictionary<int, IDictionary<int, IndividualDropItemTable.Entry>>();
+        var noGlobal = new Dictionary<int, Dictionary<int, IList<GlobalDropItemBoxTable.Group>>>();
+        var noGacha = new Dictionary<int, GachaInfoTable.Entry>();
+        bool Opens(string parameters) => MeretCatalogBoxTest.Opens(new ItemMetadataFunction(ItemFunction.OpenItemBox, "OpenItemBox", parameters, false), none, noGlobal, noGacha, []);
+        // 30000928 Level Up Mission Box gives item 30000301 and names no drop box
+        Assert.That(Opens("0,1,30000301,0"), Is.True);
+        Assert.That(Opens("0,1,0,0"), Is.False, "no item and no drop box");
+        Assert.That(Opens("0,1,30000301,330000001"), Is.False, "a drop box id that is not in the table still fails");
+        Assert.That(Opens("5,1,30000301,0"), Is.False, "a global drop box id that is not in the table still fails");
+        Assert.That(ItemBoxManager.GivesItemDirectly(30000301, 0), Is.True);
+        Assert.That(ItemBoxManager.GivesItemDirectly(0, 0), Is.False);
+        Assert.That(ItemBoxManager.GivesItemDirectly(30000301, 330000001), Is.False);
+    }
+
+    [Test]
     [Category("Data")]
     [NonParallelizable]
     public void EveryCatalogBoxOpens() {
@@ -100,9 +116,14 @@ public class MeretCatalogBoxTest {
                 return gacha.TryGetValue(At(0), out GachaInfoTable.Entry? entry) && HasRows(entry.DropBoxId);
             default: // OpenItemBox
                 Dictionary<int, IList<GlobalDropItemBoxTable.Group>>? groups = [];
-                return individual.TryGetValue(At(3), out IDictionary<int, IndividualDropItemTable.Entry>? rows)
-                       && (At(0) <= 0 || global.TryGetValue(At(0), out groups))
-                       && (CanGiveItem(rows) || groups.Count > 0);
+                if (At(0) > 0 && !global.TryGetValue(At(0), out groups)) {
+                    return false;
+                }
+                // RW-02: a box that names its item and no drop box gives that item (ItemBoxManager.OpenItemBox)
+                if (ItemBoxManager.GivesItemDirectly(At(2), At(3))) {
+                    return true;
+                }
+                return individual.TryGetValue(At(3), out IDictionary<int, IndividualDropItemTable.Entry>? rows) && (CanGiveItem(rows) || groups.Count > 0);
         }
     }
 }

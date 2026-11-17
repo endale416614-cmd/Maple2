@@ -149,6 +149,7 @@ public class FieldNpc : Actor<Npc> {
         }
         firstAttackerObjectId = 0;
         DamageDealers.Clear();
+        AiState?.NoteRestore(Field.FieldTick); // PI-02 (BT-260): the AI starts again at the next battle after a real break (a bare NPC of a test has no AiState)
         Stat health = Stats.Values[BasicAttribute.Health];
         if (health.Current < health.Total) {
             health.Current = health.Total;
@@ -293,6 +294,8 @@ public class FieldNpc : Actor<Npc> {
     }
 
     private void DoIdleBehavior(long tickCount) {
+        ApplyPatrolEnd();
+
         hasBeenBattling |= BattleState.InBattle;
 
         if (BattleState.InBattle) {
@@ -363,6 +366,24 @@ public class FieldNpc : Actor<Npc> {
         return MovementState.TryStandby(null, true);
     }
 
+    // PI-12 (BT-269): the walk to the last waypoint of a patrol that ends, and the point it goes to
+    private NpcTask? patrolEndTask;
+    private Vector3 patrolEndPoint;
+
+    /// <summary>PI-12 (BT-269): a patrol that ends makes its last waypoint the NPC's home once the NPC has got there (its walk there completed,
+    /// not failed, cancelled or never made), so the walk back after a battle and the idle walk stay where the patrol put it (the chasers of
+    /// Twinkling Path, map 2000331, no longer go back to their spawn).</summary>
+    private void ApplyPatrolEnd() {
+        if (patrolEndTask is not { IsDone: true }) {
+            return;
+        }
+
+        if (patrolEndTask.Status == NpcTaskStatus.Complete) {
+            Origin = patrolEndPoint;
+        }
+        patrolEndTask = null;
+    }
+
     private NpcTask? NextWaypoint() {
         MS2WayPoint currentWaypoint = Patrol!.WayPoints[currentWaypointIndex];
         MS2WayPoint? waypointBefore = null;
@@ -421,6 +442,8 @@ public class FieldNpc : Actor<Npc> {
 
         // if we're at the last waypoint and we're not looping, we're done
         if (currentWaypoint.Id == lastWaypoint.Id && !Patrol.IsLoop) {
+            patrolEndTask = approachTask;
+            patrolEndPoint = currentWaypoint.Position;
             Patrol = null;
 
             return approachTask;
@@ -478,6 +501,9 @@ public class FieldNpc : Actor<Npc> {
         // An open Shadow Expedition gauge or score board counts the kill (SE-01); a captured pet is no kill.
         if (this is not FieldPet) {
             Field.AddScore(FieldScore.KillPoints(Value.Metadata, SpawnScore));
+        }
+        if (Value.IsBoss) {
+            PlayLedger.BossKill(Field.MapId, Value.Metadata.Id, this); // TM-01 (BT-237, BT-240)
         }
         HandleDamageDealers();
 
@@ -719,7 +745,7 @@ public class FieldNpc : Actor<Npc> {
             return;
         }
 
-        player.Session.Exp.AddExp((long) (Value.Metadata.Basic.CustomExp * (double) expMultiplier));
+        player.Session.Exp.AddExp((long) (Value.Metadata.Basic.CustomExp * (double) expMultiplier), source: "monster:custom");
     }
 
     // Offline grind rates: level-based upgrade materials (Onyx, Crystal Fragments, ...), see offline-grind.json.

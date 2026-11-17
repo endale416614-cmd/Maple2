@@ -139,6 +139,7 @@ public class ItemDismantleHandler : FieldPacketHandler {
                     continue;
                 }
 
+                session.ConditionUpdate(ConditionType.item_break, counter: amount); // TA-03 (BT-74): items broken (Break it Down)
                 foreach ((int id, int min, int max) in GetReward(item, amount)) {
                     (int Min, int Max) prev = rewards.GetValueOrDefault(id, (0, 0));
                     rewards[id] = (prev.Min + min, prev.Max + max);

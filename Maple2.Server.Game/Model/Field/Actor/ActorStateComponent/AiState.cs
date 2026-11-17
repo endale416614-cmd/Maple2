@@ -32,6 +32,11 @@ public class AiState {
     private Dictionary<string, long> coolTimes = new();
     private List<Node> reservedNodes = new List<Node>();
 
+    /// <summary>PI-02 (BT-260): a target gap in a battle lasts up to 500 ms; a real battle end (Pamokan's jump away and walk back) lasts much longer.</summary>
+    public const long RestoreBreakMs = 2000;
+    private long? restoredAt;
+    private bool wasInBattle;
+
     private enum DecisionTreeType {
         None,
         Battle,
@@ -202,6 +207,11 @@ public class AiState {
         }
 
         bool isInBattle = actor.BattleState.InBattle;
+
+        if (isInBattle && !wasInBattle) {
+            BattleStarted(actor.Field.FieldTick);
+        }
+        wasInBattle = isInBattle;
 
         if (!isInBattle) {
             if (currentTree == DecisionTreeType.Battle) {
@@ -380,6 +390,26 @@ public class AiState {
         Push((dynamic) entry);
     }
 
+    /// <summary>PI-02 (BT-267): the tick stored at a node's first look. The ordinary test (lastTick + cooltime) then frees the node
+    /// initialCooltime after that look; storing the first look plus initialCooltime made it wait initialCooltime plus cooltime.</summary>
+    public static long FirstLookTick(long fieldTick, long initialCooltime, long? cooltime) => fieldTick + initialCooltime - (cooltime ?? 0);
+
+    /// <summary>PI-02 (BT-260, BT-55): FieldNpc.RestorePeace healed the monster; only the tick is noted. RestorePeace also runs at a target gap
+    /// in a fight, so the reset waits for the next battle start (BattleStarted).</summary>
+    public void NoteRestore(long fieldTick) => restoredAt = fieldTick;
+
+    /// <summary>PI-02 (BT-260, BT-55): a battle starts. If a restore was noted at least RestoreBreakMs ago the break was real: the AI starts again
+    /// from its beginning, the reserved nodes that ran come back and the cooltimes are cleared, so Pamokan's jump block runs again at 46 % and the
+    /// loop between walking down and healing ends. A battle that resumes sooner (a target gap) keeps its state. AiExtraData is not touched: map
+    /// scripts set it.</summary>
+    public void BattleStarted(long fieldTick) {
+        if (restoredAt is long restored && fieldTick - restored >= RestoreBreakMs) {
+            coolTimes.Clear();
+            reservedNodes = AiMetadata?.Reserved.Cast<Node>().ToList() ?? new List<Node>();
+        }
+        restoredAt = null;
+    }
+
     private bool CanEvaluateNode(Entry entry) {
         if (entry is not Node node) {
             return true;
@@ -389,9 +419,10 @@ public class AiState {
 
         Type parent = entry.GetType();
         long? initialCooltime = parent.GetProperty("InitialCooltime")?.GetValue(entry, null) as long?;
+        long? cooltime = parent.GetProperty("Cooltime")?.GetValue(entry, null) as long?;
         if (initialCooltime.HasValue && !hasTicked) {
             if (initialCooltime.Value > 0) {
-                coolTimes[GetNodeKey(entry)] = actor.Field.FieldTick + initialCooltime.Value;
+                coolTimes[GetNodeKey(entry)] = FirstLookTick(actor.Field.FieldTick, initialCooltime.Value, cooltime);
                 return false;
             }
         }
@@ -401,8 +432,6 @@ public class AiState {
             return true;
         }
 
-
-        long? cooltime = parent.GetProperty("Cooltime")?.GetValue(entry, null) as long?;
 
         if (cooltime.HasValue) {
             return lastTick + cooltime.Value < actor.Field.FieldTick;

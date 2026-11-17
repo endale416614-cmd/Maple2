@@ -496,6 +496,12 @@ public sealed class ShopManager {
         if (shopItem.Metadata.Cost.Type == ShopCurrencyType.Meso && price > 0) {
             session.ConditionUpdate(ConditionType.shop_buy, counter: price); // mesos spent (Shopaholic)
         }
+        // TA-03 (BT-74): tokens spent (To the Victor Goes the Spoils, A Questionable Transaction)
+        if (price > 0 && shopItem.Metadata.Cost.Type == ShopCurrencyType.ValorToken) {
+            session.ConditionUpdate(ConditionType.shop_buy_honor_token, counter: price);
+        } else if (price > 0 && shopItem.Metadata.Cost.Type == ShopCurrencyType.Treva) {
+            session.ConditionUpdate(ConditionType.shop_buy_karma_token, counter: price);
+        }
         session.Send(ShopPacket.Buy(shopItem, shopItem.Metadata.SellUnit * quantity, price));
     }
 

@@ -55,6 +55,41 @@
    "Find": "<transition state=\"의식종료_02\" />",
    "Replace": "<transition state=\"의식종료02\" />",
    "Note": "Murpagoth Temple: the same for 의식종료02, the step that removes the ritual's Namid before 종료 ends cinematic mode"
+  },
+  {
+   "XBlock": "02000318_bf",
+   "Trigger": "shipmove_02",
+   "Find": "<condition name=\"wait_tick\" wait_tick=\"24000\"><transition state=\"ResetShip01\" /></condition>",
+   "Replace": "<condition name=\"wait_tick\" wait_tick=\"24000\"><transition state=\"ResetShip00\" /></condition>",
+   "Note": "Moonlight Fortress: after the second ride the ship pieces were never disabled again, so the ship did not come back to the dock for a third ride; every ride now ends as the first does (disable, hide, show) (PI-11, BT-259)"
+  },
+  {
+   "XBlock": "52000159_qd",
+   "Trigger": "52000159",
+   "Find": "<action name=\"set_npc_emotion_loop\" spawn_id=\"114\" sequence_name=\"Dead_B\" duration=\"9000000000000\" />",
+   "Replace": "",
+   "Note": "The Assassin's Past: the Fallen Man (11003915, spawn 114) no longer replays the Dead_B death pose every 1.6 seconds, so he can be seen and talked to for 40002735; this is also the test of whether the pose loop hid him (PI-14, BT-160)"
+  },
+  {
+   "XBlock": "02000335_bf",
+   "Trigger": "touchevent",
+   "Find": "<action name=\"spawn_monster\" spawn_ids=\"118,119\" auto_target=\"0\" />",
+   "Replace": "",
+   "Note": "Blaknov No. 1 Cargo Car: the two Steamorbs (spawn 118, 119) are placed on a strip of the map beside the train (a 20,000 unit long island at y 365 and 515; the cars lie at y 1758 to 2743), where nobody can reach them and where they ran back off the train when a fight ended; the spawn points are dropped (PI-15, BT-270)"
+  },
+  {
+   "XBlock": "02000336_bf",
+   "Trigger": "train_patrol",
+   "Find": "<action name=\"spawn_monster\" spawn_ids=\"147,148,149\" auto_target=\"0\" />",
+   "Replace": "",
+   "Note": "Blaknov No. 1 Cabin: the three Steamorbs (spawn 147 to 149) are placed on a strip 30,000 units long beside the train (y 1183 to 1333, the train is at y -45 to 1095); the spawn points are dropped (PI-15, BT-270)"
+  },
+  {
+   "XBlock": "02000336_bf",
+   "Trigger": "main",
+   "Find": "spawn_ids=\"309,311,313,172,173\"",
+   "Replace": "spawn_ids=\"309,311,313\"",
+   "Note": "Blaknov No. 1 Cabin: Steamorbs 172 and 173 are placed on a second strip beside the train (y -342 and -492, 171 is never spawned by a script); the spawn points are dropped and the three Arcrollers stay (PI-15, BT-270)"
   }
  ]
 }

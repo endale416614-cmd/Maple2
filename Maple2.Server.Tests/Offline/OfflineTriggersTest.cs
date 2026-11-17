@@ -23,7 +23,7 @@ public class OfflineTriggersTest {
     [Test]
     public void Parse() {
         OfflineTriggers.Config config = Shipped();
-        Assert.That(config.Patches.Length, Is.EqualTo(8));
+        Assert.That(config.Patches.Length, Is.EqualTo(13));
         Assert.That(config.Patches[0].XBlock, Is.EqualTo("52000066_qd"));
         Assert.That(config.Patches[0].Trigger, Is.EqualTo("chase01"));
         Assert.That(config.Patches[0].Find, Is.EqualTo("quest_ids=\"10001028\""));

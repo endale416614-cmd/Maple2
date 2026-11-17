@@ -189,6 +189,7 @@ public partial class MovementState {
 
         actor.AppendDebugMessage($"> Pathing to position\n");
 
+        // PI-01 (BT-252): a scripted move (Move node, patrol, return) goes to its authored point, so it keeps the end at the target
         if (!actor.Navigation.PathTo(position)) {
             task.Cancel();
 
@@ -285,7 +286,7 @@ public partial class MovementState {
             type = WalkType.FromTarget;
         } else if (currentDistance > toDistance * toDistance) {
             actor.AppendDebugMessage($"> Pathing to target\n");
-            foundPath = actor.Navigation.PathTo(target.Position);
+            foundPath = actor.Navigation.PathTo(target.Position, true); // PI-01 (BT-252): chasing ends where the path ends
         }
 
         if (!foundPath) {

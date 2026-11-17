@@ -432,20 +432,16 @@ public partial class TriggerContext {
         }
     }
 
-    public void RemoveBuff(int boxId, int buffId, bool ignorePlayer) {
-        if (TraceEnabled) DebugLog("[RemoveBuff] boxId:{Id}, buffId:{BuffId}, ignorePlayer:{ignorePlayer}", boxId, buffId, ignorePlayer);
+    public void RemoveBuff(int boxId, int buffId, bool isPlayer) {
+        if (TraceEnabled) DebugLog("[RemoveBuff] boxId:{Id}, buffId:{BuffId}, isPlayer:{isPlayer}", boxId, buffId, isPlayer);
         // A spawn id names NPCs whatever is_player says (52000099_qd names Allon's spawn 103 without it).
         foreach (FieldNpc npc in NpcsBySpawnId(boxId)) {
             npc.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
         }
-        if (!ignorePlayer) {
-            foreach (IActor player in PlayersInBox(boxId)) {
-                player.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
-            }
-        } else {
-            foreach (IActor monster in MonstersInBox(boxId)) {
-                monster.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
-            }
+        // TG-04 (BT-221): a box names its players, with is_player and without it. The flag used to reach an "ignore the players"
+        // switch, which took the buff off the box's monsters and left the players' markers on.
+        foreach (IActor player in PlayersInBox(boxId)) {
+            player.Buffs.Remove(buffId, Field.FieldActor.ObjectId);
         }
     }
 

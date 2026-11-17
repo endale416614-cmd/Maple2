@@ -10,6 +10,10 @@ namespace Maple2.Server.Game.Util;
 public static class DamageCalculator {
     private const int VengeanceEffect = 11000123; // Fighting Spirit's stacks
 
+    /// <summary>FT-26c (BT-243): a player's hits and those of the pet it owns take the player factor, monsters' and map regions' the monster factor.
+    /// A reconstruction: no capture shows a pet's or a summon's hit. No other actor of a player exists (a skill's region is cast by the player).</summary>
+    public static bool UsesPlayerFactor(IActor caster) => caster is FieldPlayer or FieldPet { OwnerId: not 0 };
+
     public static (DamageType, long) CalculateDamage(IActor caster, IActor target, DamagePropertyRecord property) {
         // Check block
         if (Damage.TriggerCompulsionEvent(target.Buffs.TotalCompulsionRate(BuffCompulsionEventType.BlockChance, property.SkillId))) {
@@ -139,7 +143,7 @@ public static class DamageCalculator {
             finalDamage += Damage.StackedRate(rate, vengeance.Stacks) - 1 - rate;
         }
         damageMultiplier *= attackTypeAmount * resistance * (1 + finalDamage);
-        attackDamage *= damageMultiplier * (caster is FieldPlayer ? Constant.AttackDamageFactor : Constant.NpcAttackDamageFactor) + property.Value;
+        attackDamage *= damageMultiplier * (UsesPlayerFactor(caster) ? DamageFactors.Current.PlayerFactor : DamageFactors.Current.NpcFactor) + property.Value;
 
         // DefensiveProperty rates of a player's enabled buffs (Iron Shield 10100151: 25-80 % less damage); the ingest drops them.
         if (target is FieldPlayer) {
@@ -155,11 +159,13 @@ public static class DamageCalculator {
             if (buff.ShieldHealth >= attackDamage) {
                 buff.ShieldHealth -= (long) attackDamage;
                 attackDamage = 0;
+                target.Buffs.NoteShield(buff, false);
                 target.Field.Broadcast(BuffPacket.Update(buff, BuffFlag.UpdateBuff));
                 return (DamageType.Block, (long) attackDamage);
             }
 
             attackDamage -= buff.ShieldHealth;
+            buff.ShieldHealth = 0; // NB-30 (BT-223): a shield removed with health left was not broken
             target.Buffs.Remove(buff.Id, target.ObjectId);
         }
 

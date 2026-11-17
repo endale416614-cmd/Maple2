@@ -165,7 +165,11 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
                 try {
                     (DamageType damageTypeResult, long damageResult) = DamageCalculator.CalculateDamage(caster, this, damage.Properties);
                     // Reverse Fair Fight (RFF_DESIGN 3.3): a solo player's direct hit on a boss or group-dungeon monster rises to its floor.
+                    long calculated = damageResult;
                     damageResult = OfflineFairFight.Floor(caster, this, damage.Properties, damageTypeResult, damageResult);
+                    if (caster is FieldPlayer && this is FieldNpc hitNpc) {
+                        PlayLedger.PlayerHit(this, hitNpc.Value.IsBoss, (Field as DungeonFieldManager)?.DungeonRoomRecord, calculated, damageResult); // TM-01 (BT-237, BT-240)
+                    }
                     targetRecord.AddDamage(damageTypeResult, damageResult);
                     damageAmount -= damageResult;
                 } catch (Exception e) {
@@ -192,6 +196,7 @@ public abstract class Actor<T> : IActor<T>, IDisposable {
             // "Killed by" trophies: once, on the hit that takes a player to 0.
             if (this is FieldPlayer killedPlayer && caster is not FieldPlayer && healthBefore > 0 && Stats.Values[BasicAttribute.Health].Current <= 0) {
                 killedPlayer.Session.ConditionUpdate(ConditionType.skill_die, codeLong: damage.SkillId);
+                PlayLedger.Death((caster as FieldNpc)?.Value.Metadata.Id ?? 0, damage.SkillId, positiveDamage, (long) Stats.Values[BasicAttribute.Health].Total); // TM-01 (BT-237)
             }
         }
 

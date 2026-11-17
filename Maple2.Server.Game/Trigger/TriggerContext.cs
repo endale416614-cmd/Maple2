@@ -257,10 +257,11 @@ public partial class TriggerContext : ITriggerContext {
         };
     }
 
-    // Scripts seem to just check if this is "Fail"
+    // FT-13e (BT-239): scripts read "Fail"; the run's state is the room's, and a run fails only by dungeon_fail or the room clock.
     public bool DungeonState(string checkState) {
-        ErrorLog("[GetDungeonState]");
-        return checkState == "";
+        return Field is DungeonFieldManager dungeonField
+            && System.Enum.TryParse(checkState, true, out Maple2.Model.Enum.DungeonState state)
+            && dungeonField.DungeonRoomRecord.State == state;
     }
 
     public bool DungeonFirstUserMissionScore(int score, OperatorType operatorType) {

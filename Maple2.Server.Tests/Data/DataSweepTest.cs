@@ -31,10 +31,10 @@ public class DataSweepTest {
 
     // Error counts per check on the 1.2.2 data (SW-01 triage, RB-01 DBs); a check not listed allows 0. A fix that lowers a count lowers its threshold.
     private static readonly Dictionary<string, int> BaseThresholds = new() {
-        ["Quest references"] = 31, ["Portal -> map"] = 81, ["Trigger names"] = 3, ["Navmesh files"] = 2, ["Rewards"] = 829, ["Trigger states"] = 354,
+        ["Quest references"] = 31, ["Portal -> map"] = 81, ["Trigger names"] = 3, ["Navmesh files"] = 2, ["Rewards"] = 822, ["Trigger states"] = 354,
     };
     private static readonly Dictionary<string, int> PackThresholds = new() {
-        ["Quest references"] = 22, ["Portal -> map"] = 76, ["Trigger names"] = 3, ["Navmesh files"] = 2, ["Rewards"] = 628, ["Trigger states"] = 354,
+        ["Quest references"] = 22, ["Portal -> map"] = 76, ["Trigger names"] = 3, ["Navmesh files"] = 2, ["Rewards"] = 621, ["Trigger states"] = 354,
     };
     // TODO: the pack data is told by its map 52000189 (Prisoner's Tower, CONTENT_REGISTRY); use data-build.json if a pack ever drops it.
     private const int PackMarkerMapId = 52000189;

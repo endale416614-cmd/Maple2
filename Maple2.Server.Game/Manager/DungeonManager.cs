@@ -466,7 +466,7 @@ public class DungeonManager {
             }
             UserRecord.Rewards[DungeonRewardType.Exp] = exp;
             UserRecord.Rewards[DungeonRewardType.Meso] = meso;
-            session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp]);
+            session.Exp.AddExp(UserRecord.Rewards[DungeonRewardType.Exp], source: "dungeon");
             session.Currency.Meso += UserRecord.Rewards[DungeonRewardType.Meso];
             session.Send(DungeonRoomPacket.Modify(DungeonRoomModify.GiveReward, Lobby.DungeonId));
             session.ConditionUpdate(ConditionType.dungeon_reward, codeLong: Lobby.DungeonId / 1000); // trophy codes are room ids without the difficulty suffix

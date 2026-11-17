@@ -44,6 +44,7 @@ public abstract class Session : IDisposable {
     private bool disposed;
     private int clientClosing;
     private int disconnecting; // 0 = not disconnecting, 1 = disconnect in progress/already triggered (reentrancy guard)
+    private long lastReceiveTick = Environment.TickCount64; // NT-03: when the client's last bytes arrived
     private volatile bool sendFailed; // set on first SendRaw failure to stop send queue drain
     private readonly uint siv;
     private readonly uint riv;
@@ -225,6 +226,12 @@ public abstract class Session : IDisposable {
         SendRaw(packet);
     }
 
+    // NT-03 (BT-231): why the receive ended and how long the client had been silent, for a session the server did not close.
+    private void LogReceiveEnd(int socketError) {
+        Logger.Information("Receive ended for {Session}: socket error {SocketError}, {Seconds:F1} s since the last packet, account={AccountId} char={CharacterId}",
+            this, socketError, (Environment.TickCount64 - lastReceiveTick) / 1000.0, AccountId, CharacterId);
+    }
+
     private async Task WriteRecvPipe(Socket socket, PipeWriter writer) {
         try {
             FlushResult result = default;
@@ -246,8 +253,12 @@ public abstract class Session : IDisposable {
                 }
 
                 if (bytesRead <= 0 || disposed) {
+                    if (!disposed) {
+                        LogReceiveEnd(0); // the client closed its side
+                    }
                     break;
                 }
+                lastReceiveTick = Environment.TickCount64;
 
                 // Check if writer was completed before advancing
                 try {
@@ -268,6 +279,7 @@ public abstract class Session : IDisposable {
             Logger.Debug(ex, "WriteRecvPipe exception during disposal account={AccountId} char={CharacterId}", AccountId, CharacterId);
         } catch (Exception ex) {
             Logger.Debug(ex, "WriteRecvPipe exception account={AccountId} char={CharacterId}", AccountId, CharacterId);
+            LogReceiveEnd(((ex as SocketException) ?? (ex.InnerException as SocketException))?.ErrorCode ?? -1);
             Disconnect();
         }
     }

@@ -87,6 +87,7 @@ public class DamageFormulaTest {
         Assert.That(calculator, Does.Contain("Damage.DefensePierce("));
         Assert.That(calculator, Does.Contain("(1 + finalDamage)"));
         string manager = ReadGame("Manager", "StatsManager.cs");
-        Assert.That(manager.Split("Values.AddStatAttack(character.Job.Code());").Length, Is.EqualTo(2), "a player's rebuild adds the attack of the stats once");
+        Assert.That(manager.Split("ConvertThenAddStatAttack(buffs, character.Job.Code());").Length, Is.EqualTo(2), "a player's rebuild adds the attack of the stats once, after the conversions (FT-26c)");
+        Assert.That(manager.Split("Values.AddStatAttack(").Length, Is.EqualTo(2), "and nothing else in the manager adds it");
     }
 }

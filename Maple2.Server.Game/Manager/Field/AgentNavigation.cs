@@ -28,15 +28,18 @@ public sealed class AgentNavigation {
         crowd = dtCrowd;
     }
 
-    public List<RcVec3f>? FindPath(Vector3 startVec, Vector3 targetVec) {
-        return FindPath(crowd, DotRecastHelper.ToNavMeshSpace(startVec), DotRecastHelper.ToNavMeshSpace(targetVec));
+    public List<RcVec3f>? FindPath(Vector3 startVec, Vector3 targetVec, bool endAtPathEnd = false) {
+        return FindPath(crowd, DotRecastHelper.ToNavMeshSpace(startVec), DotRecastHelper.ToNavMeshSpace(targetVec), endAtPathEnd);
     }
 
-    public List<RcVec3f>? FindPath(RcVec3f startVec, RcVec3f targetVec) {
-        return FindPath(crowd, startVec, targetVec);
+    public List<RcVec3f>? FindPath(RcVec3f startVec, RcVec3f targetVec, bool endAtPathEnd = false) {
+        return FindPath(crowd, startVec, targetVec, endAtPathEnd);
     }
 
-    private List<RcVec3f>? FindPath(DtCrowd crowd, RcVec3f startVec, RcVec3f targetVec) {
+    /// <summary>PI-01 (BT-252): <paramref name="endAtPathEnd"/> is for the chase of a target (MoveTargetDistance): when the target is on another part of the
+    /// mesh the path ends at the nearest point of its own part, and is null when the NPC already stands there. Every move to a point (Move node, patrol, return) leaves
+    /// it off: its points are authored and may lie across a gap on purpose, so it still ends at the target.</summary>
+    private List<RcVec3f>? FindPath(DtCrowd crowd, RcVec3f startVec, RcVec3f targetVec, bool endAtPathEnd = false) {
         DtNavMesh navMesh = crowd.GetNavMesh();
         DtNavMeshQuery navMeshQuery = crowd.GetNavMeshQuery();
         IDtQueryFilter filter = crowd.GetFilter(0);
@@ -51,16 +54,24 @@ public sealed class AgentNavigation {
         }
 
         List<long> pathIterPolys = [];
-        navMeshQuery.FindPath(pos1Ref, posRef2, startVec, targetVec, filter, ref pathIterPolys, new DtFindPathOption(0, float.MaxValue));
+        DtStatus pathStatus = navMeshQuery.FindPath(pos1Ref, posRef2, startVec, targetVec, filter, ref pathIterPolys, new DtFindPathOption(0, float.MaxValue));
         if (pathIterPolys.Count == 0) {
             Logger.Error("Failed to find path from {StartVec} to {TargetVec}", startVec, targetVec);
             return null;
         }
 
         int pathIterPolysCount = pathIterPolys.Count;
+        // PI-01 (BT-252): a path whose last polygon is not the target's ends on its own mesh island; one cut short because the search ran
+        // out of nodes does not show that, so it keeps the target as its end.
+        bool endAtTarget = !endAtPathEnd || pathIterPolys[pathIterPolysCount - 1] == posRef2 || (pathStatus.Value & DtStatus.DT_OUT_OF_NODES.Value) != 0;
 
         navMeshQuery.ClosestPointOnPoly(pos1Ref, startVec, out RcVec3f iterPos, out bool _);
         navMeshQuery.ClosestPointOnPoly(pathIterPolys[pathIterPolysCount - 1], targetVec, out RcVec3f endPos, out bool _);
+
+        // PI-01 (BT-252): already at the edge of its own part: no path, like a target off the mesh (a one-point path started a walk that ended at once).
+        if (!endAtTarget && DtPathUtils.InRange(iterPos, endPos, DotRecastHelper.MIN_TARGET_DIST, 1.0f)) {
+            return null;
+        }
 
         Span<long> visited = stackalloc long[16];
         int nvisited = 0;
@@ -104,8 +115,8 @@ public sealed class AgentNavigation {
 
             // Handle end of path and off-mesh links when close enough.
             if (endOfPath && DtPathUtils.InRange(iterPos, steerPos, DotRecastHelper.MIN_TARGET_DIST, 1.0f)) {
-                // Reached end of path.
-                iterPos = targetVec;
+                // Reached end of path: the target, or the point of the last polygon nearest to it when it is on another part of the mesh (PI-01, BT-252).
+                iterPos = endAtTarget ? targetVec : endPos;
                 if (smoothPath.Count < MAX_SMOOTH) {
                     smoothPath.Add(iterPos);
                 }
@@ -318,7 +329,9 @@ public sealed class AgentNavigation {
         return field.FindNearestPoly(point, out polyRef, out position) && polyRef != 0;
     }
 
-    public bool PathTo(Vector3 goal) {
+    /// <summary>A path to <paramref name="goal"/>. <paramref name="endAtPathEnd"/>: see FindPath; false then also when the NPC already
+    /// stands where its part of the mesh ends nearest the goal.</summary>
+    public bool PathTo(Vector3 goal, bool endAtPathEnd = false) {
         if (!TryFindPoly(agent.npos, out _, out _)) {
             return false;
         }
@@ -327,7 +340,7 @@ public sealed class AgentNavigation {
             return false;
         }
 
-        return SetPathTo(end);
+        return SetPathTo(end, endAtPathEnd);
     }
 
     /// <summary>
@@ -355,12 +368,12 @@ public sealed class AgentNavigation {
         return false;
     }
 
-    private bool SetPathTo(RcVec3f target) {
+    private bool SetPathTo(RcVec3f target, bool endAtPathEnd) {
         currentPath = [];
         currentPathIndex = 0;
         currentPathProgress = 0;
         try {
-            currentPath = FindPath(agent.npos, target);
+            currentPath = FindPath(agent.npos, target, endAtPathEnd);
         } catch (Exception ex) {
             Logger.Error(ex, "Failed to find path to {Target}", target);
         }

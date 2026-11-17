@@ -83,4 +83,7 @@ foreach (ActionDescriptor route in routes) {
     Log.Logger.Debug("{Route}", route.AttributeRouteInfo?.Template);
 }
 
+// SV-01 (BT-248): a host that stops says so; a process that is ended from outside leaves no such line.
+app.Lifetime.ApplicationStopping.Register(() => Log.Information("WebServer stopping"));
+
 await app.RunAsync();

@@ -13,6 +13,7 @@ using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Core.Constants;
 using Maple2.Server.Game.Model.ActorStateComponent;
+using Maple2.Server.Game.Util;
 using Maple2.Server.Game.Model.Skill;
 using Maple2.Server.Game.Trigger;
 using Maple2.Server.Game.Trigger.Helpers;
@@ -41,36 +42,95 @@ public class BehaviorRegistryTest {
     ];
 
     // FT-04: the fidelity counts on the 1.2.2 data, the same on the base and the pack DBs; a count above its threshold fails the test.
-    // A change that lowers a count lowers its threshold.
+    // A change that lowers a count lowers its threshold. FT-07: the counts are of what a player can meet, so a threshold also drops when the
+    // count's rule narrows (an NPC placed or summoned, a node in an AI an NPC runs, a script with a map row, a no-op not on the on-purpose list);
+    // the 1.2.2 values were 3012 stub calls, 28 empty node uses, 310 NPCs without an AI file and 5 tables never read.
     private static readonly Dictionary<string, int> Thresholds = new() {
-        ["Trigger stub calls"] = 3012, ["Empty AI node uses"] = 28, ["NPCs without an AI file"] = 310, ["RecvOps without a handler"] = 7,
-        ["SendOps never sent"] = 29, ["Tables never read"] = 5, ["Condition types never reported"] = 99,
+        ["Trigger stub calls"] = 2811, ["Empty AI node uses"] = 3, ["NPCs without an AI file"] = 54, ["RecvOps without a handler"] = 7,
+        ["SendOps never sent"] = 29, ["Tables never read"] = 3, ["Condition types never reported"] = 99,
     };
 
-    /// <summary>Counts of the unsupported AI steps in every tree of <paramref name="ai"/> (reserved, battle, battle end, presets).</summary>
-    public static Dictionary<string, int> Unsupported(AiMetadata ai) {
-        var counts = new Dictionary<string, int>();
-        void Walk(AiMetadata.Entry entry) {
-            string name = entry.GetType().Name;
-            if (Blocking.Contains(name) || Degrading.Contains(name)) {
-                counts[name] = counts.GetValueOrDefault(name) + 1;
-            }
+    /// <summary>Every entry in the trees of <paramref name="ai"/> (reserved, battle, battle end, presets), nested ones too.</summary>
+    public static IEnumerable<AiMetadata.Entry> AllEntries(AiMetadata ai) {
+        static IEnumerable<AiMetadata.Entry> Walk(AiMetadata.Entry entry) {
+            yield return entry;
             if (entry is AiMetadata.Node node) {
-                foreach (AiMetadata.Entry child in node.Entries) {
-                    Walk(child);
+                foreach (AiMetadata.Entry child in node.Entries.SelectMany(Walk)) {
+                    yield return child;
                 }
             }
             // A conditions node keeps steps under its conditions too (AiState.ProcessNode runs them).
             foreach (AiMetadata.Condition condition in (entry as AiMetadata.ConditionsNode)?.Conditions ?? []) {
-                Walk(condition);
+                foreach (AiMetadata.Entry child in Walk(condition)) {
+                    yield return child;
+                }
             }
         }
 
-        foreach (AiMetadata.Entry entry in ai.Reserved.Concat(ai.Battle).Concat(ai.BattleEnd).Concat(ai.AiPresets)) {
-            Walk(entry);
+        return ai.Reserved.Concat(ai.Battle).Concat(ai.BattleEnd).Concat(ai.AiPresets).SelectMany(Walk);
+    }
+
+    /// <summary>Counts of the unsupported AI steps in every tree of <paramref name="ai"/> (reserved, battle, battle end, presets).</summary>
+    public static Dictionary<string, int> Unsupported(AiMetadata ai) {
+        var counts = new Dictionary<string, int>();
+        foreach (string name in AllEntries(ai).Select(entry => entry.GetType().Name).Where(name => Blocking.Contains(name) || Degrading.Contains(name))) {
+            counts[name] = counts.GetValueOrDefault(name) + 1;
         }
         return counts;
     }
+
+    /// <summary>
+    /// FT-07: the NPCs a player can meet: those <paramref name="placed"/> by the maps, the quests' fallback or offline-spawns.json, and the NPCs
+    /// the summon nodes of their AIs name, and those NPCs' summons in turn. <paramref name="aiOf"/> gives the AI an NPC runs (null: none);
+    /// a summon node's npcId is an index into the summoner's list, <paramref name="summonsOf"/> (SummonRules.Resolve, as AiState reads it).
+    /// </summary>
+    public static HashSet<int> WithSummons(IEnumerable<int> placed, Func<int, AiMetadata?> aiOf, Func<int, IReadOnlyList<int>?> summonsOf) {
+        var meetable = new HashSet<int>(placed);
+        var pending = new Queue<int>(meetable);
+        while (pending.TryDequeue(out int id)) {
+            if (aiOf(id) is not { } ai) {
+                continue;
+            }
+            foreach (int summoned in AllEntries(ai).OfType<AiMetadata.SummonNode>().Select(node => SummonRules.Resolve(summonsOf(id), node.NpcId)).OfType<int>()) {
+                if (meetable.Add(summoned)) {
+                    pending.Enqueue(summoned);
+                }
+            }
+        }
+        return meetable;
+    }
+
+    /// <summary>The AI each NPC runs, as AiState finds it: the default AI (null), a file of the data, or the NB-05 substitute for a missing path.</summary>
+    public static Func<int, AiMetadata?> AiLookup(IReadOnlyDictionary<string, AiMetadata> ais, IReadOnlyDictionary<int, string> aiPathByNpc) {
+        string[] names = ais.Keys.ToArray();
+        return id => {
+            if (!aiPathByNpc.TryGetValue(id, out string? path) || path == "AI_DefaultNew.xml") {
+                return null;
+            }
+            if (ais.TryGetValue(path, out AiMetadata? ai)) {
+                return ai;
+            }
+            return AiMetadataStorage.Substitute(path, names) is { } substitute ? ais[substitute] : null;
+        };
+    }
+
+    // FT-07: trigger functions that do nothing on purpose; they stay out of "Trigger stub calls" and are listed in the registry as such.
+    // A name is here only with its reason, and only while the TriggerContext method still does nothing (OnPurposeNoOps_AreStubsWithAReason).
+    private const string OnlineOnly = "an online-only system (PvP, guild vs guild) that stays closed in both modes (COOP_DESIGN.md F-3)";
+    public static readonly Dictionary<(string Kind, string Name), string> OnPurposeNoOps = new() {
+        [("action", "set_pvp_zone")] = OnlineOnly,
+        [("condition", "pvp_zone_ended")] = OnlineOnly,
+        [("action", "guild_vs_game_end_game")] = OnlineOnly,
+        [("action", "guild_vs_game_give_contribution")] = OnlineOnly,
+        [("action", "guild_vs_game_give_reward")] = OnlineOnly,
+        [("action", "guild_vs_game_log_result")] = OnlineOnly,
+        [("action", "guild_vs_game_log_won_by_default")] = OnlineOnly,
+        [("action", "guild_vs_game_result")] = OnlineOnly,
+        [("action", "guild_vs_game_score_by_user")] = OnlineOnly,
+        [("action", "set_user_value_from_guild_vs_game_score")] = OnlineOnly,
+        [("condition", "guild_vs_game_scored_team")] = OnlineOnly,
+        [("condition", "guild_vs_game_winner_team")] = OnlineOnly,
+    };
 
     // NB-28: the NPC attack rows the wave 3 rules reach, of those that deal damage or carry skills. Keyless: no key of the motion's
     // sequence names the point, so it fires at the sequence's end (NB-19, NB-19b). MissingSequence: the NPC's model lacks the
@@ -208,6 +268,45 @@ public class BehaviorRegistryTest {
     }
 
     [Test]
+    public void WithSummons_FollowsTheChainOfSummonNodes() {
+        // A summon node's npcId is the 1-based index into its summoner's list.
+        AiMetadata Summoning(params int[] indexes) => new("ai", [], [new AiMetadata.Node("battle", [
+            .. indexes.Select(index => new AiMetadata.SummonNode("summon", [], index, 1, 1, 0, 0, default, default, default, default, default, 0, default, [], 0, false)),
+        ])], [], []);
+        var ais = new Dictionary<int, AiMetadata> { [1] = Summoning(2), [2] = Summoning(1, 3), [4] = Summoning(1) };
+        var lists = new Dictionary<int, int[]> { [1] = [7, 2], [2] = [3, 1], [4] = [5] };
+
+        HashSet<int> meetable = WithSummons([1, 9], id => ais.GetValueOrDefault(id), id => lists.GetValueOrDefault(id));
+
+        Assert.That(meetable, Is.EquivalentTo(new[] { 1, 2, 3, 9 }), "placed 1 summons its entry 2 (NPC 2), which summons entries 1 and 3 (NPC 3, and none); 4 and 5 are never placed");
+    }
+
+    [Test]
+    public void AiLookup_FindsFileSubstituteOrDefault() {
+        var file = new AiMetadata("Npc/AI_Boss.xml", [], [], [], []);
+        var ais = new Dictionary<string, AiMetadata>(StringComparer.OrdinalIgnoreCase) { [file.Name] = file };
+        Func<int, AiMetadata?> aiOf = AiLookup(ais, new Dictionary<int, string> {
+            [1] = "Npc/AI_Boss.xml", [2] = "Other/AI_Boss.xml", [3] = "AI_DefaultNew.xml", [4] = "Npc/AI_Missing.xml",
+        });
+
+        Assert.That(aiOf(1), Is.SameAs(file));
+        Assert.That(aiOf(2), Is.SameAs(file), "a missing path takes the one file of that name");
+        Assert.That(aiOf(3), Is.Null);
+        Assert.That(aiOf(4), Is.Null);
+        Assert.That(aiOf(5), Is.Null, "an NPC with no AI path");
+    }
+
+    [Test]
+    public void OnPurposeNoOps_AreStubsWithAReason() {
+        Assert.That(OnPurposeNoOps.Where(pair => pair.Value.Length < 20).Select(pair => pair.Key), Is.Empty, "each name has its reason");
+        foreach (((string kind, string name), _) in OnPurposeNoOps) {
+            Delegate? factory = kind == "action" ? TriggerFunctionMapping.ActionMap.GetValueOrDefault(name) : TriggerFunctionMapping.ConditionMap.GetValueOrDefault(name);
+            Assert.That(factory, Is.Not.Null, $"{kind} {name} is a trigger function");
+            Assert.That(ContextMethod(factory!) is { } method && DoesNothing(method), Is.True, $"{kind} {name} still does nothing; take it off the list when it works");
+        }
+    }
+
+    [Test]
     public void DoesNothing_OnlyLogsOrAnswersFromItsArguments() {
         MethodInfo Local(string name) => typeof(BehaviorRegistryTest).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Static)!;
         Assert.That(DoesNothing(Local(nameof(Empty))), Is.True);
@@ -323,7 +422,9 @@ public class BehaviorRegistryTest {
         }
         Assert.That(rows, Is.Not.Empty, "no NPC with an AI in the data");
 
-        Dictionary<string, int> fidelity = WriteFidelityRegistry(context, ais, rows.Select(row => row.AiPath), outputDir, path!);
+        Func<int, AiMetadata?> aiOf = AiLookup(ais, rows.ToDictionary(row => row.Id, row => row.AiPath));
+        HashSet<int> meetable = QuestRegistryTest.NpcsAPlayerCanMeet(context, aiOf);
+        Dictionary<string, int> fidelity = WriteFidelityRegistry(context, ais, rows.Select(row => (row.Id, row.AiPath, row.RunsAi)), meetable, outputDir, path!);
         Assert.That(DataSweepTest.OverThresholds(fidelity.Select(pair => (pair.Key, pair.Value)), Thresholds), Is.Empty,
             $"fidelity counts above their FT-04 thresholds; the lists are in {outputDir}");
     }
@@ -332,7 +433,9 @@ public class BehaviorRegistryTest {
     // nothing, the uses of empty AI nodes, NPCs whose AI path has no file, RecvOps without a handler and SendOps never sent that the
     // captures have (capture-opcode-tally.tsv, FT-01), storage tables never read, and condition types the data's quests and trophies use
     // that are never reported. A name in the sources counts as a handler, a send, a read or a report, so those counts are floors.
-    private static Dictionary<string, int> WriteFidelityRegistry(MetadataContext context, Dictionary<string, AiMetadata> ais, IEnumerable<string> npcAiPaths, string outputDir, string dataPath) {
+    // FT-07: of what a player can meet. Stub calls count the scripts that have a map row, minus the on-purpose no-ops; empty AI nodes count the AIs an
+    // NPC runs; NPCs without an AI file count those placed or summoned (meetable); the table scan also reads Maple2.Database.
+    private static Dictionary<string, int> WriteFidelityRegistry(MetadataContext context, Dictionary<string, AiMetadata> ais, IEnumerable<(int Id, string AiPath, string RunsAi)> npcs, HashSet<int> meetable, string outputDir, string dataPath) {
         var rows = new List<(string Kind, string Name, int? Uses)>();
         var counts = new Dictionary<string, int>();
         void Add(string count, string kind, IEnumerable<(string Name, int? Uses)> found, bool byUses = false) {
@@ -345,8 +448,10 @@ public class BehaviorRegistryTest {
             .Concat(TriggerFunctionMapping.ConditionMap.Select(pair => (Kind: "condition", Name: pair.Key, Factory: (Delegate) pair.Value)))
             .Where(function => ContextMethod(function.Factory) is { } method && DoesNothing(method))
             .Select(function => (function.Kind, function.Name)).ToHashSet();
+        HashSet<string> mapBlocks = context.MapMetadata.Select(map => map.XBlock).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var calls = new Dictionary<(string Kind, string Name), int>();
-        foreach (TriggerMetadata trigger in context.TriggerMetadata) {
+        var onPurpose = new Dictionary<(string Kind, string Name), int>();
+        foreach (TriggerMetadata trigger in context.TriggerMetadata.AsEnumerable().Where(trigger => mapBlocks.Contains(trigger.MapXBlock))) {
             var document = new XmlDocument();
             try {
                 document.LoadXml(trigger.Xml);
@@ -356,7 +461,8 @@ public class BehaviorRegistryTest {
             foreach (string kind in new[] { "action", "condition" }) {
                 foreach (XmlNode node in document.SelectNodes($"//{kind}")!) {
                     if (node.Attributes?["name"]?.Value is { } name && stubs.Contains((kind, name))) {
-                        calls[(kind, name)] = calls.GetValueOrDefault((kind, name)) + 1;
+                        Dictionary<(string Kind, string Name), int> into = OnPurposeNoOps.ContainsKey((kind, name)) ? onPurpose : calls;
+                        into[(kind, name)] = into.GetValueOrDefault((kind, name)) + 1;
                     }
                 }
             }
@@ -365,13 +471,14 @@ public class BehaviorRegistryTest {
             Add("Trigger stub calls", $"trigger {kind} doing nothing", calls.Where(pair => pair.Key.Kind == kind).Select(pair => (pair.Key.Name, (int?) pair.Value)), byUses: true);
         }
 
+        rows.AddRange(onPurpose.OrderBy(pair => pair.Key.Name, StringComparer.Ordinal).Select(pair => ($"trigger {pair.Key.Kind} doing nothing on purpose", pair.Key.Name, (int?) pair.Value)));
         var nodeUses = new Dictionary<string, int>();
-        foreach ((string step, int uses) in ais.Values.SelectMany(ai => Unsupported(ai))) {
+        foreach ((string step, int uses) in npcs.Select(npc => npc.RunsAi).Where(ais.ContainsKey).Distinct(StringComparer.OrdinalIgnoreCase).SelectMany(name => Unsupported(ais[name]))) {
             nodeUses[step] = nodeUses.GetValueOrDefault(step) + uses;
         }
         Add("Empty AI node uses", "empty AI node", nodeUses.Select(pair => (pair.Key, (int?) pair.Value)), byUses: true);
-        Add("NPCs without an AI file", "AI path without a file", npcAiPaths.Where(aiPath => aiPath != "AI_DefaultNew.xml" && !ais.ContainsKey(aiPath))
-            .GroupBy(aiPath => aiPath, StringComparer.OrdinalIgnoreCase).Select(group => (group.Key, (int?) group.Count())), byUses: true);
+        Add("NPCs without an AI file", "AI path without a file", npcs.Where(npc => meetable.Contains(npc.Id) && npc.AiPath != "AI_DefaultNew.xml" && !ais.ContainsKey(npc.AiPath))
+            .GroupBy(npc => npc.AiPath, StringComparer.OrdinalIgnoreCase).Select(group => (group.Key, (int?) group.Count())), byUses: true);
 
         // The sources sit beside capture-opcode-tally.tsv in the Maple2 folder, above the test's output folder.
         string? root = AppContext.BaseDirectory;
@@ -379,7 +486,7 @@ public class BehaviorRegistryTest {
             root = Path.GetDirectoryName(root);
         }
         Assert.That(root, Is.Not.Null, "capture-opcode-tally.tsv not found above the test output");
-        Dictionary<string, string> sources = new[] { "Maple2.Server.Core", "Maple2.Server.Game", "Maple2.Server.Login", "Maple2.Server.World", "Maple2.Server.Web" }
+        Dictionary<string, string> sources = new[] { "Maple2.Database", "Maple2.Server.Core", "Maple2.Server.Game", "Maple2.Server.Login", "Maple2.Server.World", "Maple2.Server.Web" }
             .SelectMany(project => Directory.EnumerateFiles(Path.Combine(root!, project), "*.cs", SearchOption.AllDirectories))
             .ToDictionary(file => file, File.ReadAllText);
         string code = string.Join("\n", sources.Values);

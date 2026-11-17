@@ -92,7 +92,10 @@ public class DungeonRegistryTest {
             if (room.Limit.MinUserCount > room.Limit.MaxUserCount) {
                 reasons.Add($"min users {room.Limit.MinUserCount} above max {room.Limit.MaxUserCount}");
             }
-            string status = missing ? "error" : reasons.Count > 0 ? "warning" : "ok";
+            // FT-07: a room with no field, no encounter, no clear and no reward is a placeholder row of the table, not a room a player can enter.
+            bool placeholder = !room.FieldIds.Prepend(room.LobbyFieldId).Any(id => id > 0) && spawns == 0 && triggers == 0 && !clear
+                && boxes.Length == 0 && room.Reward.Exp == 0 && room.Reward.Meso == 0;
+            string status = missing ? "error" : placeholder ? "placeholder" : reasons.Count > 0 ? "warning" : "ok";
             rows.Add(new Row(room, spawns, triggers, clear, boxes, status, reasons));
         }
 
@@ -117,10 +120,10 @@ public class DungeonRegistryTest {
             md.WriteLine($"Generated: {DateTime.Now:yyyy-MM-dd}");
             md.WriteLine();
             md.WriteLine("## Status by group type");
-            md.WriteLine("| Group type | Ok | Warning | Error |");
-            md.WriteLine("|---|---:|---:|---:|");
+            md.WriteLine("| Group type | Ok | Warning | Placeholder | Error |");
+            md.WriteLine("|---|---:|---:|---:|---:|");
             foreach (IGrouping<DungeonGroupType, Row> group in rows.GroupBy(row => row.Room.GroupType).OrderBy(group => group.Key.ToString())) {
-                md.WriteLine($"| {group.Key} | {group.Count(r => r.Status == "ok")} | {group.Count(r => r.Status == "warning")} | {group.Count(r => r.Status == "error")} |");
+                md.WriteLine($"| {group.Key} | {group.Count(r => r.Status == "ok")} | {group.Count(r => r.Status == "warning")} | {group.Count(r => r.Status == "placeholder")} | {group.Count(r => r.Status == "error")} |");
             }
             md.WriteLine();
             md.WriteLine("## Reason kinds");
@@ -130,7 +133,7 @@ public class DungeonRegistryTest {
                 md.WriteLine($"| {kind.Key} | {kind.Count()} |");
             }
             md.WriteLine();
-            md.WriteLine("## Rooms with an error or a warning");
+            md.WriteLine("## Rooms with an error, a warning or a placeholder");
             md.WriteLine("| Id | Group type | Status | Reasons |");
             md.WriteLine("|---|---|---|---|");
             foreach (Row row in rows.Where(row => row.Status != "ok")) {
@@ -139,7 +142,7 @@ public class DungeonRegistryTest {
         }
 
         Assert.That(rows.Count, Is.EqualTo(tables.DungeonRoomTable.Entries.Count));
-        TestContext.WriteLine($"{rows.Count} rooms: ok {rows.Count(r => r.Status == "ok")}, warning {rows.Count(r => r.Status == "warning")}, error {rows.Count(r => r.Status == "error")}");
+        TestContext.WriteLine($"{rows.Count} rooms: ok {rows.Count(r => r.Status == "ok")}, warning {rows.Count(r => r.Status == "warning")}, placeholder {rows.Count(r => r.Status == "placeholder")}, error {rows.Count(r => r.Status == "error")}");
     }
 
     private static string Quote(string field) => field.Contains(',') || field.Contains('"') ? $"\"{field.Replace("\"", "\"\"")}\"" : field;

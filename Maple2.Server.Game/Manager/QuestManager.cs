@@ -425,7 +425,7 @@ public sealed class QuestManager {
         }
 
         if (reward.Exp > 0) {
-            session.Exp.AddExp(reward.Exp);
+            session.Exp.AddExp(reward.Exp, source: "quest");
         } else if (ExperienceManager.PaysRelativeExp(reward.RelativeExp)) {
             session.Exp.AddExp(reward.RelativeExp);
         }

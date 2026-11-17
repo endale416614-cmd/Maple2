@@ -61,7 +61,8 @@ public class AnimationManager {
         string idleName = "Idle_A";
         if (actor is FieldNpc npc) {
             idleName = npc.Value.Metadata.Action.Actions.FirstOrDefault()?.Name ?? idleName;
-            IdleSequenceId = RigMetadata.Sequences.FirstOrDefault(sequence => sequence.Key.Contains(idleName)).Value.Id;
+            // AN-01 (BT-279): a model with no sequence for the idle action has no idle sequence, as an NPC with no rig (0), not a failed spawn.
+            IdleSequenceId = RigMetadata.Sequences.FirstOrDefault(sequence => sequence.Key.Contains(idleName)).Value?.Id ?? 0;
             return;
         }
         IdleSequenceId = RigMetadata.Sequences.FirstOrDefault(sequence => sequence.Key == idleName).Value.Id;

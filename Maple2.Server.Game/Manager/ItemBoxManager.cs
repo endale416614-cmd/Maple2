@@ -204,6 +204,9 @@ public class ItemBoxManager {
         return error;
     }
 
+    // RW-02: an OpenItemBox with an item id (parameter 2) and drop box id 0 gives that item and nothing from a table; DataSweepTest's reward check uses it too.
+    public static bool GivesItemDirectly(int itemId, int individualDropBoxId) => itemId > 0 && individualDropBoxId == 0;
+
     private ItemBoxError OpenItemBox(Item item, int globalDropBoxId, int unknownId, int itemId, int individualDropBoxId, int itemRequiredAmount, int count = 1) {
         if (session.Field is null) return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         // unknownId is treated as a bool. if 1 = receive one item from each drop group, if 0 = receive all items from one drop group.
@@ -214,7 +217,9 @@ public class ItemBoxManager {
         }
 
         // Verify table exists before consuming items
-        if (!session.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out IDictionary<int, IndividualDropItemTable.Entry>? entryDic)) {
+        // RW-02: a box that names its item (itemId) and no drop box (id 0) has no table to find (30000928 Level Up Mission Box).
+        IDictionary<int, IndividualDropItemTable.Entry>? entryDic = null;
+        if (!GivesItemDirectly(itemId, individualDropBoxId) && !session.ServerTableMetadata.IndividualDropItemTable.Entries.TryGetValue(individualDropBoxId, out entryDic)) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
@@ -223,7 +228,7 @@ public class ItemBoxManager {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 
-        if (!session.Field.ItemDrop.CanGiveItem(entryDic) && globalDropEntries.Count == 0) {
+        if (entryDic != null && !session.Field.ItemDrop.CanGiveItem(entryDic) && globalDropEntries.Count == 0) {
             return ItemBoxError.s_err_cannot_open_multi_itembox_inventory_fail;
         }
 

@@ -1,0 +1,7 @@
+{
+  // BL-01: the damage factors of the damage calculator. Edit and restart the game to apply; a missing or invalid file gives these values.
+  // A player's hits (the GMS captures of level-matched hits fit 4).
+  "PlayerFactor": 4,
+  // A monster's hits on players (the GMS captures fit 2.8: median 2.80 over 2,594 hits).
+  "NpcFactor": 2.8
+}

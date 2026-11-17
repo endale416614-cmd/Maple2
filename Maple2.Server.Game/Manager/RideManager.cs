@@ -42,8 +42,16 @@ public sealed class RideManager {
         return true;
     }
 
+    /// <summary>RM-01: the mount an effect's mount replaces: one from an item, not one from another effect and not an object ride.</summary>
+    public static bool ReplacedByEffectMount(RideOnAction? action) => action is RideOnActionDefault;
+
     public bool Mount(AdditionalEffectMetadata additionalEffectMetadata) {
         if (session.Field is null) return false;
+        // RM-01 (BT-232): a map script's battle mount was refused while the player rode, so the rider is taken off an item's mount
+        // first. A reconstruction: what the original does is not captured.
+        if (ReplacedByEffectMount(Ride?.Action) && session.Field.RideMetadata.TryGet(additionalEffectMetadata.Property.RideId, out _)) {
+            Dismount(RideOffType.AdditionalEffect);
+        }
         if (Ride != null) {
             return false;
         }

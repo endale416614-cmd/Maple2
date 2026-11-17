@@ -146,7 +146,10 @@ public class PetHandler : FieldPacketHandler {
         ConstantsTable constants = session.ServerTableMetadata.ConstantsTable;
         lock (session.Item) {
             Item? pet = session.Item.Inventory.Get(petUid, InventoryType.Pets);
-            if (pet?.Pet == null || pet.Pet.Level >= constants.PetMaxLevel || fodders.Count == 0 || fodders.DistinctBy(fodder => fodder.Uid).Count() != fodders.Count) {
+            // PE-04 (BT-242): a pet that cannot level (the last level, or a rarity with no threshold) is refused before anything is
+            // taken, and every refusal answers, so the fusion window does not wait.
+            if (pet?.Pet == null || !PetFusion.CanLevel(pet, levels, constants.PetMaxLevel) || fodders.Count == 0 || fodders.DistinctBy(fodder => fodder.Uid).Count() != fodders.Count) {
+                session.Send(PetPacket.Error(PetError.s_common_error_unknown));
                 return;
             }
 
@@ -160,6 +163,7 @@ public class PetHandler : FieldPacketHandler {
                     if (fodder == null || uid == petUid || uid == session.Pet?.Pet.Uid || fodder.IsLocked || fodder.IsExpired() || amount <= 0 || fodder.Amount < amount
                         || (fodder.Pet != null && db.GetStorage(uid).Count > 0)
                         || PetFusion.Fodder(pet, fodder, amount, fusions, constants.DailyPetEnchantMaxCount) is not { } gain) {
+                        session.Send(PetPacket.Error(PetError.s_common_error_unknown));
                         return;
                     }
                     exp += gain.Exp;

@@ -42,6 +42,17 @@ public class ScriptBuffSpawnIdTest {
         Assert.That(npc.Buffs.EnumerateBuffs(), Is.Empty);
     }
 
+    // TG-04 (BT-221): is_player names the box's players, as a remove without it does. Today the flag reaches an "ignore the players"
+    // switch and takes the buff off the box's monsters (box 0: every monster).
+    [Test]
+    public void ARemoveWithIsPlayerLeavesTheMonsters() {
+        var scene = new Scene();
+        FieldNpc monster = scene.Npc(1, 201);
+        monster.Buffs.AddBuff(monster, monster, 69000501, 1, 1000);
+        scene.Context.RemoveBuff(0, 69000501, true); // as 02020101_bf writes it: is_player="true"
+        Assert.That(monster.Buffs.HasBuff(69000501), Is.True);
+    }
+
     [Test]
     public void TheExcludedAddsStayOff() {
         var scene = new Scene();

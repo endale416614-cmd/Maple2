@@ -707,7 +707,7 @@ public partial class FieldManager {
             Interval = TriggerInterval(triggerSkill.Interval ?? 0), // every placement of the map data since RB-02 has one (TriggerRepeatDataTest)
         };
 
-        fieldSkills[fieldSkill.ObjectId] = fieldSkill;
+        AddRegion(fieldSkill);
         Broadcast(RegionSkillPacket.Add(fieldSkill));
     }
 
@@ -718,7 +718,7 @@ public partial class FieldManager {
             TriggerId = triggerId,
         };
 
-        fieldSkills[fieldSkill.ObjectId] = fieldSkill;
+        AddRegion(fieldSkill);
         Broadcast(RegionSkillPacket.Add(fieldSkill));
     }
 
@@ -736,7 +736,7 @@ public partial class FieldManager {
                 Rotation = rotation,
             };
 
-            fieldSkills[fieldSkill.ObjectId] = fieldSkill;
+            AddRegion(fieldSkill);
             Broadcast(RegionSkillPacket.Add(fieldSkill));
         }
     }
@@ -854,6 +854,40 @@ public partial class FieldManager {
     public IEnumerable<IActor> GetTargets(SkillRecord record, ICollection<IActor>? ignore = null) {
         Prism[] prisms = [record.Attack.Range.GetPrism(record.ImpactPosition, record.Rotation.Z)];
         return GetTargets(record.Caster, prisms, record.Attack.Range, record.Attack.TargetCount, ignore);
+    }
+
+    // RN-01 (BT-238): live regions are capped, so a fight cannot grow the list without end (a region can live for days).
+    // The map's own regions count toward the field's cap only: map 02000252 places 457 of them.
+    private const int MaxRegions = 2000;
+    private const int MaxRegionsPerCaster = 1000;
+    private bool regionCapLogged;
+
+    // Adds a region. At a cap the oldest region goes first: the caster's own at the caster's cap, else the field's.
+    private void AddRegion(FieldSkill fieldSkill) {
+        int count = fieldSkills.Count; // TM-01 (BT-238): one count for the cap and the ledger
+        if (count >= MaxRegionsPerCaster) {
+            FieldSkill? oldest = null;
+            if (fieldSkill.Caster != FieldActor) {
+                FieldSkill[] own = fieldSkills.Values.Where(skill => skill.Caster == fieldSkill.Caster).ToArray();
+                if (own.Length >= MaxRegionsPerCaster) {
+                    oldest = own.MinBy(skill => skill.ObjectId);
+                }
+            }
+            if (oldest == null && count >= MaxRegions) {
+                // The map's own regions hold the lowest ids and are never added again: an actor's oldest goes before them.
+                oldest = fieldSkills.Values.Where(skill => skill.Caster != FieldActor).MinBy(skill => skill.ObjectId) ?? fieldSkills.Values.MinBy(skill => skill.ObjectId);
+            }
+            if (oldest != null) {
+                if (!regionCapLogged) {
+                    regionCapLogged = true;
+                    logger.Warning("Region cap reached in map {MapId}, room {RoomId}: {Count} regions, the oldest goes (skill {SkillId})", MapId, RoomId, fieldSkills.Count, oldest.Value.Id);
+                }
+                RemoveSkill(oldest.ObjectId);
+                count--;
+            }
+        }
+        fieldSkills[fieldSkill.ObjectId] = fieldSkill;
+        PlayLedger.Regions(MapId, count + 1); // TM-01 (BT-238)
     }
 
     public void RemoveSkill(int objectId) {

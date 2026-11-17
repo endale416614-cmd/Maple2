@@ -6,6 +6,7 @@ using Maple2.Model.Game.Dungeon;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Model;
 using Maple2.Server.Game.Packets;
+using Maple2.Server.Game.Util;
 using Maple2.Tools.Extensions;
 
 namespace Maple2.Server.Game.Manager.Field;
@@ -106,6 +107,7 @@ public class DungeonFieldManager : FieldManager {
         }
 
         Broadcast(DungeonRoomPacket.DungeonResult(DungeonRoomRecord.State, compiledResults));
+        PlayLedger.DungeonEnd(DungeonId, DungeonRoomRecord, DungeonRoomRecord.EndTick); // TM-01 (BT-240)
 
         if (DungeonRoomRecord.State == DungeonState.Clear) {
             long clearTimestamp = DateTime.Now.ToEpochSeconds();

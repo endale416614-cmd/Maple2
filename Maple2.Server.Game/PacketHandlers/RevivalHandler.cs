@@ -44,6 +44,7 @@ public class RevivalHandler : FieldPacketHandler {
         DungeonRoomRecord? run = (session.Field as DungeonFieldManager)?.DungeonRoomRecord;
         int revivals = run?.Revivals.GetValueOrDefault(session.CharacterId) ?? 0;
         if (run is not null && !CanSafeRevive(run.Metadata.Limit.MaxRevivalCount, revivals)) {
+            session.Send(RevivalLimitNotice()); // RL-01 (BT-236): the request used to get no answer
             return;
         }
         // Revive player - this will handle moving to spawn point
@@ -61,6 +62,14 @@ public class RevivalHandler : FieldPacketHandler {
     /// DungeonReviveCount after an instant or an automatic revival.
     /// </summary>
     public static bool CanSafeRevive(int maxRevivalCount, int revivals) => maxRevivalCount <= 0 || revivals < maxRevivalCount;
+
+    /// <summary>
+    /// What a safe-revive request at the limit is answered with (RL-01, BT-236): an alert that names Leave the Dungeon. The client's own
+    /// string for the leave dialog (s_room_exit_msg_default_revival_limit_dungeon) has no string code here and confirms a leave that is
+    /// not yet under way, so this is plain text.
+    /// </summary>
+    public static ByteWriter RevivalLimitNotice() => NoticePacket.Notice(NoticePacket.Flags.Alert | NoticePacket.Flags.Message,
+        new InterfaceText("You have no safe revivals left in this dungeon. Choose Leave the Dungeon."));
 
     /// <summary>
     /// Handles instant revival (using mesos or voucher)

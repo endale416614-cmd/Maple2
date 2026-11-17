@@ -53,6 +53,15 @@ public class PetFusionTest {
         Assert.That((balrog.Pet!.Level, balrog.Pet.Exp), Is.EqualTo(((short) 50, 180000L)), "PetMaxLevel 50 is the last");
     }
 
+    // PE-04 (BT-242): fusion refuses a pet that exp cannot raise, so it takes no fodder and no mesos for nothing.
+    [Test]
+    public void APetThatCannotLevelIsRefused() {
+        Assert.That(PetFusion.CanLevel(Pet(61000079, rarity: 3, limit: 50, level: 49), Table(), 50), Is.True);
+        Assert.That(PetFusion.CanLevel(Pet(61000079, rarity: 3, limit: 50, level: 50), Table(), 50), Is.False, "the last level");
+        Assert.That(PetFusion.CanLevel(Pet(61000079, rarity: 6, limit: 50, level: 1), Table(), 50), Is.False, "an artifact pet has no threshold");
+        Assert.That(PetFusion.CanLevel(Pet(61000079, rarity: 0, limit: 50, level: 1), Table(), 50), Is.False, "no such rarity");
+    }
+
     [Test]
     public void TheRepliesAreTheCaptured() {
         Item guard = Pet(61000160, rarity: 3, limit: 70, level: 12, exp: 35416, uid: GuardUid);

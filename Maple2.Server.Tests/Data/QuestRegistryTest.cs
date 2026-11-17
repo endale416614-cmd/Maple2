@@ -12,6 +12,8 @@ using Maple2.Model.Enum;
 using Maple2.Model.Metadata;
 using Maple2.Server.Game.Manager.Field;
 using Maple2.Server.Game.Trigger.Helpers;
+using Maple2.Server.Game.Util;
+using Maple2.Tools;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NUnit.Framework;
@@ -54,6 +56,11 @@ public class QuestRegistryTest {
         var maps = context.MapMetadata.ToList();
         Dictionary<string, XBlockEntities> entities = IndexEntities(context);
         var placed = BuildPlaced(context, tables, maps, entities, npcById);
+        // FT-07: offline-spawns.json adds spawn points, and an AI's summon nodes place the NPCs they name.
+        placed.UnionWith(OfflineSpawnNpcs());
+        Func<int, AiMetadata?> aiOf = BehaviorRegistryTest.AiLookup(context.AiMetadata.ToList().ToDictionary(ai => ai.Name, StringComparer.OrdinalIgnoreCase),
+            npcById.Values.Where(npc => !string.IsNullOrEmpty(npc.AiPath)).ToDictionary(npc => npc.Id, npc => npc.AiPath));
+        placed = BehaviorRegistryTest.WithSummons(placed, aiOf, NpcSummons.For);
         var questPlaced = BuildQuestPlaced(maps, entities, quests, npcById);
         var worldBoss = BuildWorldBoss(tables);
         bool Friendly(int id) => npcById.TryGetValue(id, out NpcMetadata? npc) && npc.Basic.Friendly > 0;
@@ -334,6 +341,43 @@ public class QuestRegistryTest {
         }
     }
 
+    /// <summary>FT-07: the NPCs a player can meet: those the maps, the quests' fallback and offline-spawns.json place, and what their AIs summon.</summary>
+    internal static HashSet<int> NpcsAPlayerCanMeet(MetadataContext context, Func<int, AiMetadata?> aiOf) {
+        var npcById = context.NpcMetadata.ToList().ToDictionary(npc => npc.Id);
+        List<MapMetadata> maps = context.MapMetadata.ToList();
+        Dictionary<string, XBlockEntities> entities = IndexEntities(context);
+        HashSet<int> placed = BuildPlaced(context, new ServerTableMetadataStorage(context), maps, entities, npcById);
+        placed.UnionWith(BuildQuestPlaced(maps, entities, context.QuestMetadata.ToList(), npcById));
+        placed.UnionWith(OfflineSpawnNpcs());
+        return BehaviorRegistryTest.WithSummons(placed, aiOf, NpcSummons.For);
+    }
+
+    /// <summary>The NPCs of offline-spawns.json (a GrindOnly row too: a player meets it with GrindRates on).</summary>
+    internal static HashSet<int> OfflineSpawnNpcs() {
+        OfflineSpawns.Config? config = OfflineSpawns.Parse(File.ReadAllText(Path.Combine(Paths.SOLUTION_DIR, "offline-spawns.json")));
+        return config?.Spawns?.Select(spawn => spawn.NpcId).ToHashSet() ?? [];
+    }
+
+    /// <summary>The quests the registry warned of on the 1.2.2 data name three NPCs no map places: the Wiggler and the Devilin Chief, which offline-spawns.json adds, and
+    /// the last Gigantica phase 23001006, which the AI of the phase before summons. With those counted as placed, no quest warns "not spawned".</summary>
+    [Test]
+    public void OfflineSpawnsAndSummonsPlaceTheirNpcs() {
+        string? path = DataDb.Find();
+        if (path == null) {
+            Assert.Ignore("maple-data.db not found (set MAPLE_DATA_DB)");
+        }
+
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = path, Mode = SqliteOpenMode.ReadOnly }.ToString());
+        connection.Open();
+        using var context = new MetadataContext(new DbContextOptionsBuilder().UseSqlite(connection).Options);
+        context.ChangeTracker.QueryTrackingBehavior = QueryTrackingBehavior.NoTracking;
+        var npcPaths = context.NpcMetadata.ToList().Where(npc => !string.IsNullOrEmpty(npc.AiPath)).ToDictionary(npc => npc.Id, npc => npc.AiPath);
+        Func<int, AiMetadata?> aiOf = BehaviorRegistryTest.AiLookup(context.AiMetadata.ToList().ToDictionary(ai => ai.Name, StringComparer.OrdinalIgnoreCase), npcPaths);
+
+        Assert.That(OfflineSpawnNpcs(), Is.SupersetOf(new[] { 29000022, 23000008 }));
+        Assert.That(NpcsAPlayerCanMeet(context, aiOf), Is.SupersetOf(new[] { 29000022, 23000008, 23001006 }));
+    }
+
     // QF-08 (BT-20): the Lv 75 story in the order of the client's quest files; BA-15 adds 10003449 to 10003454 after it (10003455 is held, BA-15f).
     private static readonly int[] Lv75Story = [.. Enumerable.Range(10003399, 35), .. Enumerable.Range(10003440, 9)];
 
@@ -398,7 +442,7 @@ public class QuestRegistryTest {
     }
 
     /// <summary>A map's spawn and script entities (one xblock can serve several maps).</summary>
-    private sealed class XBlockEntities {
+    internal sealed class XBlockEntities {
         public readonly List<SpawnPointNPC> Spawns = [];
         public readonly List<EventSpawnPointNPC> EventSpawns = [];
         public readonly HashSet<string> Triggers = new(StringComparer.OrdinalIgnoreCase);
@@ -406,7 +450,7 @@ public class QuestRegistryTest {
         public readonly HashSet<int> WeaponNpcs = [];
     }
 
-    private static Dictionary<string, XBlockEntities> IndexEntities(MetadataContext context) {
+    internal static Dictionary<string, XBlockEntities> IndexEntities(MetadataContext context) {
         var byXBlock = new Dictionary<string, XBlockEntities>(StringComparer.OrdinalIgnoreCase);
         foreach (MapEntity entity in context.MapEntity) {
             if (!byXBlock.TryGetValue(entity.XBlock, out XBlockEntities? x)) {
@@ -436,7 +480,7 @@ public class QuestRegistryTest {
     /// <summary>NPCs the server places in a field: regular spawn points that spawn by themselves or through a combine
     /// group of the map (FieldManager, FieldNpcSpawnPoint), event spawn points that a script running in the map spawns
     /// (TriggerContext.SpawnNpc), region spawns by tag and difficulty, object weapons and defense guard items.</summary>
-    private static HashSet<int> BuildPlaced(MetadataContext context, ServerTableMetadataStorage tables, List<MapMetadata> maps,
+    internal static HashSet<int> BuildPlaced(MetadataContext context, ServerTableMetadataStorage tables, List<MapMetadata> maps,
             Dictionary<string, XBlockEntities> entities, Dictionary<int, NpcMetadata> npcById) {
         var placed = new HashSet<int>();
         // Spawn point ids that the scripts of an xblock spawn; a script runs only when a TriggerModel of the xblock names it.
@@ -533,7 +577,7 @@ public class QuestRegistryTest {
 
     /// <summary>Start and complete NPCs that only event spawn points hold: the server spawns them for the quests
     /// (FieldManager.TriggerOnlyNpcSpawns, only in maps with event spawn points).</summary>
-    private static HashSet<int> BuildQuestPlaced(List<MapMetadata> maps, Dictionary<string, XBlockEntities> entities,
+    internal static HashSet<int> BuildQuestPlaced(List<MapMetadata> maps, Dictionary<string, XBlockEntities> entities,
             List<QuestMetadata> quests, Dictionary<int, NpcMetadata> npcById) {
         var questNpcIds = quests.SelectMany(quest => new[] { quest.Basic.StartNpc, quest.Basic.CompleteNpc }).Where(id => id > 0).ToHashSet();
         var placed = new HashSet<int>();

@@ -81,6 +81,11 @@ public class BuffManager : IUpdatable {
 
         level = additionalEffect.Level; // the level that applies, for the stack check and the packet
 
+        // PI-09 (BT-266): the PvP copy of an effect (applyPvPZoneType 2, e.g. Bloodlust 10200052) applies only in a PvP zone.
+        if (FinalStatusEffects.IsPvpOnly(id, level) && !FinalStatusEffects.IsPvpZone(owner.Field.Metadata.Property.Type)) {
+            return;
+        }
+
         // Offline cheat /godmode: monsters cannot debuff the player (stuns, slows, poisons...).
         if (owner is FieldPlayer { GodMode: true } && caster is FieldNpc { Value.Metadata.Basic.Friendly: 0 }
             && additionalEffect.Property.Type is BuffType.Debuff or BuffType.Debuff2) {
@@ -142,6 +147,7 @@ public class BuffManager : IUpdatable {
                 // Technically in sniffs it should just update the buff level. This should still be the same?
                 Remove(existing.Id, existing.Caster.ObjectId);
             } else {
+                existing.Reapply(startTick); // PI-04 (BT-253): a held one-shot buff acts again
                 if (existing.UpdateEndTime(endTick) | existing.Stack(stacks)) {
                     if (notifyField) {
                         owner.Field.Broadcast(BuffPacket.Update(existing));
@@ -258,7 +264,7 @@ public class BuffManager : IUpdatable {
     }
 
     /// <summary>Whether the actor holds a stun at the tick (MotionProperty stun, NB-24). It ends at its end tick plus its DelayTick, as
-    /// captured, though a buff of IntervalTick 0 (346 of the 355 stun levels) is removed only 1000 ms later. Read on every NPC tick, so it copies no list.</summary>
+    /// captured; a buff of IntervalTick 0 (346 of the 355 stun levels) is removed at that tick too (PI-04). Read on every NPC tick, so it copies no list.</summary>
     public bool HasStun(long tickCount) => buffs.Any(entry => entry.Value.Exists(buff => buff.Metadata.Property.Stun != 0
         && tickCount <= buff.EndTick + buff.Metadata.Property.DelayTick));
 
@@ -365,6 +371,21 @@ public class BuffManager : IUpdatable {
         } else if (buff.Metadata.Shield.HpByTargetMaxHp > 0f) {
             buff.ShieldHealth = (long) (Actor.Stats.Values[BasicAttribute.Health].Total * buff.Metadata.Shield.HpByTargetMaxHp);
         }
+        NoteShield(buff, false);
+    }
+
+    /// <summary>NB-30 (BT-223): the shield-break AI values of an NPC's shield, as its AI files read them (a reconstruction, no capture):
+    /// remainShieldHP is the shield's health left (0 once it is gone); once it is gone brokenShieldSuccess is 1 when its health was used up
+    /// and brokenShieldFail 1 when it ended with health left (expired or cancelled). A new shield resets all three.</summary>
+    public void NoteShield(Buff buff, bool gone) {
+        if (Actor is not FieldNpc npc || buff.Metadata.Shield == null) {
+            return;
+        }
+
+        bool broken = gone && buff.ShieldHealth <= 0;
+        npc.AiExtraData["remainShieldHP"] = gone ? 0 : (int) Math.Min(buff.ShieldHealth, int.MaxValue);
+        npc.AiExtraData["brokenShieldSuccess"] = broken ? 1 : 0;
+        npc.AiExtraData["brokenShieldFail"] = gone && !broken ? 1 : 0;
     }
 
     private void ModifyBuffStackCount(Buff buff) {
@@ -494,7 +515,14 @@ public class BuffManager : IUpdatable {
 
         if (Actor.Field.Metadata.Property.Region == MapRegion.ShadowWorld) {
             if (Actor is FieldPlayer player) {
+                // PI-09 (BT-264): Shadow Power multiplies max health, so the player keeps the share of health, not the number.
+                Stat health = Actor.Stats.Values[BasicAttribute.Health];
+                long current = health.Current, oldMax = health.Total;
                 AddBuff(Actor, Actor, player.Session.ServerTableMetadata.ConstantsTable.shadowWorldBuffHpUp, 1, Actor.Field.FieldTick);
+                if (health.Total != oldMax) {
+                    health.Current = StatsManager.KeepShare(current, oldMax, health.Total);
+                    Actor.Field.Broadcast(StatsPacket.Update(Actor, BasicAttribute.Health));
+                }
                 AddBuff(Actor, Actor, player.Session.ServerTableMetadata.ConstantsTable.shadowWorldBuffMoveProtect, 1, Actor.Field.FieldTick);
             }
         }
@@ -591,6 +619,7 @@ public class BuffManager : IUpdatable {
 
         foreach (Buff buff in buffsToRemove) {
             RemoveInternal(buff);
+            NoteShield(buff, true);
             Actor.Field.Broadcast(BuffPacket.Remove(buff));
             if (buff.Metadata.Property.RideId > 0) {
                 refreshStats = true;

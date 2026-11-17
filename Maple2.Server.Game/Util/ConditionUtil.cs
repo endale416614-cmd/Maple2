@@ -225,6 +225,7 @@ public static class ConditionUtil {
                     return true;
                 }
                 break;
+            case ConditionType.lapenshard_upgrade_result: // target: the tier reached (TA-03)
             case ConditionType.item_exist:
                 // Target is the map the item has to be obtained in (e.g. quest 50100050: item 30001151 in map 2000182),
                 // matched exactly like the npc kill condition passes Field.MapId as the target.

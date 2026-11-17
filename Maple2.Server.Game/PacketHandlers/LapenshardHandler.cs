@@ -135,14 +135,24 @@ public class LapenshardHandler : FieldPacketHandler {
             if (lapenshardUid > 0) {
                 if (UpgradeInventoryLapenshard(session, lapenshardUid, fodders, entry)) {
                     session.Send(LapenshardPacket.Upgrade(lapenshardUid, lapenshardId, slot));
+                    LapenshardUpgraded(session, entry);
                 }
             } else {
                 if (UpgradeEquipLapenshard(session, slot, fodders, entry)) {
                     session.Config.LoadLapenshard();
                     session.Send(LapenshardPacket.Upgrade(lapenshardUid, lapenshardId, slot));
+                    LapenshardUpgraded(session, entry);
                 }
             }
         }
+    }
+
+    // TA-03 (BT-74): an upgrade never fails here, so lapenshard_upgrade_fail has no place to be reported.
+    // The result's target is the tier reached (inferred: trophies "(Tier 6)" to "(Tier 10)" against 10 levels in the upgrade table).
+    private static void LapenshardUpgraded(GameSession session, LapenshardUpgradeTable.Entry entry) {
+        session.ConditionUpdate(ConditionType.lapenshard_upgrade_try);
+        session.ConditionUpdate(ConditionType.lapenshard_upgrade_success);
+        session.ConditionUpdate(ConditionType.lapenshard_upgrade_result, targetLong: entry.Level + 1);
     }
 
     // Gets the ItemId of the Lapenshard from either Inventory or Equip.
